@@ -2,157 +2,297 @@ package com.shelf.player;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
-import android.database.Cursor;
-import android.util.Base64;
-import com.getcapacitor.ActivityResult;
+
+import androidx.activity.result.ActivityResult;
+
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
-import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.util.ArrayList;
+import com.getcapacitor.annotation.PluginMethod;
+
 import java.util.Locale;
 
-/** Android Storage Access Framework bridge used by the library scanner. */
 @CapacitorPlugin(name = "ShelfFiles")
 public class FilesPlugin extends Plugin {
-  private static final int PICK_TREE = 7301;
-  private PluginCall pendingPick;
 
-  @PluginMethod
-  public void pickFolder(PluginCall call) {
-    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
-      | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-      | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
-    startActivityForResult(call, i, "folderPickerResult");
-  }
+    private static final String PICK_FOLDER_CALLBACK = "folderPickerResult";
 
-  @com.getcapacitor.annotation.ActivityCallback
-  private void folderPickerResult(PluginCall call, ActivityResult result) {
-    if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null
-        || result.getData().getData() == null) {
-      call.reject("Отмена");
-      return;
+    @PluginMethod
+    public void pickFolder(PluginCall call) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+        );
+        startActivityForResult(call, intent, PICK_FOLDER_CALLBACK);
     }
 
-    Intent data = result.getData();
-    Uri uri = data.getData();
-    try {
-      int takeFlags = data.getFlags() &
-        (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-      if (takeFlags != 0) {
-        getContext().getContentResolver().takePersistableUriPermission(uri, takeFlags);
-      }
-    } catch (Exception ignored) { }
-
-    JSObject r = new JSObject();
-    r.put("uri", uri.toString());
-    r.put("name", queryName(uri));
-    call.resolve(r);
-  }
-
-  @PluginMethod
-  public void scanFolder(PluginCall call) {
-    String s = call.getString("uri", "");
-    if (s.isEmpty()) { call.reject("Нет папки"); return; }
-    try {
-      Uri root = Uri.parse(s);
-      ArrayList<JSObject> out = new ArrayList<>();
-      walk(root, queryName(root), out);
-      JSArray a = new JSArray();
-      for (JSObject o : out) a.put(o);
-      JSObject r = new JSObject();
-      r.put("files", a);
-      r.put("name", queryName(root));
-      r.put("count", out.size());
-      call.resolve(r);
-    } catch (SecurityException e) {
-      call.reject("Доступ к папке больше не разрешён");
-    } catch (Exception e) {
-      call.reject("Не удалось просканировать папку: " + e.getMessage());
-    }
-  }
-
-  private void walk(Uri tree, String path, ArrayList<JSObject> out) {
-    Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(
-      tree, DocumentsContract.getTreeDocumentId(tree));
-    try (Cursor c = getContext().getContentResolver().query(children,
-      new String[]{
-        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-        DocumentsContract.Document.COLUMN_MIME_TYPE,
-        DocumentsContract.Document.COLUMN_SIZE,
-        DocumentsContract.Document.COLUMN_LAST_MODIFIED
-      }, null, null, null)) {
-      if (c == null) return;
-      int idCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
-      int nameCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
-      int mimeCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
-      int sizeCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE);
-      int modCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
-      while (c.moveToNext()) {
-        String id = c.getString(idCol);
-        String name = c.getString(nameCol);
-        String mime = c.getString(mimeCol);
-        Uri child = DocumentsContract.buildDocumentUriUsingTree(tree, id);
-        if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-          if (name != null && !name.startsWith(".") && !name.equals("Android")) {
-            walk(child, path + "/" + name, out);
-          }
-        } else if (isAudio(name, mime)) {
-          JSObject o = new JSObject();
-          o.put("uri", child.toString());
-          o.put("name", name);
-          o.put("path", path);
-          o.put("mime", mime == null ? "audio/*" : mime);
-          o.put("size", sizeCol >= 0 && !c.isNull(sizeCol) ? c.getLong(sizeCol) : 0);
-          o.put("modified", modCol >= 0 && !c.isNull(modCol) ? c.getLong(modCol) : 0);
-          out.add(o);
+    @ActivityCallback
+    private void folderPickerResult(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
         }
-      }
+
+        if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+            call.reject("Выбор папки отменён");
+            return;
+        }
+
+        Uri treeUri = result.getData().getData();
+        if (treeUri == null) {
+            call.reject("Папка не выбрана");
+            return;
+        }
+
+        try {
+            int takeFlags = result.getData().getFlags()
+                & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            getContext().getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
+        } catch (Exception ignored) {
+            // Некоторые провайдеры не дают постоянное разрешение. В рамках текущего
+            // запуска доступ всё равно остаётся действительным.
+        }
+
+        JSObject folder = new JSObject();
+        folder.put("uri", treeUri.toString());
+        folder.put("name", getTreeName(treeUri));
+
+        JSArray files = scanTree(treeUri);
+        folder.put("files", files);
+
+        call.resolve(folder);
     }
-  }
 
-  private boolean isAudio(String name, String mime) {
-    if (mime != null && mime.toLowerCase(Locale.US).startsWith("audio/")) return true;
-    return name != null && name.matches("(?i).+\\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$");
-  }
+    @PluginMethod
+    public void scanFolder(PluginCall call) {
+        String uriString = call.getString("uri", null);
+        if (uriString == null || uriString.trim().isEmpty()) {
+            call.reject("Не передан URI папки");
+            return;
+        }
 
-  private String queryName(Uri uri) {
-    try (Cursor c = getContext().getContentResolver().query(uri,
-      new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
-      if (c != null && c.moveToFirst()) return c.getString(0);
-    } catch (Exception ignored) { }
-    return "Музыка";
-  }
-
-  /**
-   * The web layer asks for a complete Blob only for the active chapter (and the
-   * first file while importing, to read tags). This avoids copying an entire
-   library into IndexedDB during a scan.
-   */
-  @PluginMethod
-  public void readFile(PluginCall call) {
-    String s = call.getString("uri", "");
-    if (s.isEmpty()) { call.reject("Нет файла"); return; }
-    try (InputStream in = getContext().getContentResolver().openInputStream(Uri.parse(s));
-         ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-      if (in == null) { call.reject("Не удалось открыть файл"); return; }
-      byte[] buf = new byte[1024 * 1024];
-      int n;
-      while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-      JSObject r = new JSObject();
-      r.put("base64", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
-      r.put("mime", "audio/*");
-      call.resolve(r);
-    } catch (Exception e) {
-      call.reject("Не удалось прочитать файл: " + e.getMessage());
+        try {
+            Uri treeUri = Uri.parse(uriString);
+            JSObject result = new JSObject();
+            result.put("uri", treeUri.toString());
+            result.put("name", getTreeName(treeUri));
+            result.put("files", scanTree(treeUri));
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Не удалось прочитать папку", e);
+        }
     }
-  }
+
+    // Alias for older JS builds.
+    @PluginMethod
+    public void listFiles(PluginCall call) {
+        scanFolder(call);
+    }
+
+    private JSArray scanTree(Uri treeUri) {
+        JSArray result = new JSArray();
+        scanChildren(treeUri, "", result);
+        return result;
+    }
+
+    private void scanChildren(Uri treeUri, String relativeDir, JSArray result) {
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            treeUri,
+            DocumentsContract.getTreeDocumentId(treeUri)
+        );
+
+        ContentResolverHolder holder = new ContentResolverHolder(getContext().getContentResolver());
+        Cursor cursor = null;
+
+        try {
+            cursor = holder.query(
+                childrenUri,
+                new String[] {
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED
+                },
+                null,
+                null,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC"
+            );
+
+            if (cursor == null) {
+                return;
+            }
+
+            int idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
+            int sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE);
+            int modifiedCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
+
+            while (cursor.moveToNext()) {
+                String id = idCol >= 0 ? cursor.getString(idCol) : "";
+                String name = nameCol >= 0 ? cursor.getString(nameCol) : "";
+                String mime = mimeCol >= 0 ? cursor.getString(mimeCol) : "";
+                long size = sizeCol >= 0 && !cursor.isNull(sizeCol) ? cursor.getLong(sizeCol) : 0L;
+                long modified = modifiedCol >= 0 && !cursor.isNull(modifiedCol) ? cursor.getLong(modifiedCol) : 0L;
+
+                boolean directory = DocumentsContract.Document.MIME_TYPE_DIR.equals(mime);
+                String relativePath = relativeDir.isEmpty() ? name : relativeDir + "/" + name;
+
+                Uri documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
+
+                if (directory) {
+                    // Skip Android/provider bookkeeping directories.
+                    if (!name.equals(".") && !name.equals("..")) {
+                        scanDocumentChildren(treeUri, documentUri, relativePath, result);
+                    }
+                    continue;
+                }
+
+                if (!isAudio(name, mime)) {
+                    continue;
+                }
+
+                JSObject file = new JSObject();
+                file.put("uri", documentUri.toString());
+                file.put("name", name);
+                file.put("path", relativePath);
+                file.put("relativePath", relativePath);
+                file.put("mimeType", mime);
+                file.put("size", size);
+                file.put("lastModified", modified);
+                result.put(file);
+            }
+        } catch (Exception ignored) {
+            // One inaccessible subtree must not prevent the remaining files from loading.
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+    }
+
+    private void scanDocumentChildren(Uri treeUri, Uri documentUri, String relativeDir, JSArray result) {
+        String documentId = DocumentsContract.getDocumentId(documentUri);
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, documentId);
+
+        Cursor cursor = null;
+        try {
+            cursor = getContext().getContentResolver().query(
+                childrenUri,
+                new String[] {
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                    DocumentsContract.Document.COLUMN_LAST_MODIFIED
+                },
+                null,
+                null,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC"
+            );
+
+            if (cursor == null) {
+                return;
+            }
+
+            int idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
+            int sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE);
+            int modifiedCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
+
+            while (cursor.moveToNext()) {
+                String id = idCol >= 0 ? cursor.getString(idCol) : "";
+                String name = nameCol >= 0 ? cursor.getString(nameCol) : "";
+                String mime = mimeCol >= 0 ? cursor.getString(mimeCol) : "";
+                long size = sizeCol >= 0 && !cursor.isNull(sizeCol) ? cursor.getLong(sizeCol) : 0L;
+                long modified = modifiedCol >= 0 && !cursor.isNull(modifiedCol) ? cursor.getLong(modifiedCol) : 0L;
+
+                Uri childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
+                String childPath = relativeDir.isEmpty() ? name : relativeDir + "/" + name;
+
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    scanDocumentChildren(treeUri, childUri, childPath, result);
+                } else if (isAudio(name, mime)) {
+                    JSObject file = new JSObject();
+                    file.put("uri", childUri.toString());
+                    file.put("name", name);
+                    file.put("path", childPath);
+                    file.put("relativePath", childPath);
+                    file.put("mimeType", mime);
+                    file.put("size", size);
+                    file.put("lastModified", modified);
+                    result.put(file);
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+    }
+
+    private String getTreeName(Uri uri) {
+        Cursor cursor = null;
+        try {
+            cursor = getContext().getContentResolver().query(
+                uri,
+                new String[] { DocumentsContract.Document.COLUMN_DISPLAY_NAME },
+                null,
+                null,
+                null
+            );
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.getString(0);
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        return "Папка";
+    }
+
+    private boolean isAudio(String name, String mime) {
+        if (mime != null && mime.toLowerCase(Locale.ROOT).startsWith("audio/")) {
+            return true;
+        }
+
+        String lower = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".mp3")
+            || lower.endsWith(".m4a")
+            || lower.endsWith(".m4b")
+            || lower.endsWith(".aac")
+            || lower.endsWith(".flac")
+            || lower.endsWith(".ogg")
+            || lower.endsWith(".opus")
+            || lower.endsWith(".wav")
+            || lower.endsWith(".wma")
+            || lower.endsWith(".aiff")
+            || lower.endsWith(".ape");
+    }
+
+    // Small wrapper keeps the query code readable and avoids leaking implementation details.
+    private static final class ContentResolverHolder {
+        private final android.content.ContentResolver resolver;
+
+        ContentResolverHolder(android.content.ContentResolver resolver) {
+            this.resolver = resolver;
+        }
+
+        Cursor query(Uri uri, String[] projection, String selection, String[] args, String sortOrder) {
+            return resolver.query(uri, projection, selection, args, sortOrder);
+        }
+    }
 }
