@@ -50,6 +50,11 @@ public class PlayerService extends Service {
 
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent != null) {
+      if ("STOP_SERVICE".equals(intent.getAction())) {
+        stopForeground(true);
+        stopSelf();
+        return START_NOT_STICKY;
+      }
       String t=intent.getStringExtra("title"), a=intent.getStringExtra("artist");
       if (t != null && !t.isEmpty()) title=t;
       if (a != null) artist=a;
@@ -69,6 +74,10 @@ public class PlayerService extends Service {
   }
 
   private PendingIntent action(String a){
+    if("stop".equals(a)) {
+      Intent intent = new Intent(this, PlayerService.class).setAction("STOP_SERVICE");
+      return PendingIntent.getService(this, 999, intent, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
+    }
     return PlayerWidget.pi(this,a);
   }
 
@@ -90,7 +99,8 @@ public class PlayerService extends Service {
     b.setSmallIcon(android.R.drawable.ic_media_play)
       .setContentTitle(title).setContentText(artist)
       .setLargeIcon(cover!=null&&!cover.isRecycled()?cover:null)
-      .setVisibility(Notification.VISIBILITY_PUBLIC).setOngoing(playing);
+      .setVisibility(Notification.VISIBILITY_PUBLIC).setOngoing(playing)
+      .setDeleteIntent(action("stop"));
     PendingIntent open=openApp();if(open!=null)b.setContentIntent(open);
     b.addAction(android.R.drawable.ic_media_previous,"Назад",action("prev"))
       .addAction(android.R.drawable.ic_media_rew,"-10 с",action("back10"))

@@ -99,8 +99,15 @@ function bookCover(b,extra=''){const title=escapeHtml(b.title||'Без назв�
 function progress(b){const files=b.files||[];if(!files.length)return 0;const i=Math.max(0,Math.min(Number(b.pos?.i)||0,files.length-1));const t=Math.max(0,Number(b.pos?.t)||0);const d=Math.max(0,Number(files[i]?.duration)||0);return Math.max(0,Math.min(100,((i+(d?t/d:0))/files.length)*100))}
 function renderShelf(){
   const books=state.books;
+  const totalBooks = books.length;
+  let totalProg = 0;
+  if(totalBooks > 0) {
+    const sum = books.reduce((acc, b) => acc + progress(b), 0);
+    totalProg = Math.round(sum / totalBooks);
+  }
+  const subtitle = `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${totalBooks} ${plural(totalBooks,'книга','книги','книг')} &middot; Общий прогресс: ${totalProg}%</span>`;
   let html=`<section class="screen shelf-screen shelf-hero ${state.settings.threeD?'':'flat-shelf'}">`;
-  html+=header('AudioShelf', `${books.length} ${plural(books.length,'книга','книги','книг')}`, `${iconBtn('folderPlus','Добавить книги','openAddSheet')}`);
+  html+=header('AudioShelf', subtitle, `${iconBtn('folderPlus','Добавить книги','openAddSheet')}`);
   html+=`<div class="shelf-area">`;
   if(!books.length){html+=`<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Полка пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`}
   else {for(let i=0;i<books.length;i+=3){html+=`<div class="shelf-row">${books.slice(i,i+3).map(bookCard).join('')}</div>`}}
@@ -196,7 +203,7 @@ async function togglePlaylistBook(pid,bid){const p=state.playlists.find(x=>x.id=
 function openAddSheet(){openFolderSheet(true)}
 function openFolderSheet(showAdd=false){
   const folders=state.folders;const selected=folders.filter(f=>state.selectedFolderIds.includes(f.id));
-  modalRoot.innerHTML=`<div class="sheet" id="folderSheet"><div class="sheet-head"><button class="sheet-close" id="folderClose" aria-label="Закрыть">${icon('close')}</button><h2>Выбор папок</h2><span style="font-size:11px;color:var(--muted)">${selected.length} выбрано</span></div>
+  modalRoot.innerHTML=`<div class="modal-back" id="folderBack"><div class="sheet" id="folderSheet"><div class="sheet-head"><button class="sheet-close" id="folderClose" aria-label="Закрыть">${icon('close')}</button><h2>Выбор папок</h2><span style="font-size:11px;color:var(--muted)">${selected.length} выбрано</span></div>
     <div class="scan-hero"><strong>Папки с аудио</strong><p>Добавляйте несколько папок. Доступ к ним сохраняется на устройстве, а вложенные каталоги сканируются автоматически.</p></div>
     <div id="folderList">${folders.length?folders.map(folderRow).join(''):`<div style="padding:25px 4px;text-align:center;color:var(--muted)">Папки ещё не выбраны.</div>`}</div>
     <button class="primary" id="scanNow" style="margin-top:12px">${icon('refresh')} Сканировать выбранные</button>
@@ -204,8 +211,10 @@ function openFolderSheet(showAdd=false){
     <div class="section-title">Состояние</div><div id="scanInfo" class="scan-hero"><strong>${selected.length} ${plural(selected.length,'папка выбрана','папки выбрано','папок выбрано')}</strong><p>После сканирования приложение вернётся на полку.</p></div>
     <div id="scanProgress" class="scan-progress hidden"><div class="progress-bar"><i id="scanBar"></i></div><div class="scan-text" id="scanText"></div></div>
     <div id="scanFound"></div>
-  </div>`;
-  $('folderClose').onclick=closeModal;$('addFolderNow').onclick=pickFolder;$('scanNow').onclick=()=>scanAllFolders(false,true);
+  </div></div>`;
+  $('folderClose').onclick=closeModal;
+  $('folderBack').onclick=e=>{if(e.target.id==='folderBack')closeModal()};
+  $('addFolderNow').onclick=pickFolder;$('scanNow').onclick=()=>scanAllFolders(false,true);
   document.querySelectorAll('[data-folder]').forEach(el=>el.onclick=e=>{if(e.target.closest('[data-folder-delete]'))return;toggleFolder(el.dataset.folder)});
   document.querySelectorAll('[data-folder-delete]').forEach(el=>el.onclick=e=>{e.stopPropagation();deleteFolder(el.dataset.folderDelete)});
 }
@@ -468,8 +477,9 @@ audio.addEventListener('timeupdate',()=>{
 audio.addEventListener('seeking',()=>scheduleProgressSave());
 audio.addEventListener('seeked',()=>scheduleProgressSave(true));
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')scheduleProgressSave(true)});
-window.addEventListener('pagehide',()=>scheduleProgressSave(true));
-window.addEventListener('beforeunload',()=>scheduleProgressSave(true));
+function stopNativePlayer(){const P=plugin('Player');if(P)P.stop().catch(()=>{})}
+window.addEventListener('pagehide',()=>{stopNativePlayer();scheduleProgressSave(true)});
+window.addEventListener('beforeunload',()=>{stopNativePlayer();scheduleProgressSave(true)});
 audio.addEventListener('error',()=>showToast('Ошибка воспроизведения файла'));
 function setMediaSession(){if(!('mediaSession' in navigator)||!state.current)return;const b=state.current,f=b.files[state.currentIndex];try{navigator.mediaSession.metadata=new MediaMetadata({title:f?.name||b.title,artist:b.author||b.title,album:b.title,artwork:b.cover?[{src:b.cover,sizes:'512x512'}]:[]});navigator.mediaSession.playbackState=state.playing?'playing':'paused';navigator.mediaSession.setActionHandler('play',()=>togglePlay(true));navigator.mediaSession.setActionHandler('pause',()=>audio.pause());navigator.mediaSession.setActionHandler('previoustrack',prevTrack);navigator.mediaSession.setActionHandler('nexttrack',nextTrack);navigator.mediaSession.setActionHandler('seekbackward',()=>seekBy(-10));navigator.mediaSession.setActionHandler('seekforward',()=>seekBy(30))}catch{}}
 

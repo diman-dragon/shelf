@@ -3,10 +3,12 @@ package com.shelf.player;
 import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
+import android.util.Base64;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -74,7 +76,6 @@ public class FilesPlugin extends Plugin {
             call.reject("Не передан URI папки"); return;
         }
         final Uri treeUri = Uri.parse(uriString);
-        // Return immediately. The actual scan never runs on the WebView/Capacitor thread.
         JSObject started = new JSObject();
         started.put("started", true);
         call.resolve(started);
@@ -86,10 +87,13 @@ public class FilesPlugin extends Plugin {
 
     private void runScan(Uri treeUri, String folderId, String folderName) {
         try {
-            int total = countAudioFiles(treeUri, treeUri, "");
+            String rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
+            Uri rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocId);
+
+            int total = countAudioFiles(treeUri, rootDocUri, "");
             emit("scanStarted", new JSObject().put("folderId", folderId).put("folderName", folderName).put("totalFiles", total));
             ScanState state = new ScanState(total, folderId, folderName);
-            scanDirectory(treeUri, treeUri, "", state);
+            scanDirectory(treeUri, rootDocUri, "", state);
             emit("scanComplete", new JSObject().put("folderId", folderId).put("folderName", folderName)
                 .put("totalFiles", state.total).put("processedFiles", state.processed).put("books", state.books));
         } catch (Exception e) {
@@ -101,102 +105,170 @@ public class FilesPlugin extends Plugin {
         int count = 0;
         Cursor cursor = null;
         try {
-            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getDocumentId(documentUri));
+            String docId = DocumentsContract.getDocumentId(documentUri);
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
             cursor = getContext().getContentResolver().query(children,
                 new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
                     DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null);
             if (cursor == null) return 0;
-            int idCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
-            int nameCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
-            int mimeCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
-            while(cursor.moveToNext()){
-                String id=idCol>=0?cursor.getString(idCol):"";
-                String name=nameCol>=0?cursor.getString(nameCol):"";
-                String mime=mimeCol>=0?cursor.getString(mimeCol):"";
-                Uri child=DocumentsContract.buildDocumentUriUsingTree(treeUri,id);
-                if(DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) count += countAudioFiles(treeUri,child,relativeDir.isEmpty()?name:relativeDir+"/"+name);
-                else if(isAudio(name,mime)) count++;
+            int idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
+            while (cursor.moveToNext()) {
+                String id = idCol >= 0 ? cursor.getString(idCol) : "";
+                String name = nameCol >= 0 ? cursor.getString(nameCol) : "";
+                String mime = mimeCol >= 0 ? cursor.getString(mimeCol) : "";
+                Uri child = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    count += countAudioFiles(treeUri, child, relativeDir.isEmpty() ? name : relativeDir + "/" + name);
+                } else if (isAudio(name, mime)) {
+                    count++;
+                }
             }
-        } catch(Exception ignored) { }
-        finally { if(cursor!=null) cursor.close(); }
+        } catch (Exception ignored) { }
+        finally { if (cursor != null) cursor.close(); }
         return count;
     }
 
     private void scanDirectory(Uri treeUri, Uri documentUri, String relativeDir, ScanState state) {
-        Cursor cursor=null;
-        List<JSObject> audioHere=new ArrayList<>();
-        try{
-            Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getDocumentId(documentUri));
-            cursor=getContext().getContentResolver().query(children,
-                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                    DocumentsContract.Document.COLUMN_MIME_TYPE,DocumentsContract.Document.COLUMN_SIZE,DocumentsContract.Document.COLUMN_LAST_MODIFIED},
-                null,null,DocumentsContract.Document.COLUMN_DISPLAY_NAME+" COLLATE NOCASE ASC");
-            if(cursor==null)return;
-            int idCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
-            int nameCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
-            int mimeCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
-            int sizeCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE);
-            int modCol=cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
-            while(cursor.moveToNext()){
-                String id=idCol>=0?cursor.getString(idCol):"";
-                String name=nameCol>=0?cursor.getString(nameCol):"";
-                String mime=mimeCol>=0?cursor.getString(mimeCol):"";
-                Uri child=DocumentsContract.buildDocumentUriUsingTree(treeUri,id);
-                if(DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) continue;
-                if(!isAudio(name,mime))continue;
-                JSObject f=new JSObject();
-                f.put("uri",child.toString()); f.put("name",name);
-                f.put("path",relativeDir.isEmpty()?name:relativeDir+"/"+name);
-                f.put("relativePath",relativeDir.isEmpty()?name:relativeDir+"/"+name);
-                f.put("mimeType",mime);
-                if(sizeCol>=0&&!cursor.isNull(sizeCol))f.put("size",cursor.getLong(sizeCol));
-                if(modCol>=0&&!cursor.isNull(modCol))f.put("lastModified",cursor.getLong(modCol));
+        Cursor cursor = null;
+        List<JSObject> audioHere = new ArrayList<>();
+        try {
+            String docId = DocumentsContract.getDocumentId(documentUri);
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
+            cursor = getContext().getContentResolver().query(children,
+                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED},
+                null, null, DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC");
+            if (cursor == null) return;
+            int idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
+            int sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE);
+            int modCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
+            while (cursor.moveToNext()) {
+                String id = idCol >= 0 ? cursor.getString(idCol) : "";
+                String name = nameCol >= 0 ? cursor.getString(nameCol) : "";
+                String mime = mimeCol >= 0 ? cursor.getString(mimeCol) : "";
+                Uri child = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) continue;
+                if (!isAudio(name, mime)) continue;
+
+                JSObject f = new JSObject();
+                f.put("uri", child.toString());
+                f.put("name", name);
+                f.put("fileName", name);
+                f.put("path", relativeDir.isEmpty() ? name : relativeDir + "/" + name);
+                f.put("relativePath", relativeDir.isEmpty() ? name : relativeDir + "/" + name);
+                f.put("mimeType", mime);
+                if (sizeCol >= 0 && !cursor.isNull(sizeCol)) f.put("size", cursor.getLong(sizeCol));
+                if (modCol >= 0 && !cursor.isNull(modCol)) f.put("lastModified", cursor.getLong(modCol));
+
+                // Extract metadata (tags, cover, duration) using MediaMetadataRetriever
+                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                try {
+                    retriever.setDataSource(getContext(), child);
+                    String titleTag = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
+                    String artistTag = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
+                    String albumTag = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
+                    String durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+                    if (titleTag != null && !titleTag.isEmpty()) f.put("title", titleTag);
+                    if (artistTag != null && !artistTag.isEmpty()) f.put("artist", artistTag);
+                    if (albumTag != null && !albumTag.isEmpty()) f.put("album", albumTag);
+                    if (durationStr != null) {
+                        try { f.put("duration", Double.parseDouble(durationStr) / 1000.0); } catch (Exception ignored) {}
+                    }
+                    byte[] art = retriever.getEmbeddedPicture();
+                    if (art != null) {
+                        String base64Art = "data:image/jpeg;base64," + Base64.encodeToString(art, Base64.NO_WRAP);
+                        f.put("cover", base64Art);
+                    }
+                } catch (Exception ignored) {
+                } finally {
+                    try { retriever.release(); } catch (Exception ignored) {}
+                }
+
                 audioHere.add(f);
             }
-        }catch(Exception ignored){}
-        finally{if(cursor!=null)cursor.close();}
+        } catch (Exception ignored) { }
+        finally { if (cursor != null) cursor.close(); }
 
-        // Files directly in one directory form one book. A single file in root is one book too.
-        if(!audioHere.isEmpty()){
-            JSArray arr=new JSArray();
-            for(JSObject f:audioHere){arr.put(f);state.processed++;}
-            String title=relativeDir.isEmpty()?stripExt(audioHere.get(0).optString("name","Книга")):relativeDir.substring(relativeDir.lastIndexOf('/')+1);
-            JSObject book=new JSObject();
-            book.put("folderId",state.folderId);book.put("folderName",state.folderName);book.put("path",relativeDir);
-            book.put("title",title);book.put("files",arr);book.put("fileCount",audioHere.size());
+        if (!audioHere.isEmpty()) {
+            JSArray arr = new JSArray();
+            String detectedAlbum = "";
+            String detectedArtist = "";
+            String detectedCover = "";
+            for (JSObject f : audioHere) {
+                arr.put(f);
+                state.processed++;
+                if (detectedAlbum.isEmpty() && f.has("album")) detectedAlbum = f.optString("album", "");
+                if (detectedArtist.isEmpty() && f.has("artist")) detectedArtist = f.optString("artist", "");
+                if (detectedCover.isEmpty() && f.has("cover")) detectedCover = f.optString("cover", "");
+            }
+            String defaultTitle = relativeDir.isEmpty() ? stripExt(audioHere.get(0).optString("name", "Книга")) : relativeDir.substring(relativeDir.lastIndexOf('/') + 1);
+            String title = !detectedAlbum.isEmpty() ? detectedAlbum : defaultTitle;
+
+            JSObject book = new JSObject();
+            book.put("folderId", state.folderId);
+            book.put("folderName", state.folderName);
+            book.put("path", relativeDir);
+            book.put("title", title);
+            book.put("author", detectedArtist);
+            book.put("cover", detectedCover);
+            book.put("files", arr);
+            book.put("fileCount", audioHere.size());
             state.books++;
-            emit("scanBook",book);
+            emit("scanBook", book);
             emitProgress(state);
         }
 
-        // Recurse separately so each finished directory can immediately become a book.
-        Cursor dirs=null;
-        try{
-            Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getDocumentId(documentUri));
-            dirs=getContext().getContentResolver().query(children,
-                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE},null,null,
-                DocumentsContract.Document.COLUMN_DISPLAY_NAME+" COLLATE NOCASE ASC");
-            if(dirs==null)return;
-            int idCol=dirs.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID), nameCol=dirs.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME), mimeCol=dirs.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
-            while(dirs.moveToNext()){
-                String id=idCol>=0?dirs.getString(idCol):"", name=nameCol>=0?dirs.getString(nameCol):"", mime=mimeCol>=0?dirs.getString(mimeCol):"";
-                if(!DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)||name.equals(".")||name.equals(".."))continue;
-                Uri child=DocumentsContract.buildDocumentUriUsingTree(treeUri,id);
-                scanDirectory(treeUri,child,relativeDir.isEmpty()?name:relativeDir+"/"+name,state);
+        Cursor dirs = null;
+        try {
+            String docId = DocumentsContract.getDocumentId(documentUri);
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
+            dirs = getContentResolver().query(children,
+                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC");
+            if (dirs == null) return;
+            int idCol = dirs.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameCol = dirs.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int mimeCol = dirs.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
+            while (dirs.moveToNext()) {
+                String id = idCol >= 0 ? dirs.getString(idCol) : "";
+                String name = nameCol >= 0 ? dirs.getString(nameCol) : "";
+                String mime = mimeCol >= 0 ? dirs.getString(mimeCol) : "";
+                if (!DocumentsContract.Document.MIME_TYPE_DIR.equals(mime) || name.equals(".") || name.equals("..")) continue;
+                Uri child = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
+                scanDirectory(treeUri, child, relativeDir.isEmpty() ? name : relativeDir + "/" + name, state);
             }
-        }catch(Exception ignored){}
-        finally{if(dirs!=null)dirs.close();}
+        } catch (Exception ignored) { }
+        finally { if (dirs != null) dirs.close(); }
     }
 
-    private void emitProgress(ScanState s){emit("scanProgress",new JSObject().put("folderId",s.folderId).put("folderName",s.folderName).put("totalFiles",s.total).put("processedFiles",s.processed).put("books",s.books));}
-    private void emit(String event, JSObject data){mainHandler.post(()->notifyListeners(event,data));}
+    private void emitProgress(ScanState s) { emit("scanProgress", new JSObject().put("folderId", s.folderId).put("folderName", s.folderName).put("totalFiles", s.total).put("processedFiles", s.processed).put("books", s.books)); }
+    private void emit(String event, JSObject data) { mainHandler.post(() -> notifyListeners(event, data)); }
 
-    private static class ScanState { int total,processed=0,books=0; String folderId,folderName; ScanState(int t,String id,String n){total=t;folderId=id;folderName=n;} }
+    private static class ScanState {
+        int total, processed = 0, books = 0;
+        String folderId, folderName;
+        ScanState(int t, String id, String n) { total = t; folderId = id; folderName = n; }
+    }
 
-    private boolean isAudio(String name,String mime){
-        String n=name.toLowerCase(Locale.ROOT);
+    private boolean isAudio(String name, String mime) {
+        String n = name.toLowerCase(Locale.ROOT);
         return mime.startsWith("audio/") || n.matches(".*\\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$");
     }
-    private String stripExt(String s){return s.replaceFirst("(?i)\\.[^.]+$","");}
-    private String getTreeName(Uri uri){try{String p=uri.getPath();if(p!=null){int i=p.lastIndexOf('/');if(i>=0&&i<p.length()-1)return Uri.decode(p.substring(i+1));}}catch(Exception ignored){}return "Аудиокниги";}
+
+    private String stripExt(String s) { return s.replaceFirst("(?i)\\.[^.]+$", ""); }
+
+    private String getTreeName(Uri uri) {
+        try {
+            String p = uri.getPath();
+            if (p != null) {
+                int i = p.lastIndexOf('/');
+                if (i >= 0 && i < p.length() - 1) return Uri.decode(p.substring(i + 1));
+            }
+        } catch (Exception ignored) { }
+        return "Аудиокниги";
+    }
 }
