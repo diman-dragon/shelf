@@ -5,6 +5,10 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
+import android.util.Base64;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 import androidx.activity.result.ActivityResult;
 
@@ -14,7 +18,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.PluginMethod;
+import com.getcapacitor.PluginMethod;
 
 import java.util.Locale;
 
@@ -72,6 +76,36 @@ public class FilesPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void readFile(PluginCall call) {
+        String uriString = call.getString("uri", null);
+        if (uriString == null || uriString.trim().isEmpty()) {
+            call.reject("Не передан URI файла");
+            return;
+        }
+
+        Uri uri = Uri.parse(uriString);
+        try (InputStream in = getContext().getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            if (in == null) {
+                call.reject("Не удалось открыть файл");
+                return;
+            }
+
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+
+            JSObject result = new JSObject();
+            result.put("base64", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP));
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Не удалось прочитать аудиофайл");
+        }
+    }
+
+    @PluginMethod
     public void scanFolder(PluginCall call) {
         String uriString = call.getString("uri", null);
         if (uriString == null || uriString.trim().isEmpty()) {
@@ -109,11 +143,10 @@ public class FilesPlugin extends Plugin {
             DocumentsContract.getTreeDocumentId(treeUri)
         );
 
-        ContentResolverHolder holder = new ContentResolverHolder(getContext().getContentResolver());
         Cursor cursor = null;
 
         try {
-            cursor = holder.query(
+            cursor = getContext().getContentResolver().query(
                 childrenUri,
                 new String[] {
                     DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -283,16 +316,4 @@ public class FilesPlugin extends Plugin {
             || lower.endsWith(".ape");
     }
 
-    // Small wrapper keeps the query code readable and avoids leaking implementation details.
-    private static final class ContentResolverHolder {
-        private final android.content.ContentResolver resolver;
-
-        ContentResolverHolder(android.content.ContentResolver resolver) {
-            this.resolver = resolver;
-        }
-
-        Cursor query(Uri uri, String[] projection, String selection, String[] args, String sortOrder) {
-            return resolver.query(uri, projection, selection, args, sortOrder);
-        }
-    }
 }
