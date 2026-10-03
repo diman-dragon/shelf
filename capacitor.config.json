@@ -1,0 +1,6 @@
+{
+  "appId": "com.shelf.player",
+  "appName": "Полка",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}
