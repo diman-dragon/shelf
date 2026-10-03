@@ -56,6 +56,9 @@ let scanResult=[];
 let toastTimer;
 let progressSaveTimer = null;
 let lastPersistedPosition = 0;
+const LAST_PLAYBACK_KEY = 'shelf:lastPlayback';
+function readLastPlayback(){try{return JSON.parse(localStorage.getItem(LAST_PLAYBACK_KEY)||'null')}catch{return null}}
+function writeLastPlayback(){if(!state.current)return;try{localStorage.setItem(LAST_PLAYBACK_KEY,JSON.stringify({bookId:state.current.id,index:state.currentIndex,pos:Number(state.currentPos)||0}))}catch{}}
 
 async function loadState(){
   state.books=(await get('books'))||[];
@@ -63,6 +66,8 @@ async function loadState(){
   state.playlists=(await get('playlists'))||DEFAULT_PLAYLISTS.map(([id,name,emoji])=>({id,name,emoji,bookIds:[]}));
   state.settings={...state.settings,...((await get('settings'))||{})};
   document.documentElement.dataset.theme=state.settings.theme||'dark';
+  const last=readLastPlayback();
+  if(last?.bookId){const b=state.books.find(x=>x.id===last.bookId);if(b){state.current=b;state.currentIndex=Math.max(0,Math.min(Number(last.index)||0,b.files.length-1));state.currentPos=Math.max(0,(Number(last.pos)||0)-10);b.pos={...(b.pos||{}),i:state.currentIndex,t:state.currentPos};}}
   render();
   if(state.settings.autoscan && state.folders.length && isNative()) setTimeout(()=>scanAllFolders(true),500);
 }
@@ -70,7 +75,7 @@ function isNative(){return !!(window.Capacitor && Capacitor.isNativePlatform && 
 function plugin(name){return window.Capacitor?.Plugins?.[name] || null}
 async function persist(){await Promise.all([set('books',state.books),set('folders',state.folders),set('playlists',state.playlists),set('settings',state.settings)])}
 function showToast(msg){clearTimeout(toastTimer);const t=$('toast');t.textContent=msg;t.classList.add('show');toastTimer=setTimeout(()=>t.classList.remove('show'),2300)}
-function setScreen(screen){state.screen=screen;state.query='';if(screen==='player' && !state.current){showToast('Сначала выберите книгу на полке');state.screen='shelf'}document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.nav===state.screen));render()}
+function setScreen(screen){state.screen=screen;state.query='';if(screen==='player' && !state.current){showToast('Сначала выберите книгу на полке');state.screen='shelf'}document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.nav===state.screen));render();if(state.screen==='player'&&state.current&&!state.blobUrl)loadChapter(state.currentIndex,state.currentPos,false)}
 function render(){
   if(state.screen==='shelf') renderShelf();
   if(state.screen==='player') renderCurrentPlayer();
@@ -84,7 +89,7 @@ function renderCurrentPlayer(){ if(state.current) renderPlayer(); else renderShe
 function bindNav(){document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>setScreen(b.dataset.nav));document.querySelectorAll('[data-action]').forEach(b=>{const a=b.dataset.action;const fn={openAddSheet,openLibraryFilter,openSort,newPlaylist}[a];if(fn)b.onclick=fn});document.querySelectorAll('.nav-ico').forEach(n=>{n.innerHTML=ICONS[n.dataset.icon]||'';n.querySelectorAll('*').forEach(()=>{});n.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`})}
 function header(title,subtitle,actions=''){return `<div class="topbar"><div><h2>${title}</h2>${subtitle?`<p>${subtitle}</p>`:''}</div><div class="top-actions">${actions}</div></div>`}
 function bookCover(b,extra=''){const title=escapeHtml(b.title||'Без названия');const author=escapeHtml(b.author||'');const body=b.cover?`<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" draggable="false">`:`<div class="fallback-cover ${extra}"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>`;return `<div class="cover-frame">${body}</div>`}
-function progress(b){const i=Number(b.pos?.i)||0,t=Number(b.pos?.t)||0,d=Number(b.files?.[i]?.duration)||0;return Math.max(0,Math.min(100,((i+(d&&t>4?.5:0))/(b.files?.length||1))*100))}
+function progress(b){const files=b.files||[];if(!files.length)return 0;const i=Math.max(0,Math.min(Number(b.pos?.i)||0,files.length-1));const t=Math.max(0,Number(b.pos?.t)||0);const d=Math.max(0,Number(files[i]?.duration)||0);return Math.max(0,Math.min(100,((i+(d?t/d:0))/files.length)*100))}
 function renderShelf(){
   const books=state.books;
   let html=`<section class="screen shelf-screen shelf-hero ${state.settings.threeD?'':'flat-shelf'}">`;
@@ -227,7 +232,7 @@ async function pickFiles(){const input=document.createElement('input');input.typ
 /* Player */
 async function openPlayer(id){
   const b=findBook(id);if(!b)return;
-  if(state.current?.id===b.id){state.screen='player';render();return;}
+  if(state.current?.id===b.id){state.screen='player';render();if(!state.blobUrl)await loadChapter(state.currentIndex,state.currentPos,false);return;}
   if(state.current) await saveProgress();
   state.current=b;
   state.playing=false;
@@ -369,6 +374,7 @@ async function saveProgress(){
   b.pos={i:state.currentIndex,t:Math.max(0,t)};
   state.currentPos=t;
   lastPersistedPosition=t;
+  writeLastPlayback();
   try{await set('books',state.books)}catch{}
 }
 function scheduleProgressSave(force=false){
@@ -376,12 +382,13 @@ function scheduleProgressSave(force=false){
   const t=Number(audio.currentTime)||0;
   state.currentPos=t;
   state.current.pos={i:state.currentIndex,t};
+  writeLastPlayback();
   if(force){clearTimeout(progressSaveTimer);progressSaveTimer=null;saveProgress();return;}
   if(progressSaveTimer)return;
   progressSaveTimer=setTimeout(()=>{progressSaveTimer=null;saveProgress()},1200);
 }
 function updatePlayerUI(){if(!state.current)return;const b=state.current,f=b.files[state.currentIndex];const seek=$('seek');if(seek&&audio.duration)seek.value=(audio.currentTime/audio.duration)*1000;const ct=$('curTime'),dt=$('durTime');if(ct)ct.textContent=fmt(audio.currentTime);if(dt)dt.textContent=fmt(audio.duration||f?.duration);const p=$('playBtn');if(p)p.innerHTML=icon(state.playing?'pause':'play');const ch=document.querySelector('.chapter');if(ch)ch.textContent=`Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;updateMiniPlayer()}
-function closePlayer(){closeVisualizer();scheduleProgressSave(true);audio.pause();if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl=''};state.current=null;state.playing=false;render()}
+function closePlayer(){closeVisualizer();scheduleProgressSave(true);state.screen='shelf';render()}
 
 function miniProgress(){
   if(!state.current)return 0;
@@ -391,12 +398,18 @@ function miniProgress(){
 }
 function updateMiniPlayer(){
   const el=$('miniPlayer');if(!el)return;
-  if(!state.current || state.screen==='player'){el.classList.add('hidden');el.innerHTML='';return;}
+  if(!state.current || state.screen==='player'){el.classList.add('hidden');return;}
   const b=state.current, f=b.files[state.currentIndex]||{};
   el.classList.remove('hidden');
-  el.innerHTML=`<button class="mini-main" id="miniOpen">${bookCover(b,'mini-cover')}<span class="mini-copy"><b>${escapeHtml(b.title)}</b><small>${escapeHtml(f.name||'')}</small></span><span class="mini-play" id="miniPlay">${icon(state.playing?'pause':'play')}</span></button><div class="mini-progress"><i style="width:${miniProgress()}%"></i></div>`;
-  $('miniOpen').onclick=()=>{state.screen='player';render();};
-  $('miniPlay').onclick=e=>{e.stopPropagation();togglePlay();};
+  if(el.dataset.bookId!==b.id){
+    el.dataset.bookId=b.id;
+    el.innerHTML=`<button class="mini-main" id="miniOpen">${bookCover(b,'mini-cover')}<span class="mini-copy"><b>${escapeHtml(b.title)}</b><small>${escapeHtml(f.name||'')}</small></span><span class="mini-play" id="miniPlay">${icon(state.playing?'pause':'play')}</span></button><div class="mini-progress"><i></i></div>`;
+    $('miniOpen').onclick=()=>openPlayer(b.id);
+    $('miniPlay').onclick=e=>{e.stopPropagation();togglePlay()};
+  }
+  const i=$('miniPlay');if(i)i.innerHTML=icon(state.playing?'pause':'play');
+  const label=el.querySelector('.mini-copy small');if(label)label.textContent=f.name||'';
+  const bar=el.querySelector('.mini-progress i');if(bar)bar.style.width=`${miniProgress()}%`;
 }
 /* Audio events + media session */
 audio.addEventListener('play',async()=>{state.playing=true;updatePlayerUI();await saveProgress();setMediaSession()});

@@ -4,9 +4,9 @@
   "private": true,
   "description": "Аудиокниги — локальный проигрыватель аудиокниг",
   "dependencies": {
-    "@capacitor/android": "^6.2.0",
-    "@capacitor/cli": "^8.5.2",
-    "@capacitor/core": "^6.2.0",
+    "@capacitor/android": "6.2.0",
+    "@capacitor/cli": "6.2.0",
+    "@capacitor/core": "6.2.0",
     "idb-keyval": "6.2.1",
     "jsmediatags": "3.9.7"
   },
