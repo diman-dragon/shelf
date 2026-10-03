@@ -6,6 +6,11 @@ const modalRoot = $('modalRoot');
 const audio = new Audio();
 audio.preload = 'metadata';
 audio.crossOrigin = 'anonymous';
+let audioContext = null;
+let audioSource = null;
+let analyser = null;
+let visualizerFrame = 0;
+let visualizerOpen = false;
 
 const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
 const NAV = ['shelf','library','playlists','settings'];
@@ -73,12 +78,11 @@ function render(){
 }
 function bindNav(){document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>setScreen(b.dataset.nav));document.querySelectorAll('.nav-ico').forEach(n=>{n.innerHTML=ICONS[n.dataset.icon]||'';n.querySelectorAll('*').forEach(()=>{});n.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`})}
 function header(title,subtitle,actions=''){return `<div class="topbar"><div><h2>${title}</h2>${subtitle?`<p>${subtitle}</p>`:''}</div><div class="top-actions">${actions}</div></div>`}
-function bookCover(b,extra=''){if(b.cover)return `<div class="cover" style="background-image:url('${b.cover}')"></div>`;const title=escapeHtml(b.title||'Без названия');const author=escapeHtml(b.author||'');return `<div class="fallback-cover ${extra}"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>`}
+function bookCover(b,extra=''){const title=escapeHtml(b.title||'Без названия');const author=escapeHtml(b.author||'');const body=b.cover?`<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" draggable="false">`:`<div class="fallback-cover ${extra}"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>`;return `<div class="cover-frame">${body}</div>`}
 function progress(b){const i=Number(b.pos?.i)||0,t=Number(b.pos?.t)||0,d=Number(b.files?.[i]?.duration)||0;return Math.max(0,Math.min(100,((i+(d&&t>4?.5:0))/(b.files?.length||1))*100))}
 function renderShelf(){
   const books=state.books;
-  const actions=`${iconBtn('search','Поиск','openLibrarySearch')}${iconBtn('more','Меню','openShelfMenu')}`;
-  let html=`<section class="screen shelf-screen shelf-hero ${state.settings.threeD?'':'flat-shelf'}"><div class="topbar shelf-head"><div><div class="brand">Полка</div><div class="sub">${books.length?`${books.length} ${plural(books.length,'книга','книги','книг')}`:'Ваша библиотека аудиокниг'}</div></div><div class="top-actions">${actions}</div></div>`;
+  let html=`<section class="screen shelf-screen shelf-hero ${state.settings.threeD?'':'flat-shelf'}">`;
   html+=`<div class="shelf-area">`;
   if(!books.length){html+=`<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Полка пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`}
   else {for(let i=0;i<books.length;i+=3){html+=`<div class="shelf-row">${books.slice(i,i+3).map(bookCard).join('')}</div>`}}
@@ -86,8 +90,6 @@ function renderShelf(){
   main.innerHTML=html;
   $('emptyAdd')?.addEventListener('click',openAddSheet);
   document.querySelectorAll('.book-card').forEach(el=>el.onclick=()=>openPlayer(el.dataset.id));
-  document.querySelectorAll('[data-action="openLibrarySearch"]').forEach(el=>el.onclick=()=>{setScreen('library');setTimeout(()=>document.querySelector('#librarySearch')?.focus(),0)});
-  document.querySelectorAll('[data-action="openShelfMenu"]').forEach(el=>el.onclick=openShelfMenu);
 }
 function bookCard(b){return `<div class="book-card" data-id="${escapeHtml(b.id)}">${bookCover(b)}<div class="book-title">${escapeHtml(b.title)}</div><i class="progress" style="width:${progress(b)}%"></i></div>`}
 function iconBtn(ic,label,action){return `<button class="icon-btn" aria-label="${label}" data-action="${action}">${icon(ic)}</button>`}
@@ -217,15 +219,125 @@ function stripExt(s=''){return s.replace(/\.[^.]+$/,'')}
 async function pickFiles(){const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='audio/*';input.onchange=async()=>{const fs=[...input.files].filter(f=>AUDIO_EXT.test(f.name));if(!fs.length)return;const groups=[['Выбранные файлы',fs]];for(const [path,files] of groups){let tags={};try{tags=await readTags(files[0])}catch{}const title=files.length>1?(tags.album||stripExt(files[0].name)):(tags.title||stripExt(files[0].name));const id=uid();const fdata=[];for(let i=0;i<files.length;i++){const key=`blob:${id}:${i}`;await set(key,files[i]);fdata.push({key,name:stripExt(files[i].name),fileName:files[i].name,mime:files[i].type||'audio/*',size:files[i].size,duration:0})}state.books.unshift({id,title,author:tags.artist||'',cover:tags.cover||'',files:fdata,added:Date.now(),pos:{i:0,t:0},marks:[]});}await set('books',state.books);render();showToast(`Добавлено файлов: ${fs.length}`)};input.click()}
 
 /* Player */
-async function openPlayer(id){const b=findBook(id);if(!b)return;state.current=b;state.currentIndex=Number(b.pos?.i)||0;state.currentPos=Number(b.pos?.t)||0;renderPlayer();await loadChapter(state.currentIndex,state.currentPos,false)}
-function renderPlayer(){const b=state.current;if(!b)return;const i=Math.min(state.currentIndex,b.files.length-1);const f=b.files[i];main.innerHTML=`<section class="player"><div class="player-top"><button class="icon-btn" id="playerBack">${icon('back')}</button><div class="top-actions"><button class="icon-btn" id="playerMark">${icon('bookmark')}</button><button class="icon-btn" id="playerMore">${icon('more')}</button></div></div><div class="player-cover">${bookCover(b)}</div><div class="player-title">${escapeHtml(b.title)}</div><div class="player-author">${escapeHtml(b.author||'Автор не указан')}</div><div class="chapter">Глава ${i+1} из ${b.files.length} · ${escapeHtml(f.name)}</div><div class="seek"><input id="seek" type="range" min="0" max="1000" value="0"></div><div class="time-row"><span id="curTime">0:00</span><span id="durTime">${fmt(f.duration)}</span></div><div class="controls"><button class="control" id="prevBtn">${icon('prev')}</button><button class="control" id="backBtn">${icon('rewind')}</button><button class="play-main" id="playBtn">${icon(state.playing?'pause':'play')}</button><button class="control" id="forwardBtn">${icon('forward')}</button><button class="control" id="nextBtn">${icon('next')}</button></div><div class="player-tools"><button class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>Скорость</button><button class="tool" id="sleepBtn"><strong>◷</strong>Таймер</button><button class="tool" id="queueBtn"><strong>☷</strong>Очередь</button><button class="tool" id="bookmarkBtn"><strong>🔖</strong>Закладка</button></div><div class="chapter-list" id="chapterList">${chapterRows(b)}</div></section>`;
-  $('playerBack').onclick=closePlayer;$('playBtn').onclick=togglePlay;$('prevBtn').onclick=prevTrack;$('nextBtn').onclick=nextTrack;$('backBtn').onclick=()=>seekBy(-15);$('forwardBtn').onclick=()=>seekBy(30);$('seek').oninput=e=>{if(audio.duration)audio.currentTime=audio.duration*(+e.target.value/1000)};$('speedBtn').onclick=cycleSpeed;$('sleepBtn').onclick=setSleep;$('bookmarkBtn').onclick=addBookmark;$('playerMark').onclick=addBookmark;$('queueBtn').onclick=()=>showToast('Очередь следует за порядком глав');$('playerMore').onclick=()=>openBookMenu(b.id);
+async function openPlayer(id){const b=findBook(id);if(!b)return;audio.pause();state.current=b;state.playing=false;state.currentIndex=Number(b.pos?.i)||0;state.currentPos=Number(b.pos?.t)||0;renderPlayer();await loadChapter(state.currentIndex,state.currentPos,false)}
+function renderPlayer(){
+  const b=state.current;if(!b)return;
+  const i=Math.min(state.currentIndex,b.files.length-1);const f=b.files[i];
+  main.innerHTML=`<section class="player" id="playerScreen">
+    <div class="player-inner">
+      <div class="player-top"><button class="icon-btn" id="playerBack">${icon('back')}</button><div class="top-actions"><button class="icon-btn" id="playerMark">${icon('bookmark')}</button><button class="icon-btn" id="playerMore">${icon('more')}</button></div></div>
+      <div class="player-cover" id="playerCover">${bookCover(b)}</div>
+      <div class="player-title">${escapeHtml(b.title)}</div>
+      <div class="player-author">${escapeHtml(b.author||'Автор не указан')}</div>
+      <div class="chapter">Глава ${i+1} из ${b.files.length} · ${escapeHtml(f.name)}</div>
+      <div class="seek"><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Позиция воспроизведения"></div>
+      <div class="time-row"><span id="curTime">0:00</span><span id="durTime">${fmt(f.duration)}</span></div>
+      <div class="controls">
+        <button class="control" id="prevBtn" aria-label="Предыдущая глава">${icon('prev')}</button>
+        <button class="control" id="backBtn" aria-label="Назад 15 секунд">${icon('rewind')}</button>
+        <button class="play-main" id="playBtn" aria-label="Воспроизведение">${icon(state.playing?'pause':'play')}</button>
+        <button class="control" id="forwardBtn" aria-label="Вперёд 30 секунд">${icon('forward')}</button>
+        <button class="control" id="nextBtn" aria-label="Следующая глава">${icon('next')}</button>
+      </div>
+      <div class="player-tools"><button class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>Скорость</button><button class="tool" id="sleepBtn"><strong>◷</strong>Таймер</button><button class="tool" id="queueBtn"><strong>☷</strong>Очередь</button><button class="tool" id="bookmarkBtn"><strong>🔖</strong>Закладка</button></div>
+      <div class="chapter-list" id="chapterList">${chapterRows(b)}</div>
+      <div class="swipe-hint">Свайп вправо — визуализатор</div>
+    </div>
+    <div class="visualizer-overlay hidden" id="visualizer" aria-hidden="true">
+      <canvas id="visualizerCanvas"></canvas>
+      <div class="visualizer-head"><button class="icon-btn" id="visualizerClose">${icon('back')}</button><div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div></div>
+      <div class="visualizer-center"><span>${icon('music')}</span><b>АУДИОКНИГИ</b></div>
+    </div>
+  </section>`;
+
+  $('playerBack').onclick=closePlayer;
+  $('playBtn').onclick=()=>togglePlay();
+  $('prevBtn').onclick=prevTrack;
+  $('nextBtn').onclick=nextTrack;
+  $('backBtn').onclick=()=>seekBy(-15);
+  $('forwardBtn').onclick=()=>seekBy(30);
+  $('seek').oninput=e=>{if(audio.duration)audio.currentTime=audio.duration*(+e.target.value/1000)};
+  $('speedBtn').onclick=cycleSpeed;$('sleepBtn').onclick=setSleep;$('bookmarkBtn').onclick=addBookmark;$('playerMark').onclick=addBookmark;
+  $('queueBtn').onclick=()=>showToast('Очередь следует за порядком глав');$('playerMore').onclick=()=>openBookMenu(b.id);
   document.querySelectorAll('[data-chapter]').forEach(el=>el.onclick=()=>loadChapter(+el.dataset.chapter,0,true));
   document.querySelectorAll('[data-mark]').forEach(el=>el.onclick=()=>{const m=b.marks?.[+el.dataset.mark];if(m)loadChapter(m.i,m.t,true)});
+  bindPlayerSwipe();
+  updatePlayerUI();
 }
+
 function chapterRows(b){let out='';(b.marks||[]).forEach((m,k)=>{out+=`<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||'Глава')} · ${fmt(m.t)}</span><span>›</span></div>`});b.files.forEach((f,i)=>out+=`<div class="chapter-row ${i===state.currentIndex?'current':''}" data-chapter="${i}"><span>${i+1}. ${escapeHtml(f.name)}</span><span>${i===state.currentIndex?(state.playing?'▶':'Ⅱ'):fmt(f.duration)}</span></div>`);return out}
 async function loadChapter(i,t=0,autoplay=true){const b=state.current;if(!b||!b.files[i])return;state.currentIndex=i;state.currentPos=t||0;const f=b.files[i];let blob;try{blob=f.key?await get(f.key):await nativeFileBlob(f)}catch(e){showToast('Не удалось открыть аудиофайл');return}if(!blob){showToast('Файл недоступен');return}if(state.blobUrl)URL.revokeObjectURL(state.blobUrl);state.blobUrl=URL.createObjectURL(blob);audio.src=state.blobUrl;audio.playbackRate=state.speed;audio.onloadedmetadata=async()=>{if(state.currentPos)audio.currentTime=Math.min(state.currentPos,audio.duration||state.currentPos);f.duration=audio.duration||f.duration;await set('books',state.books);updatePlayerUI();if(autoplay)togglePlay(true)};audio.onended=()=>{if(i<b.files.length-1)loadChapter(i+1,0,true);else{b.pos={i:0,t:0};saveProgress()}};updatePlayerUI();}
-async function togglePlay(forcePlay=false){if(!state.current)return;if(forcePlay||audio.paused){try{await audio.play()}catch(e){showToast('Нажмите ещё раз для запуска воспроизведения')}}else audio.pause()}
+async function togglePlay(forcePlay=false){
+  if(!state.current)return;
+  try{
+    if(forcePlay || audio.paused || audio.ended){
+      await ensureAudioGraph();
+      if(audioContext?.state==='suspended')await audioContext.resume();
+      await audio.play();
+    }else{
+      audio.pause();
+    }
+    updatePlayerUI();
+  }catch(e){showToast('Не удалось изменить воспроизведение')}
+}
+async function ensureAudioGraph(){
+  if(!audioContext){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    audioContext=new AC();
+    audioSource=audioContext.createMediaElementSource(audio);
+    analyser=audioContext.createAnalyser();
+    analyser.fftSize=256;
+    analyser.smoothingTimeConstant=.82;
+    audioSource.connect(analyser);
+    analyser.connect(audioContext.destination);
+  }
+  if(audioContext.state==='suspended')await audioContext.resume();
+}
+function bindPlayerSwipe(){
+  const player=$('playerScreen');if(!player)return;
+  let sx=0,sy=0;
+  player.addEventListener('pointerdown',e=>{sx=e.clientX;sy=e.clientY},{passive:true});
+  player.addEventListener('pointerup',e=>{
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(Math.abs(dx)<70||Math.abs(dx)<Math.abs(dy)*1.25)return;
+    if(dx>0&&!visualizerOpen)openVisualizer();
+    else if(dx<0&&visualizerOpen)closeVisualizer();
+  },{passive:true});
+  $('visualizerClose')?.addEventListener('click',closeVisualizer);
+}
+function openVisualizer(){
+  const el=$('visualizer');if(!el)return;
+  visualizerOpen=true;el.classList.remove('hidden');el.setAttribute('aria-hidden','false');
+  ensureAudioGraph().then(()=>startVisualizer()).catch(()=>showToast('Визуализатор недоступен'));
+}
+function closeVisualizer(){
+  visualizerOpen=false;const el=$('visualizer');if(el){el.classList.add('hidden');el.setAttribute('aria-hidden','true')}
+  stopVisualizer();
+}
+function startVisualizer(){
+  const canvas=$('visualizerCanvas');if(!canvas||!analyser)return;
+  stopVisualizer();
+  const ctx=canvas.getContext('2d');const data=new Uint8Array(analyser.frequencyBinCount);
+  const draw=()=>{
+    if(!visualizerOpen){visualizerFrame=0;return}
+    const dpr=Math.min(window.devicePixelRatio||1,2),w=canvas.clientWidth,h=canvas.clientHeight;
+    if(canvas.width!==Math.floor(w*dpr)||canvas.height!==Math.floor(h*dpr)){canvas.width=Math.floor(w*dpr);canvas.height=Math.floor(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}
+    analyser.getByteFrequencyData(data);ctx.clearRect(0,0,w,h);
+    const bars=Math.min(72,data.length);const gap=3;const bw=Math.max(2,(w-gap*(bars-1))/bars);const maxH=h*.62;
+    for(let i=0;i<bars;i++){
+      const v=data[Math.floor(i*data.length/bars)]/255;const hh=Math.max(4,v*maxH);const x=i*(bw+gap);const y=h*.56-hh;
+      const g=ctx.createLinearGradient(0,y,0,h*.56);g.addColorStop(0,'#ffd18a');g.addColorStop(.55,'#d99a4c');g.addColorStop(1,'rgba(217,154,76,.05)');ctx.fillStyle=g;ctx.fillRect(x,y,bw,hh);
+      ctx.globalAlpha=.24;ctx.fillRect(x,h*.56,bw,hh*.55);ctx.globalAlpha=1;
+    }
+    ctx.beginPath();ctx.strokeStyle='rgba(255,218,166,.55)';ctx.lineWidth=1.5;
+    for(let i=0;i<bars;i++){const v=data[Math.floor(i*data.length/bars)]/255;const x=i*(bw+gap)+bw/2;const y=h*.56-v*maxH*.88;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}ctx.stroke();
+    visualizerFrame=requestAnimationFrame(draw);
+  };
+  draw();
+}
+function stopVisualizer(){if(visualizerFrame){cancelAnimationFrame(visualizerFrame);visualizerFrame=0}}
+
 function seekBy(n){if(audio.duration)audio.currentTime=Math.max(0,Math.min(audio.duration,audio.currentTime+n))}
 function prevTrack(){if(audio.currentTime>6){audio.currentTime=0}else if(state.currentIndex>0)loadChapter(state.currentIndex-1,0,true)}
 function nextTrack(){if(state.currentIndex<state.current.files.length-1)loadChapter(state.currentIndex+1,0,true)}
@@ -234,7 +346,7 @@ function setSleep(){const v=prompt('Таймер сна, минут. 0 — вы�
 async function addBookmark(){const b=state.current;if(!b)return;b.marks=b.marks||[];b.marks.push({i:state.currentIndex,t:audio.currentTime||0});await set('books',state.books);renderPlayer();showToast('Закладка добавлена')}
 async function saveProgress(){const b=state.current;if(!b)return;b.pos={i:state.currentIndex,t:audio.currentTime||0};await set('books',state.books)}
 function updatePlayerUI(){if(!state.current)return;const b=state.current,f=b.files[state.currentIndex];const seek=$('seek');if(seek&&audio.duration)seek.value=(audio.currentTime/audio.duration)*1000;const ct=$('curTime'),dt=$('durTime');if(ct)ct.textContent=fmt(audio.currentTime);if(dt)dt.textContent=fmt(audio.duration||f?.duration);const p=$('playBtn');if(p)p.innerHTML=icon(state.playing?'pause':'play');const ch=document.querySelector('.chapter');if(ch)ch.textContent=`Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`}
-function closePlayer(){audio.pause();saveProgress();if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl=''};state.current=null;state.playing=false;render()}
+function closePlayer(){closeVisualizer();audio.pause();saveProgress();if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl=''};state.current=null;state.playing=false;render()}
 
 /* Audio events + media session */
 audio.addEventListener('play',async()=>{state.playing=true;updatePlayerUI();await saveProgress();setMediaSession()});

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Полка</string>
+    <string name="title_activity_main">Полка</string>
+    <string name="package_name">com.shelf.player</string>
+    <string name="custom_url_scheme">com.shelf.player</string>
+</resources>

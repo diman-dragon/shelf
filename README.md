@@ -1,29 +1,30 @@
-# Полка 2.0
+# Shelf 2.0
 
-Локальный аудиоплеер для Android/Capacitor, переделанный под визуальную концепцию из референса: 3D-полка, библиотека, сканирование папок, плейлисты, полноэкранный плеер и настройки.
+Local audiobook and music library for Android, designed from the supplied UI reference.
 
-## Сборка
+## Windows setup
 
-Требуется Node 20+, JDK 17 и Android SDK.
+Use PowerShell from the project directory. WSL is not required.
 
-```bash
-bash setup.sh
-cd android
-./gradlew assembleDebug
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup.ps1
+.\build.ps1
 ```
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+Or double-click `setup.cmd`, then `build.cmd`.
 
-## Что изменено
+The setup script creates the Capacitor Android project in `android\` if it does not exist, installs the native Shelf code, and runs Capacitor sync.
 
-- единая навигация: Полка / Библиотека / Плейлисты / Настройки;
-- полка в стиле референса с реальными обложками;
-- библиотека со строкой поиска, фильтрами и меню книги;
-- выбор нескольких папок через Android Storage Access Framework;
-- сканирование папок с группировкой аудиофайлов в книги;
-- импорт не копирует все главы в память JS: для Android сохраняются URI и метаданные, текущая глава читается только при воспроизведении;
-- плейлисты и избранное;
-- полноэкранный плеер с главами, прогрессом, скоростью, таймером и закладками;
-- системная медиашторка/экран блокировки и домашний виджет;
-- настройки темы, размера обложек, 3D-полки и автосканирования;
-- локальное хранение данных, без сервера и аккаунта.
+The debug APK is created at:
+
+`android\app\build\outputs\apk\debug\app-debug.apk`
+
+## Requirements
+
+- Windows 10/11
+- Node.js 20+
+- Python 3+
+- Java JDK compatible with the generated Capacitor Android project
+- Android SDK / build tools available to Gradle
+- Internet access for the first `npm install` and Gradle dependency resolution

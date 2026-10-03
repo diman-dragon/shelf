@@ -1,6 +1,6 @@
 {
   "appId": "com.shelf.player",
-  "appName": "Полка",
+  "appName": "Аудиокниги",
   "webDir": "www",
   "server": { "androidScheme": "https" }
 }
