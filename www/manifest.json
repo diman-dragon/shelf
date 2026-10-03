@@ -1,6 +1,6 @@
 {
-  "name": "Аудиокниги",
-  "short_name": "Аудиокниги",
+  "name": "AudioShelf",
+  "short_name": "AudioShelf",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#080807",
