@@ -24,6 +24,17 @@
 
   <div id="modalRoot"></div>
   <div id="toast" class="toast"></div>
+  <div id="scanOverlay" class="scan-overlay hidden" aria-live="polite">
+    <div class="scan-card">
+      <div class="scan-orb"><span></span></div>
+      <div class="scan-copy">
+        <strong id="scanOverlayTitle">Добавляем книги</strong>
+        <span id="scanOverlayText">Сканирование продолжается в фоне…</span>
+      </div>
+      <div class="scan-progress-big"><i id="scanOverlayBar"></i></div>
+      <div class="scan-stats"><span id="scanOverlayBooks">0 книг</span><span id="scanOverlayFiles">0 файлов</span></div>
+    </div>
+  </div>
 
   <script src="lib/idb-keyval.js"></script>
   <script src="lib/jsmediatags.min.js"></script>

@@ -12,7 +12,6 @@ let analyser = null;
 let gainNode = null;
 let bassFilter = null;
 let trebleFilter = null;
-let eqFilters = [];
 let visualizerFrame = 0;
 let visualizerOpen = false;
 
@@ -52,11 +51,15 @@ function durationOfBook(b){return (b.files||[]).reduce((a,f)=>a+(Number(f.durati
 function uid(){return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 
 let state = {
-  screen:'shelf', books:[], folders:[], playlists:[], settings:{theme:'dark',threeD:true,coverSize:'Средний',autoscan:true,volume:1,bass:0,treble:0,eq:[0,0,0,0,0,0,0,0,0,0]},
+  screen:'shelf', books:[], folders:[], playlists:[], settings:{theme:'dark',threeD:true,coverSize:'Средний',autoscan:true,volume:1,bass:0,treble:0},
   query:'', librarySort:'recent', selectedFolderIds:[], current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null,
   searchTimer:null
 };
 let scanResult=[];
+let scanListenersReady=false;
+let scanWaiters=new Map();
+let scanEventBuffer=new Map();
+let activeScan=null;
 let toastTimer;
 let progressSaveTimer = null;
 let lastPersistedPosition = 0;
@@ -64,44 +67,104 @@ const LAST_PLAYBACK_KEY = 'shelf:lastPlayback';
 function readLastPlayback(){try{return JSON.parse(localStorage.getItem(LAST_PLAYBACK_KEY)||'null')}catch{return null}}
 function writeLastPlayback(){if(!state.current)return;try{localStorage.setItem(LAST_PLAYBACK_KEY,JSON.stringify({bookId:state.current.id,index:state.currentIndex,pos:Number(state.currentPos)||0}))}catch{}}
 
-function normalizeBook(b){
-  const book={...b};
-  book.id=String(book.id||uid());
-  book.title=String(book.title||'Без названия');
-  book.author=String(book.author||'');
-  book.files=Array.isArray(book.files)?book.files.filter(Boolean).map(f=>({...f,name:String(f.name||f.fileName||'Глава'),fileName:String(f.fileName||f.name||'')})):[]; 
-  book.pos={i:Math.max(0,Number(book.pos?.i)||0),t:Math.max(0,Number(book.pos?.t)||0)};
-  book.marks=Array.isArray(book.marks)?book.marks:[];
-  return book;
-}
 async function loadState(){
-  try{state.books=((await get('books'))||[]).map(normalizeBook).filter(b=>b.files.length);}
-  catch(e){console.error('AudioShelf: books load failed',e);state.books=[];showToast('Не удалось загрузить библиотеку');}
-  try{state.folders=Array.isArray(await get('folders'))?(await get('folders')):[];}catch{state.folders=[]}
-  try{state.playlists=(await get('playlists'))||DEFAULT_PLAYLISTS.map(([id,name,emoji])=>({id,name,emoji,bookIds:[]}));}catch{state.playlists=[]}
-  try{state.settings={...state.settings,...((await get('settings'))||{})};}catch{}
-  state.settings.eq=Array.isArray(state.settings.eq)&&state.settings.eq.length===10?state.settings.eq.map(Number):[0,0,0,0,0,0,0,0,0,0];
+  state.books=(await get('books'))||[];
+  state.folders=(await get('folders'))||[];
+  state.playlists=(await get('playlists'))||DEFAULT_PLAYLISTS.map(([id,name,emoji])=>({id,name,emoji,bookIds:[]}));
+  state.settings={...state.settings,...((await get('settings'))||{})};
   document.documentElement.dataset.theme=state.settings.theme||'dark';
   const last=readLastPlayback();
   if(last?.bookId){const b=state.books.find(x=>x.id===last.bookId);if(b){state.current=b;state.currentIndex=Math.max(0,Math.min(Number(last.index)||0,b.files.length-1));state.currentPos=Math.max(0,(Number(last.pos)||0)-10);b.pos={...(b.pos||{}),i:state.currentIndex,t:state.currentPos};}}
-  safeRender();
-  if(state.settings.autoscan && state.folders.length && isNative()) setTimeout(()=>scanAllFolders(true),700);
+  render();
+  await setupScanListeners();
+  if(state.settings.autoscan && state.folders.length && isNative()) setTimeout(()=>scanAllFolders(true),500);
 }
 function isNative(){return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())}
 function plugin(name){return window.Capacitor?.Plugins?.[name] || null}
+async function setupScanListeners(){
+  if(scanListenersReady)return;
+  const P=plugin('ShelfFiles');
+  if(!P?.addListener)return;
+  scanListenersReady=true;
+  await P.addListener('scanStarted',e=>handleScanEvent(e.scanId,'started',e));
+  await P.addListener('scanGroup',e=>handleScanEvent(e.scanId,'group',e));
+  await P.addListener('scanProgress',e=>handleScanEvent(e.scanId,'progress',e));
+  async function handleScanEvent(id,type,e){
+    if(!activeScan || id!==activeScan.id){
+      const a=scanEventBuffer.get(id)||[];a.push({type,e});scanEventBuffer.set(id,a);return;
+    }
+    if(type==='started'){activeScan.files=0;activeScan.groups=0;showScanOverlay(true);updateScanOverlay();return;}
+    if(type==='group'){
+      activeScan.files=Math.max(activeScan.files,Number(e.filesFound)||0);
+      activeScan.groups=Math.max(activeScan.groups,Number(e.groupsFound)||0);
+      const folder=state.folders.find(f=>f.id===activeScan.folderId);
+      if(folder){const cleanPath=String(e.path||'__root__').replace(/^\/+|\/+$/g,'')||'__root__';activeScan.seen.add(`${folder.id}:${cleanPath}`);await mergeScanGroup(cleanPath,e.files||[],folder);}
+      updateScanOverlay();return;
+    }
+    if(type==='progress'){
+      activeScan.files=Math.max(activeScan.files,Number(e.filesFound)||0);
+      activeScan.groups=Math.max(activeScan.groups,Number(e.groupsFound)||0);updateScanOverlay();
+    }
+  }
+  await P.addListener('scanWarning',e=>{
+    if(activeScan && e.scanId===activeScan.id) console.warn('ShelfFiles.scanWarning',e);
+  });
+  await P.addListener('scanError',e=>finishNativeScan(e.scanId,e.message||'Ошибка сканирования',true));
+  await P.addListener('scanFinished',e=>finishNativeScan(e.scanId,'',false));
+}
+async function handleBufferedScanEvent(ev){
+  if(!activeScan)return;
+  if(ev.type==='started'){activeScan.files=0;activeScan.groups=0;return;}
+  if(ev.type==='group'){
+    const e=ev.e;activeScan.files=Math.max(activeScan.files,Number(e.filesFound)||0);activeScan.groups=Math.max(activeScan.groups,Number(e.groupsFound)||0);
+    const folder=state.folders.find(f=>f.id===activeScan.folderId);
+    if(folder){const cleanPath=String(e.path||'__root__').replace(/^\/+|\/+$/g,'')||'__root__';activeScan.seen.add(`${folder.id}:${cleanPath}`);await mergeScanGroup(cleanPath,e.files||[],folder);}
+    updateScanOverlay();return;
+  }
+  if(ev.type==='progress'){activeScan.files=Math.max(activeScan.files,Number(ev.e.filesFound)||0);activeScan.groups=Math.max(activeScan.groups,Number(ev.e.groupsFound)||0);updateScanOverlay();}
+}
+function showScanOverlay(on){const el=$('scanOverlay');if(el)el.classList.toggle('hidden',!on)}
+function updateScanOverlay(){
+  if(!activeScan)return;
+  const bar=$('scanOverlayBar');
+  // The SAF provider does not expose a cheap total without doing a second full traversal.
+  // Let the bar crawl smoothly toward 92% while books arrive; completion jumps to 100%.
+  const pct=Math.min(92,Math.max(4,92*(1-Math.exp(-(activeScan.files||0)/28))));
+  if(bar)bar.style.width=pct.toFixed(1)+'%';
+  const b=$('scanOverlayBooks'),f=$('scanOverlayFiles'),t=$('scanOverlayText');
+  if(b)b.textContent=`${activeScan.groups} ${plural(activeScan.groups,'книга','книги','книг')}`;
+  if(f)f.textContent=`${activeScan.files} ${plural(activeScan.files,'файл','файла','файлов')}`;
+  if(t)t.textContent=activeScan.files?`Добавлено. Остальное сканируется в фоне…`:'Сканирование папки…';
+}
+function finishNativeScan(id,message,isError){
+  if(!activeScan || activeScan.id!==id){
+    const a=scanEventBuffer.get(id)||[];a.push({type:isError?'error':'finished',e:{message}});scanEventBuffer.set(id,a);return;
+  }
+  const waiter=scanWaiters.get(id);scanWaiters.delete(id);
+  if(isError){waiter?.reject(new Error(message));return;}
+  waiter?.resolve({files:activeScan.files,groups:activeScan.groups});
+}
+async function startNativeFolderScan(folder){
+  const P=plugin('ShelfFiles');
+  if(!P)throw new Error('Сканирование папок доступно в Android-версии');
+  await setupScanListeners();
+  const r=await P.scanFolder({uri:folder.uri});
+  const id=r?.scanId;
+  if(!id)throw new Error('Не удалось запустить сканирование');
+  activeScan={id,folderId:folder.id,files:0,groups:0,seen:new Set()};
+  showScanOverlay(true);updateScanOverlay();
+  const promise=new Promise((resolve,reject)=>scanWaiters.set(id,{resolve,reject}));
+  const buffered=scanEventBuffer.get(id)||[];scanEventBuffer.delete(id);
+  for(const ev of buffered){
+    if(ev.type==='finished'){scanWaiters.get(id)?.resolve({files:activeScan.files,groups:activeScan.groups});scanWaiters.delete(id);}
+    else if(ev.type==='error'){scanWaiters.get(id)?.reject(new Error(ev.e?.message||'Ошибка сканирования'));scanWaiters.delete(id);}
+    else await handleBufferedScanEvent(ev);
+  }
+  return promise;
+}
 async function persist(){await Promise.all([set('books',state.books),set('folders',state.folders),set('playlists',state.playlists),set('settings',state.settings)])}
 function showToast(msg){clearTimeout(toastTimer);const t=$('toast');t.textContent=msg;t.classList.add('show');toastTimer=setTimeout(()=>t.classList.remove('show'),2300)}
-function safeRender(){
-  try{render()}catch(e){
-    console.error('AudioShelf render crash',e);
-    main.innerHTML=`<section class="screen"><div class="shelf-empty"><div><div class="empty-art">⚠</div><div>Не удалось отобразить библиотеку</div><div style="font-size:12px;margin-top:7px;color:var(--muted)">Данные сохранены. Перезапустите экран или откройте библиотеку снова.</div><button class="primary" id="recoverRender" style="margin-top:14px">Обновить</button></div></div></section>`;
-    $('recoverRender')?.addEventListener('click',()=>location.reload());
-  }
-}
-window.addEventListener('error',e=>{console.error('AudioShelf error',e.error||e.message);});
-window.addEventListener('unhandledrejection',e=>{console.error('AudioShelf rejection',e.reason);});
-
-function setScreen(screen){state.screen=screen;state.query='';if(screen==='player' && !state.current){showToast('Сначала выберите книгу на полке');state.screen='shelf'}document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.nav===state.screen));safeRender();if(state.screen==='player'&&state.current&&!state.blobUrl)loadChapter(state.currentIndex,state.currentPos,false)}
+function setScreen(screen){state.screen=screen;state.query='';if(screen==='player' && !state.current){showToast('Сначала выберите книгу на полке');state.screen='shelf'}document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.nav===state.screen));render();if(state.screen==='player'&&state.current&&!state.blobUrl)loadChapter(state.currentIndex,state.currentPos,false)}
 function render(){
   if(state.screen==='shelf') renderShelf();
   if(state.screen==='player') renderCurrentPlayer();
@@ -122,7 +185,7 @@ function renderShelf(){
   html+=header('AudioShelf', `${books.length} ${plural(books.length,'книга','книги','книг')}`, `${iconBtn('folderPlus','Добавить книги','openAddSheet')}`);
   html+=`<div class="shelf-area">`;
   if(!books.length){html+=`<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Полка пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`}
-  else {html+=`<div class="shelf-row">${books.map(bookCard).join('')}</div>`}
+  else {for(let i=0;i<books.length;i+=3){html+=`<div class="shelf-row">${books.slice(i,i+3).map(bookCard).join('')}</div>`}}
   html+=`</div></section>`;
   main.innerHTML=html;
   $('emptyAdd')?.addEventListener('click',openAddSheet);
@@ -179,7 +242,7 @@ function renderSettings(){
       ${settingToggle('threeD','3D полка','Показывать реалистичную полку',!!s.threeD)}
       <div class="setting" id="coverSize"><div class="setting-icon">${icon('eye')}</div><div class="setting-main"><div class="setting-name">Размер обложек</div><div class="setting-desc">В библиотеке и списках</div></div><div class="setting-value">${escapeHtml(s.coverSize||'Средний')} ${icon('chevron')}</div></div>
     </div>
-    <div class="settings-group"><p class="settings-title">О приложении</p><div class="setting"><div class="setting-icon">${icon('info')}</div><div class="setting-main"><div class="setting-name">AudioShelf</div><div class="setting-desc">Локальная библиотека · без аккаунта</div></div><div class="setting-value">2.1.0</div></div></div>
+    <div class="settings-group"><p class="settings-title">О приложении</p><div class="setting"><div class="setting-icon">${icon('info')}</div><div class="setting-main"><div class="setting-name">AudioShelf</div><div class="setting-desc">Локальная библиотека · без аккаунта</div></div><div class="setting-value">2.0.0</div></div></div>
   </section>`;
   $('settingsFolders').onclick=openFolderSheet;$('addFolder').onclick=pickFolder;
   $('formats').onclick=()=>showToast('Поддерживаются MP3, M4A, M4B, AAC, OGG, OPUS, FLAC, WAV и WMA');
@@ -242,127 +305,65 @@ async function pickFolder(){
     if(!state.selectedFolderIds.includes(old.id))state.selectedFolderIds.push(old.id);
     await persist();await set('foldersSelected',state.selectedFolderIds);
     closeModal();
-    await scanAllFolders(true,true);
+    state.screen='shelf';render();
+    // The picker returns immediately. The library is usable while the worker scans.
+    scanAllFolders(true,true);
   }catch(e){console.error('ShelfFiles.pickFolder',e);showToast(e?.message||e?.errorMessage||'Не удалось выбрать папку')}
 }
 async function scanAllFolders(silent=false,returnToShelf=false){
   const P=plugin('ShelfFiles');if(!P){showToast('Сканирование папок доступно в Android-версии');return}
-  const ids=[...state.selectedFolderIds];const folders=state.folders.filter(f=>ids.includes(f.id));if(!folders.length){showToast('Сначала выберите папку');openFolderSheet();return}
-  const prog=$('scanProgress'),bar=$('scanBar'),txt=$('scanText');if(prog)prog.classList.remove('hidden');
+  const ids=[...state.selectedFolderIds];const folders=state.folders.filter(f=>ids.includes(f.id));
+  if(!folders.length){showToast('Сначала выберите папку');openFolderSheet();return}
+  if(returnToShelf){closeModal();state.screen='shelf';render();}
   let total=0,booksTouched=0;
-  for(let i=0;i<folders.length;i++){
-    if(txt)txt.textContent=`Папка ${i+1}/${folders.length}: ${folders[i].name}\nСканирование…`;
-    try{
-      const r=await P.scanFolder({uri:folders[i].uri});
-      const files=(r.files||[]).map(f=>({...f,folderId:folders[i].id,folderName:folders[i].name}));
-      total+=files.length;
-      // A selected folder may contain both real single-file audiobooks (for example
-      // "Богатство.m4b") and multi-file books.  A file is NOT a chapter merely
-      // because there are other audio files next to it.  We use folder boundaries
-      // first, then the embedded album tag when several files share one book.
-      const groups=groupScannedFiles(files);
-      booksTouched+=await mergeScan(groups,folders[i]);
-      if(!silent && i===folders.length-1)renderScanFound(groups);
-    }catch(e){console.error('ShelfFiles.scanFolder',folders[i],e);if(!silent)showToast(e?.message||'Ошибка сканирования')}
-    if(bar)bar.style.width=((i+1)/folders.length*100)+'%';
+  try{
+    for(const folder of folders){
+      const r=await startNativeFolderScan(folder);
+      total+=r.files;booksTouched+=r.groups;
+      // Remove stale entries only after the complete folder scan succeeded.
+      const seen=activeScan?.seen||new Set();
+      state.books=state.books.filter(b=>b.sourceFolderId!==folder.id || seen.has(b.srcPath));
+      await set('books',state.books);
+      activeScan=null;
+    }
+    const bar=$('scanOverlayBar');if(bar)bar.style.width='100%';
+    const txt=$('scanOverlayText');if(txt)txt.textContent=`Готово · ${booksTouched} ${plural(booksTouched,'книга','книги','книг')}`;
+    setTimeout(()=>showScanOverlay(false),700);
+    render();
+    if(!silent)showToast(`Сканирование завершено: ${booksTouched} ${plural(booksTouched,'книга','книги','книг')}`);
+  }catch(e){
+    console.error('ShelfFiles.scanFolder',e);
+    showScanOverlay(false);
+    showToast(e?.message||'Ошибка сканирования');
   }
+}
+async function mergeScanGroup(path,rawFiles,folder){
+  if(!rawFiles?.length)return;
+  const cleanPath=String(path||'__root__').replace(/^\/+|\/+$/g,'')||'__root__';
+  const sourcePath=`${folder.id}:${cleanPath}`;
+  const files=rawFiles.map(toNativeFile).sort(naturalFile);
+  const old=state.books.find(b=>b.srcPath===sourcePath && b.sourceFolderId===folder.id);
+  const oldFiles=new Map((old?.files||[]).map(f=>[f.uri||f.fileName,f]));
+  const mergedFiles=files.map(f=>{
+    const prev=oldFiles.get(f.uri||f.fileName);
+    return prev?{...f,duration:prev.duration||f.duration,sound:prev.sound||f.sound}:f;
+  });
+  const first=mergedFiles[0];
+  const title=cleanPath==='__root__'?stripExt(first?.name||folder.name||'Новая книга'):stripExt(cleanPath.split('/').pop()||folder.name);
+  const tags=first?.tags||{};
+  const book={
+    id:old?.id||uid(),title:old?.title||tags.album||title,author:old?.author||tags.artist||'',cover:old?.cover||tags.cover||'',
+    files:mergedFiles,srcPath:sourcePath,sourceFolderId:folder.id,added:old?.added||Date.now(),pos:old?.pos||{i:0,t:0},marks:old?.marks||[]
+  };
+  const idx=state.books.findIndex(b=>b.srcPath===sourcePath && b.sourceFolderId===folder.id);
+  if(idx>=0)state.books[idx]=book;else state.books.unshift(book);
   await set('books',state.books);
-  if(returnToShelf){closeModal();state.screen='shelf';render();showToast(`Готово: найдено ${total} ${plural(total,'аудиофайл','аудиофайла','аудиофайлов')}`)}
-  else if(!silent)showToast(`Сканирование завершено: ${booksTouched} ${plural(booksTouched,'книга','книги','книг')}`);
+  if(state.screen==='shelf')render();
 }
 function renderScanFound(groups){const el=$('scanFound');if(!el)return;el.innerHTML=`<div class="section-title">Найдено</div>${groups.slice(0,40).map(([path,fs])=>`<div class="folder-card"><div class="setting-icon">${icon('music')}</div><div class="folder-info"><div class="folder-name">${escapeHtml(path.split('/').pop()||path)}</div><div class="folder-path">${fs.length} файлов · ${escapeHtml(path)}</div></div></div>`).join('')}`}
-function groupScannedFiles(files){
-  // The directory structure is the primary source of truth:
-  //   /Book A/001.mp3 ... 020.mp3 -> one book
-  //   /Book B/001.mp3 ...          -> another book
-  // Album tags are metadata, not grouping keys. A whole collection often
-  // carries the same album tag, which previously collapsed hundreds of files
-  // into a few books.
-  const byDir=new Map();
-  for(const f of files){
-    const rel=String(f.path||f.relativePath||f.name||'').replace(/^\/+|\/+$/g,'');
-    const parts=rel.split('/').filter(Boolean);
-    const dir=parts.length>1?parts.slice(0,-1).join('/'):'__root__';
-    const key=dir==='__root__' ? `__file__:${f.uri||f.name}` : dir;
-    const a=byDir.get(key)||{dir,files:[]};
-    a.files.push({...f,path:rel,relativePath:rel});
-    byDir.set(key,a);
-  }
-  return [...byDir.values()].map(({dir,files:fs})=>{
-    const sorted=fs.sort(naturalFile);
-    const displayPath=dir==='__root__' ? (sorted[0]?.name||'') : dir;
-    return [displayPath,sorted];
-  });
-}
-async function mergeScan(groups,folder){
-  const oldBooks=state.books.filter(b=>b.sourceFolderId===folder.id);
-  const oldByPath=new Map(oldBooks.map(b=>[String(b.srcPath||''),b]));
-  const nextBooks=[];
-  const usedIds=new Set();
-
-  for(const [path,fs] of groups){
-    if(!fs.length)continue;
-    const sourcePath=`${folder.id}:${path||'__root__'}`;
-    const old=oldByPath.get(sourcePath);
-    const files=fs.sort(naturalFile).map(raw=>{
-      const nf=toNativeFile(raw);
-      const key=String(raw.uri||raw.path||raw.name||'');
-      const prev=(old?.files||[]).find(x=>String(x.uri||x.path||x.fileName||x.name||'')===key);
-      if(prev?.sound) nf.sound=JSON.parse(JSON.stringify(prev.sound));
-      nf.duration=Number(prev?.duration)||Number(nf.duration)||0;
-      return nf;
-    });
-    const first=files[0];
-    const title=String(first?.album||'').trim() ||
-      (path&&path!=='__root__'?stripExt(path.split('/').pop()||folder.name):
-       stripExt(first?.name||folder.name||'Новая книга'));
-    const tags=first?.tags||{};
-    const book=old?{...old}:{
-      id:uid(),added:Date.now(),pos:{i:0,t:0},marks:[]
-    };
-    book.title=tags.album||old?.title||title;
-    book.author=tags.artist||old?.author||'';
-    book.cover=tags.cover||old?.cover||'';
-    book.files=files;
-    book.srcPath=sourcePath;
-    book.sourceFolderId=folder.id;
-    book.pos={...(old?.pos||{i:0,t:0}),i:Math.max(0,Math.min(Number(old?.pos?.i)||0,files.length-1))};
-    nextBooks.push(book);
-    usedIds.add(book.id);
-  }
-
-  const otherBooks=state.books.filter(b=>b.sourceFolderId!==folder.id);
-  state.books=[...otherBooks,...nextBooks];
-
-  if(state.current?.sourceFolderId===folder.id){
-    const replacement=state.books.find(b=>b.id===state.current.id);
-    if(replacement)state.current=replacement;
-    else{
-      audio.pause();
-      if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl='';}
-      state.current=null;state.playing=false;state.screen='shelf';
-    }
-  }
-  return nextBooks.length;
-}
-function toNativeFile(f){return {uri:f.uri,path:f.path||f.relativePath||'',name:stripExt(f.name),fileName:f.name,mime:f.mime||f.mimeType||'audio/*',size:Number(f.size)||0,modified:Number(f.modified||f.lastModified)||0,duration:Number(f.duration)||0,album:f.album||'',title:f.title||'',artist:f.artist||'',tags:{album:f.album||'',title:f.title||'',artist:f.artist||'',cover:f.cover||''},sound:{preset:'flat',volume:Number(state.settings.volume??1),bass:Number(state.settings.bass)||0,treble:Number(state.settings.treble)||0,eq:[0,0,0,0,0,0,0,0,0,0]}}}
+function toNativeFile(f){return {uri:f.uri,name:stripExt(f.name),fileName:f.name,mime:f.mime||f.mimeType||'audio/*',size:Number(f.size)||0,modified:Number(f.modified||f.lastModified)||0,duration:Number(f.duration)||0,album:f.album||'',title:f.title||'',artist:f.artist||'',tags:{album:f.album||'',title:f.title||'',artist:f.artist||'',cover:f.cover||''},sound:{preset:'flat',volume:Number(state.settings.volume??1),bass:Number(state.settings.bass)||0,treble:Number(state.settings.treble)||0}}}
 function naturalFile(a,b){return a.name.localeCompare(b.name,'ru',{numeric:true,sensitivity:'base'})}
-async function nativeFileBlob(f){
-  const P=plugin('ShelfFiles');if(!P)throw new Error('ShelfFiles unavailable');
-  const r=await P.readFile({uri:f.uri});
-  const bin=atob(r.base64);const u=new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
-  return new Blob([u],{type:f.mime||'audio/*'});
-}
-function nativeFileSource(f){
-  const uri=String(f?.uri||'');
-  if(!uri)return '';
-  try{
-    const convert=window.Capacitor?.convertFileSrc;
-    if(typeof convert==='function')return convert(uri);
-  }catch(e){console.warn('convertFileSrc failed',e)}
-  return uri;
-}
+async function nativeFileBlob(f){const P=plugin('ShelfFiles');const r=await P.readFile({uri:f.uri});const bin=atob(r.base64);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:f.mime||'audio/*'})}
 async function readTags(blob){return new Promise(resolve=>{if(!window.jsmediatags)return resolve({});try{jsmediatags.read(blob,{onSuccess:x=>{let cover='';try{const p=x.tags?.picture;if(p){const bytes=new Uint8Array(p.data);let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);cover=`data:${p.format};base64,${btoa(binary)}`}}catch{}resolve({title:x.tags?.title||'',artist:x.tags?.artist||'',album:x.tags?.album||'',cover})},onError:()=>resolve({})})}catch{resolve({})}})}
 function stripExt(s=''){return s.replace(/\.[^.]+$/,'')}
 
@@ -408,7 +409,7 @@ function renderPlayer(){
     </div>
     <div class="visualizer-overlay hidden" id="visualizer" aria-hidden="true">
       <canvas id="visualizerCanvas"></canvas>
-      <div class="visualizer-head"><button class="icon-btn visualizer-x" id="visualizerClose" aria-label="Закрыть">${icon('close')}</button><div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div></div>
+      <div class="visualizer-head"><button class="icon-btn" id="visualizerClose">${icon('back')}</button><div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div></div>
       <div class="visualizer-center"><span>${icon('music')}</span><b>AudioShelf</b></div>
     </div>
   </section>`;
@@ -429,41 +430,7 @@ function renderPlayer(){
 }
 
 function chapterRows(b){let out='';(b.marks||[]).forEach((m,k)=>{out+=`<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||'Глава')} · ${fmt(m.t)}</span><span>›</span></div>`});b.files.forEach((f,i)=>out+=`<div class="chapter-row ${i===state.currentIndex?'current':''}" data-chapter="${i}"><span>${i+1}. ${escapeHtml(f.name)}</span><span>${i===state.currentIndex?(state.playing?'▶':'Ⅱ'):fmt(f.duration)}</span></div>`);return out}
-async function loadChapter(i,t=0,autoplay=true){
-  const b=state.current;if(!b||!b.files[i])return;
-  state.currentIndex=i;state.currentPos=t||0;const f=b.files[i];ensureFileSound(f);
-  let src='';
-  try{
-    if(f.key){
-      const blob=await get(f.key);
-      if(!blob)throw new Error('Файл недоступен');
-      if(state.blobUrl)URL.revokeObjectURL(state.blobUrl);
-      state.blobUrl=URL.createObjectURL(blob);src=state.blobUrl;
-    }else{
-      // Native Android: stream from the provider URI instead of loading the entire
-      // audiobook chapter into JS memory. This avoids large Base64/Blob allocations.
-      src=nativeFileSource(f);
-      if(!src)throw new Error('URI файла недоступен');
-      if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl='';}
-    }
-  }catch(e){
-    // Fallback for older WebViews/providers where convertFileSrc is unavailable.
-    if(!f.key&&f.uri){
-      try{
-        const blob=await nativeFileBlob(f);
-        if(state.blobUrl)URL.revokeObjectURL(state.blobUrl);
-        state.blobUrl=URL.createObjectURL(blob);src=state.blobUrl;
-      }catch(err){console.error('Audio file open failed',err);showToast('Не удалось открыть аудиофайл');return}
-    }else{console.error('Audio file open failed',e);showToast('Не удалось открыть аудиофайл');return}
-  }
-  audio.src=src;audio.load();audio.playbackRate=state.speed;applyCurrentFileSound();
-  audio.onloadedmetadata=async()=>{
-    if(state.currentPos)audio.currentTime=Math.min(state.currentPos,audio.duration||state.currentPos);
-    f.duration=audio.duration||f.duration;await set('books',state.books);updatePlayerUI();if(autoplay)togglePlay(true);
-  };
-  audio.onended=()=>{if(i<b.files.length-1)loadChapter(i+1,0,true);else{b.pos={i:0,t:0};saveProgress()}};
-  updatePlayerUI();
-}
+async function loadChapter(i,t=0,autoplay=true){const b=state.current;if(!b||!b.files[i])return;state.currentIndex=i;state.currentPos=t||0;const f=b.files[i];ensureFileSound(f);let blob;try{blob=f.key?await get(f.key):await nativeFileBlob(f)}catch(e){showToast('Не удалось открыть аудиофайл');return}if(!blob){showToast('Файл недоступен');return}if(state.blobUrl)URL.revokeObjectURL(state.blobUrl);state.blobUrl=URL.createObjectURL(blob);audio.src=state.blobUrl;audio.playbackRate=state.speed;applyCurrentFileSound();audio.onloadedmetadata=async()=>{if(state.currentPos)audio.currentTime=Math.min(state.currentPos,audio.duration||state.currentPos);f.duration=audio.duration||f.duration;await set('books',state.books);updatePlayerUI();if(autoplay)togglePlay(true)};audio.onended=()=>{if(i<b.files.length-1)loadChapter(i+1,0,true);else{b.pos={i:0,t:0};saveProgress()}};updatePlayerUI();}
 async function togglePlay(forcePlay=false){
   if(!state.current)return;
   try{
@@ -477,37 +444,26 @@ async function togglePlay(forcePlay=false){
     updatePlayerUI();
   }catch(e){showToast('Не удалось изменить воспроизведение')}
 }
-const EQ_BANDS=[60,120,250,500,1000,2000,4000,8000,12000,16000];
 const SOUND_PRESETS={
-  flat:{name:'Плоский',volume:1,eq:[0,0,0,0,0,0,0,0,0,0]},
-  voice:{name:'Голос',volume:1,eq:[-2,-1,0,2,5,5,4,3,1,0]},
-  bass:{name:'Бас',volume:1,eq:[8,7,5,3,1,0,-1,-1,0,0]},
-  rock:{name:'Рок',volume:1,eq:[5,4,3,0,-2,2,4,5,4,3]},
-  classical:{name:'Классика',volume:1,eq:[3,2,1,0,-1,-1,1,3,4,4]},
-  jazz:{name:'Джаз',volume:1,eq:[3,2,1,1,0,2,3,3,2,1]},
-  night:{name:'Ночь',volume:.82,eq:[-2,-2,-1,1,3,2,0,-2,-3,-4]},
-  audiobook:{name:'Аудиокнига',volume:1,eq:[-3,-2,-1,3,6,6,5,3,1,-1]}
+  flat:{name:'Плоский',volume:1,bass:0,treble:0},
+  voice:{name:'Голос',volume:1,bass:-3,treble:5},
+  bass:{name:'Бас',volume:1,bass:7,treble:-1},
+  rock:{name:'Рок',volume:1,bass:4,treble:4},
+  classical:{name:'Классика',volume:1,bass:2,treble:3},
+  jazz:{name:'Джаз',volume:1,bass:3,treble:2},
+  night:{name:'Ночь',volume:.82,bass:-2,treble:-3}
 };
 function ensureFileSound(f){
   if(!f)return;
-  const legacy=[Number(f.sound?.bass)||0,0,0,0,0,0,0,0,0,Number(f.sound?.treble)||0];
-  const eq=Array.isArray(f.sound?.eq)&&f.sound.eq.length===10?f.sound.eq.map(Number):legacy;
-  f.sound={preset:'flat',volume:Number(state.settings.volume??1),bass:eq[0],treble:eq[9],eq,...(f.sound||{})};
-  f.sound.eq=Array.isArray(f.sound.eq)&&f.sound.eq.length===10?f.sound.eq.map(Number):legacy;
-  f.sound.bass=Number(f.sound.eq[0])||0;
-  f.sound.treble=Number(f.sound.eq[9])||0;
-}
-function applyEqFilters(eq){
-  const values=Array.isArray(eq)&&eq.length===10?eq:[0,0,0,0,0,0,0,0,0,0];
-  eqFilters.forEach((filter,i)=>{filter.gain.value=Math.max(-12,Math.min(12,Number(values[i])||0));});
+  f.sound={preset:'flat',volume:Number(state.settings.volume??1),bass:Number(state.settings.bass)||0,treble:Number(state.settings.treble)||0,...(f.sound||{})};
 }
 function applyAudioSettings(){
   const f=state.current?.files?.[state.currentIndex];
   if(f){ensureFileSound(f);applyCurrentFileSound();return}
   const volume=Math.max(0,Math.min(1,Number(state.settings.volume??1)));
   if(gainNode)gainNode.gain.value=volume;
-  const eq=Array.isArray(state.settings.eq)&&state.settings.eq.length===10?state.settings.eq:[Number(state.settings.bass)||0,0,0,0,0,0,0,0,0,Number(state.settings.treble)||0];
-  applyEqFilters(eq);
+  if(bassFilter)bassFilter.gain.value=Number(state.settings.bass)||0;
+  if(trebleFilter)trebleFilter.gain.value=Number(state.settings.treble)||0;
   audio.volume=volume;
 }
 function applyCurrentFileSound(){
@@ -515,25 +471,22 @@ function applyCurrentFileSound(){
   ensureFileSound(f);
   const volume=Math.max(0,Math.min(1,Number(f.sound.volume??1)));
   if(gainNode)gainNode.gain.value=volume;
-  applyEqFilters(f.sound.eq);
+  if(bassFilter)bassFilter.gain.value=Number(f.sound.bass)||0;
+  if(trebleFilter)trebleFilter.gain.value=Number(f.sound.treble)||0;
   audio.volume=volume;
 }
 function saveCurrentFileSound(){const f=state.current?.files?.[state.currentIndex];if(!f)return;ensureFileSound(f);set('books',state.books).catch(()=>{});applyCurrentFileSound()}
 function openCurrentSound(){
   const f=state.current?.files?.[state.currentIndex];if(!f)return;ensureFileSound(f);
   const s=f.sound;
-  const presets=Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(p.name)}</b><small>${p.eq.map(v=>v>0?`+${v}`:v).join(' · ')}</small></button>`).join('');
-  const sliders=EQ_BANDS.map((hz,i)=>`<div class="eq-band"><div class="eq-value" id="eqVal${i}">${s.eq[i]>0?'+':''}${s.eq[i]}</div><input id="eq${i}" type="range" min="-12" max="12" step="1" value="${s.eq[i]}" aria-label="${hz} Гц"><small>${hz>=1000?hz/1000+'k':hz}</small></div>`).join('');
-  modalRoot.innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>Звук</h3><small class="sound-file-name">${escapeHtml(f.name)}</small></div><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div>
-    <div class="preset-grid">${presets}</div>
-    <div class="sound-setting"><div class="sound-head"><span>${icon('headset')} Громкость</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="100" value="${Math.round(s.volume*100)}"></div>
-    <div class="eq-panel"><div class="sound-head"><span>${icon('sliders')} Эквалайзер</span><b>10 полос · ±12 dB</b></div><div class="eq-grid">${sliders}</div></div>
-    <div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить файл</button></div></div></div>`;
+  const presets=Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(p.name)}</b><small>${p.bass>0?'+':''}${p.bass} / ${p.treble>0?'+':''}${p.treble} dB</small></button>`).join('');
+  modalRoot.innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><h3>Звук · ${escapeHtml(f.name)}</h3><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="preset-grid">${presets}</div><div class="sound-setting"><div class="sound-head"><span>Громкость</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min=0 max=100 value="${Math.round(s.volume*100)}"></div><div class="sound-setting"><div class="sound-head"><span>Бас</span><b id="fileBassValue">${s.bass>0?'+':''}${s.bass} dB</b></div><input class="sound-range" id="fileBass" type="range" min=-12 max=12 value="${s.bass}"></div><div class="sound-setting"><div class="sound-head"><span>Высокие частоты</span><b id="fileTrebleValue">${s.treble>0?'+':''}${s.treble} dB</b></div><input class="sound-range" id="fileTreble" type="range" min=-12 max=12 value="${s.treble}"></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить файл</button></div></div></div>`;
   $('soundBack').onclick=e=>{if(e.target.id==='soundBack'||e.target.closest('[data-close]'))closeModal()};
-  document.querySelectorAll('[data-preset]').forEach(btn=>btn.onclick=()=>{const id=btn.dataset.preset,p=SOUND_PRESETS[id];Object.assign(s,{preset:id,volume:p.volume,eq:[...p.eq],bass:p.eq[0],treble:p.eq[9]});applyCurrentFileSound();set('books',state.books);openCurrentSound()});
-  $('fileVol').oninput=e=>{s.preset='custom';s.volume=Number(e.target.value)/100;const v=$('fileVolValue');if(v)v.textContent=Math.round(s.volume*100)+'%';applyCurrentFileSound();set('books',state.books)};
-  EQ_BANDS.forEach((hz,i)=>{const el=$('eq'+i);if(!el)return;el.oninput=e=>{s.preset='custom';s.eq[i]=Number(e.target.value);s.bass=s.eq[0];s.treble=s.eq[9];const v=$('eqVal'+i);if(v)v.textContent=(s.eq[i]>0?'+':'')+s.eq[i];applyCurrentFileSound();set('books',state.books)}});
-  $('soundDefault').onclick=()=>{Object.assign(s,{preset:'flat',volume:1,eq:[0,0,0,0,0,0,0,0,0,0],bass:0,treble:0});applyCurrentFileSound();set('books',state.books);openCurrentSound()};
+  document.querySelectorAll('[data-preset]').forEach(btn=>btn.onclick=()=>{const id=btn.dataset.preset,p=SOUND_PRESETS[id];Object.assign(s,{preset:id,volume:p.volume,bass:p.bass,treble:p.treble});applyCurrentFileSound();set('books',state.books);openCurrentSound()});
+  $('fileVol').oninput=e=>{s.preset='custom';s.volume=Number(e.target.value)/100;$('fileVolValue').textContent=Math.round(s.volume*100)+'%';applyCurrentFileSound();set('books',state.books)};
+  $('fileBass').oninput=e=>{s.preset='custom';s.bass=Number(e.target.value);$('fileBassValue').textContent=(s.bass>0?'+':'')+s.bass+' dB';applyCurrentFileSound();set('books',state.books)};
+  $('fileTreble').oninput=e=>{s.preset='custom';s.treble=Number(e.target.value);$('fileTrebleValue').textContent=(s.treble>0?'+':'')+s.treble+' dB';applyCurrentFileSound();set('books',state.books)};
+  $('soundDefault').onclick=()=>{Object.assign(s,{preset:'flat',volume:1,bass:0,treble:0});applyCurrentFileSound();set('books',state.books);openCurrentSound()};
 }
 async function ensureAudioGraph(){
   if(!audioContext){
@@ -541,26 +494,23 @@ async function ensureAudioGraph(){
     if(!AC)return;
     audioContext=new AC();
     audioSource=audioContext.createMediaElementSource(audio);
-    eqFilters=[];
-    EQ_BANDS.forEach(freq=>{
-      const filter=audioContext.createBiquadFilter();
-      filter.type='peaking';filter.frequency.value=freq;filter.Q.value=.9;filter.gain.value=0;
-      eqFilters.push(filter);
-    });
     gainNode=audioContext.createGain();
+    bassFilter=audioContext.createBiquadFilter();
+    bassFilter.type='lowshelf'; bassFilter.frequency.value=180;
+    trebleFilter=audioContext.createBiquadFilter();
+    trebleFilter.type='highshelf'; trebleFilter.frequency.value=4200;
     analyser=audioContext.createAnalyser();
-    analyser.fftSize=512;
-    analyser.smoothingTimeConstant=.78;
-    audioSource.connect(eqFilters[0]);
-    for(let i=0;i<eqFilters.length-1;i++)eqFilters[i].connect(eqFilters[i+1]);
-    eqFilters[eqFilters.length-1].connect(gainNode);
+    analyser.fftSize=256;
+    analyser.smoothingTimeConstant=.82;
+    audioSource.connect(bassFilter);
+    bassFilter.connect(trebleFilter);
+    trebleFilter.connect(gainNode);
     gainNode.connect(analyser);
     analyser.connect(audioContext.destination);
     applyAudioSettings();
   }
   if(audioContext.state==='suspended')await audioContext.resume();
 }
-
 function bindPlayerSwipe(){
   const player=$('playerScreen');if(!player)return;
   let sx=0,sy=0;
@@ -588,56 +538,21 @@ function startVisualizer(){
   const draw=()=>{
     if(!visualizerOpen){visualizerFrame=0;return}
     const dpr=Math.min(window.devicePixelRatio||1,2),w=canvas.clientWidth,h=canvas.clientHeight;
-    if(canvas.width!==Math.floor(w*dpr)||canvas.height!==Math.floor(h*dpr)){
-      canvas.width=Math.floor(w*dpr);canvas.height=Math.floor(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
-    }
+    if(canvas.width!==Math.floor(w*dpr)||canvas.height!==Math.floor(h*dpr)){canvas.width=Math.floor(w*dpr);canvas.height=Math.floor(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}
     analyser.getByteFrequencyData(data);ctx.clearRect(0,0,w,h);
-    const cx=w/2,cy=h*.47;
-    const bg=ctx.createRadialGradient(cx,cy,10,cx,cy,Math.max(w,h)*.72);
-    bg.addColorStop(0,'rgba(238,177,91,.20)');bg.addColorStop(.28,'rgba(156,92,43,.10)');bg.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
-
-    // Soft frequency floor.
-    const count=Math.min(72,Math.max(36,Math.floor(w/7)));
-    const gap=2, bw=Math.max(2,(w-gap*(count-1))/count);
-    const base=h*.84;
-    for(let i=0;i<count;i++){
-      const idx=Math.floor(Math.pow(i/count,1.65)*(data.length*.82));
-      const v=data[idx]/255;
-      const smooth=.12+Math.pow(v,.72)*.72;
-      const bh=Math.max(3,h*.32*smooth);
-      const x=i*(bw+gap);
-      const g=ctx.createLinearGradient(0,base-bh,0,base);
-      g.addColorStop(0,'rgba(255,219,155,.95)');
-      g.addColorStop(.45,'rgba(224,154,76,.68)');
-      g.addColorStop(1,'rgba(121,68,37,.08)');
-      ctx.fillStyle=g;
-      ctx.shadowBlur=v>0.45?14:4;ctx.shadowColor='rgba(232,174,91,.35)';
-      ctx.beginPath();
-      const r=Math.min(4,bw/2);
-      ctx.roundRect(x,base-bh,bw,bh,r);ctx.fill();
-    }
-    ctx.shadowBlur=0;
-
-    // Elegant radial waveform around the centre.
-    const points=96,r0=Math.min(w,h)*.115,rAmp=Math.min(w,h)*.105;
-    ctx.beginPath();
-    for(let i=0;i<=points;i++){
-      const p=i/points,idx=Math.min(data.length-1,Math.floor(p*data.length*.55));
-      const v=data[idx]/255,a=p*Math.PI*2-Math.PI/2,r=r0+v*rAmp;
-      const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
-      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
-    }
-    ctx.closePath();
-    ctx.strokeStyle='rgba(255,207,132,.72)';ctx.lineWidth=2;ctx.shadowBlur=22;ctx.shadowColor='rgba(239,171,83,.5)';ctx.stroke();ctx.shadowBlur=0;
-
-    const disc=ctx.createRadialGradient(cx,cy,8,cx,cy,Math.min(w,h)*.14);
-    disc.addColorStop(0,'rgba(255,236,198,.14)');disc.addColorStop(.55,'rgba(220,145,63,.10)');disc.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=disc;ctx.beginPath();ctx.arc(cx,cy,Math.min(w,h)*.15,0,Math.PI*2);ctx.fill();
-
+    const cx=w/2,cy=h*.55;
+    const bg=ctx.createRadialGradient(cx,cy,20,cx,cy,Math.max(w,h)*.7);bg.addColorStop(0,'rgba(225,169,91,.16)');bg.addColorStop(.35,'rgba(110,67,35,.08)');bg.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle='rgba(239,188,112,.10)';ctx.lineWidth=1;
+    for(let r=70;r<Math.min(w,h)*.42;r+=42){ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke()}
+    const n=96;const points=[];
+    for(let i=0;i<n;i++){const idx=Math.floor(i*data.length/n);const v=data[idx]/255;const a=(i/n)*Math.PI*2-Math.PI/2;const r=Math.min(w,h)*.18+v*Math.min(w,h)*.16;points.push([cx+Math.cos(a)*r,cy+Math.sin(a)*r,v])}
+    const grad=ctx.createLinearGradient(0,0,w,h);grad.addColorStop(0,'#ffd99a');grad.addColorStop(.5,'#e0a35d');grad.addColorStop(1,'#a9633d');
+    ctx.beginPath();points.forEach((p,i)=>{i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])});ctx.closePath();ctx.strokeStyle=grad;ctx.lineWidth=2.2;ctx.shadowBlur=18;ctx.shadowColor='rgba(230,168,91,.55)';ctx.stroke();ctx.shadowBlur=0;
+    const bars=48,base=Math.min(w,h)*.29;
+    for(let i=0;i<bars;i++){const idx=Math.floor(i*data.length/bars);const v=data[idx]/255;const a=(i/bars)*Math.PI*2-Math.PI/2;const inner=base+4,outer=base+10+v*Math.min(w,h)*.12;ctx.strokeStyle=`rgba(240,183,103,${.22+v*.65})`;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*inner,cy+Math.sin(a)*inner);ctx.lineTo(cx+Math.cos(a)*outer,cy+Math.sin(a)*outer);ctx.stroke()}
+    ctx.fillStyle='rgba(247,238,220,.72)';ctx.font='600 12px Inter,system-ui';ctx.textAlign='center';ctx.fillText('AUDIO',cx,cy-3);ctx.fillStyle='rgba(247,238,220,.30)';ctx.font='500 8px Inter,system-ui';ctx.letterSpacing='3px';ctx.fillText('S H E L F',cx,cy+14);
     visualizerFrame=requestAnimationFrame(draw);
-  };
-  draw();
+  };draw();
 }
 function stopVisualizer(){if(visualizerFrame){cancelAnimationFrame(visualizerFrame);visualizerFrame=0}}
 
