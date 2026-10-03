@@ -13,7 +13,7 @@ let visualizerFrame = 0;
 let visualizerOpen = false;
 
 const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
-const NAV = ['shelf','library','playlists','settings'];
+const NAV = ['shelf','player','playlists','settings'];
 const DEFAULT_PLAYLISTS = [
   ['fav','Избранное','♥'],['road','Для дороги','▣'],['fantasy','Фантастика','◉'],
   ['classic','Классика','▤'],['psychology','Психология','◌'],['nonfiction','Нон-фикшн','▧']
@@ -68,21 +68,25 @@ function isNative(){return !!(window.Capacitor && Capacitor.isNativePlatform && 
 function plugin(name){return window.Capacitor?.Plugins?.[name] || null}
 async function persist(){await Promise.all([set('books',state.books),set('folders',state.folders),set('playlists',state.playlists),set('settings',state.settings)])}
 function showToast(msg){clearTimeout(toastTimer);const t=$('toast');t.textContent=msg;t.classList.add('show');toastTimer=setTimeout(()=>t.classList.remove('show'),2300)}
-function setScreen(screen){state.screen=screen;state.query='';document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.nav===screen));render()}
+function setScreen(screen){state.screen=screen;state.query='';if(screen==='player' && !state.current){showToast('Сначала выберите книгу на полке');state.screen='shelf'}document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.nav===state.screen));render()}
 function render(){
   if(state.screen==='shelf') renderShelf();
-  if(state.screen==='library') renderLibrary();
+  if(state.screen==='player') renderCurrentPlayer();
   if(state.screen==='playlists') renderPlaylists();
   if(state.screen==='settings') renderSettings();
   bindNav();
+  updateMiniPlayer();
 }
-function bindNav(){document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>setScreen(b.dataset.nav));document.querySelectorAll('.nav-ico').forEach(n=>{n.innerHTML=ICONS[n.dataset.icon]||'';n.querySelectorAll('*').forEach(()=>{});n.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`})}
+function renderCurrentPlayer(){ if(state.current) renderPlayer(); else renderShelf(); }
+
+function bindNav(){document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>setScreen(b.dataset.nav));document.querySelectorAll('[data-action]').forEach(b=>{const a=b.dataset.action;const fn={openAddSheet,openLibraryFilter,openSort,newPlaylist}[a];if(fn)b.onclick=fn});document.querySelectorAll('.nav-ico').forEach(n=>{n.innerHTML=ICONS[n.dataset.icon]||'';n.querySelectorAll('*').forEach(()=>{});n.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`})}
 function header(title,subtitle,actions=''){return `<div class="topbar"><div><h2>${title}</h2>${subtitle?`<p>${subtitle}</p>`:''}</div><div class="top-actions">${actions}</div></div>`}
 function bookCover(b,extra=''){const title=escapeHtml(b.title||'Без названия');const author=escapeHtml(b.author||'');const body=b.cover?`<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" draggable="false">`:`<div class="fallback-cover ${extra}"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>`;return `<div class="cover-frame">${body}</div>`}
 function progress(b){const i=Number(b.pos?.i)||0,t=Number(b.pos?.t)||0,d=Number(b.files?.[i]?.duration)||0;return Math.max(0,Math.min(100,((i+(d&&t>4?.5:0))/(b.files?.length||1))*100))}
 function renderShelf(){
   const books=state.books;
   let html=`<section class="screen shelf-screen shelf-hero ${state.settings.threeD?'':'flat-shelf'}">`;
+  html+=header('Полка', `${books.length} ${plural(books.length,'книга','книги','книг')}`, `${iconBtn('folderPlus','Добавить книги','openAddSheet')}`);
   html+=`<div class="shelf-area">`;
   if(!books.length){html+=`<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Полка пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`}
   else {for(let i=0;i<books.length;i+=3){html+=`<div class="shelf-row">${books.slice(i,i+3).map(bookCard).join('')}</div>`}}
@@ -148,7 +152,7 @@ function cycleCoverSize(){const x=['Маленький','Средний','Бол
 function openLibraryFilter(){openModal(`<h3>Фильтр библиотеки</h3><div class="modal-row"><span style="flex:1">Только избранное</span><button class="switch" id="filterFav"><i></i></button></div><div class="modal-row"><span style="flex:1">Есть прогресс</span><button class="switch" id="filterProgress"><i></i></button></div><div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);}
 function openSort(){openModal(`<h3>Сортировка</h3>${[['recent','Недавно добавленные'],['title','Название'],['author','Автор']].map(([k,n])=>`<div class="modal-row" data-sort="${k}"><span style="flex:1">${n}</span>${state.librarySort===k?'✓':''}</div>`).join('')}`);document.querySelectorAll('[data-sort]').forEach(el=>el.onclick=()=>{state.librarySort=el.dataset.sort;closeModal();renderLibrary()})}
 function openShelfMenu(){openModal(`<h3>Полка</h3><div class="modal-row" id="menuScan">${icon('folder')}<span>Выбрать папки</span></div><div class="modal-row" id="menuFile">${icon('music')}<span>Добавить аудиофайлы</span></div><div class="modal-row" id="menuRescan">${icon('refresh')}<span>Проверить выбранные папки</span></div><div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);$('menuScan').onclick=()=>{closeModal();openFolderSheet()};$('menuFile').onclick=()=>{closeModal();pickFiles()};$('menuRescan').onclick=()=>{closeModal();scanAllFolders(false)}}
-function openBookMenu(id){const b=findBook(id);if(!b)return;const fav=playlistHas('fav',id);openModal(`<h3>${escapeHtml(b.title)}</h3><div class="modal-row" id="menuPlay">${icon('play')}<span>Слушать</span></div><div class="modal-row" id="menuFav">${icon('heart')}<span>${fav?'Убрать из избранного':'Добавить в избранное'}</span></div><div class="modal-row" id="menuPlaylist">${icon('playlist')}<span>Добавить в плейлист</span></div><div class="modal-row" id="menuRename">${icon('book')}<span>Переименовать</span></div><div class="modal-row danger" id="menuDelete">${icon('trash')}<span>Удалить книгу из библиотеки</span></div>`);$('menuPlay').onclick=()=>{closeModal();openPlayer(id)};$('menuFav').onclick=()=>{togglePlaylistBook('fav',id);closeModal();renderLibrary()};$('menuPlaylist').onclick=()=>openPlaylistChooser(id);$('menuRename').onclick=()=>renameBook(id);$('menuDelete').onclick=()=>deleteBook(id)}
+function openBookMenu(id){const b=findBook(id);if(!b)return;const fav=playlistHas('fav',id);openModal(`<h3>${escapeHtml(b.title)}</h3><div class="modal-row" id="menuPlay">${icon('play')}<span>Слушать</span></div><div class="modal-row" id="menuFav">${icon('heart')}<span>${fav?'Убрать из избранного':'Добавить в избранное'}</span></div><div class="modal-row" id="menuPlaylist">${icon('playlist')}<span>Добавить в плейлист</span></div><div class="modal-row" id="menuRename">${icon('book')}<span>Переименовать</span></div><div class="modal-row danger" id="menuDelete">${icon('trash')}<span>Удалить книгу из библиотеки</span></div>`);$('menuPlay').onclick=()=>{closeModal();openPlayer(id)};$('menuFav').onclick=()=>{togglePlaylistBook('fav',id);closeModal();render()};$('menuPlaylist').onclick=()=>openPlaylistChooser(id);$('menuRename').onclick=()=>renameBook(id);$('menuDelete').onclick=()=>deleteBook(id)}
 function newPlaylist(){openModal(`<h3>Новый плейлист</h3><input class="field" id="newPlName" placeholder="Название"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="newPlSave">Создать</button></div>`);$('newPlSave').onclick=async()=>{const name=$('newPlName').value.trim();if(!name)return showToast('Введите название');state.playlists.push({id:uid(),name,emoji:'♫',bookIds:[]});await set('playlists',state.playlists);closeModal();renderPlaylists()}}
 function openPlaylistChooser(bookId){openModal(`<h3>Добавить в плейлист</h3>${state.playlists.map(p=>`<div class="modal-row" data-choose-pl="${escapeHtml(p.id)}"><span style="flex:1">${p.emoji||'♫'} ${escapeHtml(p.name)}</span>${(p.bookIds||[]).includes(bookId)?'✓':''}</div>`).join('')}`);document.querySelectorAll('[data-choose-pl]').forEach(el=>el.onclick=()=>{togglePlaylistBook(el.dataset.choosePl,bookId);closeModal();showToast('Плейлист обновлён')})}
 function openPlaylist(id){const p=state.playlists.find(x=>x.id===id);if(!p)return;const books=(p.bookIds||[]).map(findBook).filter(Boolean);openModal(`<h3>${escapeHtml(p.name)}</h3>${books.length?books.map(b=>`<div class="modal-row" data-pl-book="${b.id}"><div style="flex:1"><b>${escapeHtml(b.title)}</b><div style="font-size:11px;color:var(--muted)">${escapeHtml(b.author||'')}</div></div>${icon('chevron')}</div>`).join(''):`<div style="padding:22px 5px;color:var(--muted);text-align:center">В этом плейлисте пока ничего нет.</div>`}<div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);document.querySelectorAll('[data-pl-book]').forEach(el=>el.onclick=()=>{closeModal();openPlayer(el.dataset.plBook)})}
@@ -219,7 +223,20 @@ function stripExt(s=''){return s.replace(/\.[^.]+$/,'')}
 async function pickFiles(){const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='audio/*';input.onchange=async()=>{const fs=[...input.files].filter(f=>AUDIO_EXT.test(f.name));if(!fs.length)return;const groups=[['Выбранные файлы',fs]];for(const [path,files] of groups){let tags={};try{tags=await readTags(files[0])}catch{}const title=files.length>1?(tags.album||stripExt(files[0].name)):(tags.title||stripExt(files[0].name));const id=uid();const fdata=[];for(let i=0;i<files.length;i++){const key=`blob:${id}:${i}`;await set(key,files[i]);fdata.push({key,name:stripExt(files[i].name),fileName:files[i].name,mime:files[i].type||'audio/*',size:files[i].size,duration:0})}state.books.unshift({id,title,author:tags.artist||'',cover:tags.cover||'',files:fdata,added:Date.now(),pos:{i:0,t:0},marks:[]});}await set('books',state.books);render();showToast(`Добавлено файлов: ${fs.length}`)};input.click()}
 
 /* Player */
-async function openPlayer(id){const b=findBook(id);if(!b)return;audio.pause();state.current=b;state.playing=false;state.currentIndex=Number(b.pos?.i)||0;state.currentPos=Number(b.pos?.t)||0;renderPlayer();await loadChapter(state.currentIndex,state.currentPos,false)}
+async function openPlayer(id){
+  const b=findBook(id);if(!b)return;
+  if(state.current?.id===b.id){state.screen='player';render();return;}
+  if(state.current) await saveProgress();
+  state.current=b;
+  state.playing=false;
+  state.currentIndex=Math.max(0,Math.min(Number(b.pos?.i)||0,b.files.length-1));
+  const saved=Number(b.pos?.t)||0;
+  state.currentPos=saved>0?Math.max(0,saved-10):0;
+  state.screen='player';
+  render();
+  await loadChapter(state.currentIndex,state.currentPos,false);
+  updateMiniPlayer();
+}
 function renderPlayer(){
   const b=state.current;if(!b)return;
   const i=Math.min(state.currentIndex,b.files.length-1);const f=b.files[i];
@@ -345,13 +362,29 @@ function cycleSpeed(){const a=[.8,1,1.2,1.5,1.8,2];state.speed=a[(a.indexOf(stat
 function setSleep(){const v=prompt('Таймер сна, минут. 0 — выключить','30');if(v===null)return;clearTimeout(state.sleepTimer);const n=Number(v);if(n>0){state.sleepTimer=setTimeout(()=>audio.pause(),n*60000);showToast(`Таймер: ${n} мин`)}else showToast('Таймер выключен')}
 async function addBookmark(){const b=state.current;if(!b)return;b.marks=b.marks||[];b.marks.push({i:state.currentIndex,t:audio.currentTime||0});await set('books',state.books);renderPlayer();showToast('Закладка добавлена')}
 async function saveProgress(){const b=state.current;if(!b)return;b.pos={i:state.currentIndex,t:audio.currentTime||0};await set('books',state.books)}
-function updatePlayerUI(){if(!state.current)return;const b=state.current,f=b.files[state.currentIndex];const seek=$('seek');if(seek&&audio.duration)seek.value=(audio.currentTime/audio.duration)*1000;const ct=$('curTime'),dt=$('durTime');if(ct)ct.textContent=fmt(audio.currentTime);if(dt)dt.textContent=fmt(audio.duration||f?.duration);const p=$('playBtn');if(p)p.innerHTML=icon(state.playing?'pause':'play');const ch=document.querySelector('.chapter');if(ch)ch.textContent=`Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`}
+function updatePlayerUI(){if(!state.current)return;const b=state.current,f=b.files[state.currentIndex];const seek=$('seek');if(seek&&audio.duration)seek.value=(audio.currentTime/audio.duration)*1000;const ct=$('curTime'),dt=$('durTime');if(ct)ct.textContent=fmt(audio.currentTime);if(dt)dt.textContent=fmt(audio.duration||f?.duration);const p=$('playBtn');if(p)p.innerHTML=icon(state.playing?'pause':'play');const ch=document.querySelector('.chapter');if(ch)ch.textContent=`Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;updateMiniPlayer()}
 function closePlayer(){closeVisualizer();audio.pause();saveProgress();if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl=''};state.current=null;state.playing=false;render()}
 
+function miniProgress(){
+  if(!state.current)return 0;
+  const b=state.current, i=Math.max(0,Math.min(state.currentIndex,b.files.length-1)), f=b.files[i];
+  const d=Number(audio.duration)||Number(f?.duration)||0;
+  return d?Math.max(0,Math.min(100,audio.currentTime/d*100)):0;
+}
+function updateMiniPlayer(){
+  const el=$('miniPlayer');if(!el)return;
+  if(!state.current || state.screen==='player'){el.classList.add('hidden');el.innerHTML='';return;}
+  const b=state.current, f=b.files[state.currentIndex]||{};
+  el.classList.remove('hidden');
+  el.innerHTML=`<button class="mini-main" id="miniOpen">${bookCover(b,'mini-cover')}<span class="mini-copy"><b>${escapeHtml(b.title)}</b><small>${escapeHtml(f.name||'')}</small></span><span class="mini-play" id="miniPlay">${icon(state.playing?'pause':'play')}</span></button><div class="mini-progress"><i style="width:${miniProgress()}%"></i></div>`;
+  $('miniOpen').onclick=()=>{state.screen='player';render();};
+  $('miniPlay').onclick=e=>{e.stopPropagation();togglePlay();};
+}
 /* Audio events + media session */
 audio.addEventListener('play',async()=>{state.playing=true;updatePlayerUI();await saveProgress();setMediaSession()});
 audio.addEventListener('pause',async()=>{state.playing=false;updatePlayerUI();await saveProgress();setMediaSession()});
-audio.addEventListener('timeupdate',()=>{if(!state.current)return;state.currentPos=audio.currentTime;state.current.pos={i:state.currentIndex,t:audio.currentTime};updatePlayerUI();if(Math.floor(audio.currentTime)%10===0)set('books',state.books)});
+let lastSavedSecond=-1;
+audio.addEventListener('timeupdate',()=>{if(!state.current)return;state.currentPos=audio.currentTime;state.current.pos={i:state.currentIndex,t:audio.currentTime};updatePlayerUI();const sec=Math.floor(audio.currentTime);if(sec!==lastSavedSecond && sec%5===0){lastSavedSecond=sec;set('books',state.books)}});
 audio.addEventListener('error',()=>showToast('Ошибка воспроизведения файла'));
 function setMediaSession(){if(!('mediaSession' in navigator)||!state.current)return;const b=state.current,f=b.files[state.currentIndex];try{navigator.mediaSession.metadata=new MediaMetadata({title:f?.name||b.title,artist:b.author||b.title,album:b.title,artwork:b.cover?[{src:b.cover,sizes:'512x512'}]:[]});navigator.mediaSession.playbackState=state.playing?'playing':'paused';navigator.mediaSession.setActionHandler('play',()=>togglePlay(true));navigator.mediaSession.setActionHandler('pause',()=>audio.pause());navigator.mediaSession.setActionHandler('previoustrack',prevTrack);navigator.mediaSession.setActionHandler('nexttrack',nextTrack);navigator.mediaSession.setActionHandler('seekbackward',()=>seekBy(-10));navigator.mediaSession.setActionHandler('seekforward',()=>seekBy(30))}catch{}}
 
