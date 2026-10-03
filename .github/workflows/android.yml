@@ -27,8 +27,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: package.json
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -42,12 +40,20 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
-      - name: Make Gradle executable
-        run: chmod +x android/gradlew
+      - name: Verify Gradle wrapper
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          ./gradlew --version
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          bash ./gradlew assembleDebug --stacktrace --no-daemon --console=plain
 
       - name: Upload APK
         uses: actions/upload-artifact@v5

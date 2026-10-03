@@ -54,6 +54,8 @@ let state = {
 };
 let scanResult=[];
 let toastTimer;
+let progressSaveTimer = null;
+let lastPersistedPosition = 0;
 
 async function loadState(){
   state.books=(await get('books'))||[];
@@ -361,9 +363,25 @@ function nextTrack(){if(state.currentIndex<state.current.files.length-1)loadChap
 function cycleSpeed(){const a=[.8,1,1.2,1.5,1.8,2];state.speed=a[(a.indexOf(state.speed)+1)%a.length];audio.playbackRate=state.speed;$('speedBtn')?.querySelector('strong')?.replaceChildren(document.createTextNode(state.speed.toFixed(1)+'×'));}
 function setSleep(){const v=prompt('Таймер сна, минут. 0 — выключить','30');if(v===null)return;clearTimeout(state.sleepTimer);const n=Number(v);if(n>0){state.sleepTimer=setTimeout(()=>audio.pause(),n*60000);showToast(`Таймер: ${n} мин`)}else showToast('Таймер выключен')}
 async function addBookmark(){const b=state.current;if(!b)return;b.marks=b.marks||[];b.marks.push({i:state.currentIndex,t:audio.currentTime||0});await set('books',state.books);renderPlayer();showToast('Закладка добавлена')}
-async function saveProgress(){const b=state.current;if(!b)return;b.pos={i:state.currentIndex,t:audio.currentTime||0};await set('books',state.books)}
+async function saveProgress(){
+  const b=state.current;if(!b)return;
+  const t=Number(audio.currentTime)||Number(state.currentPos)||0;
+  b.pos={i:state.currentIndex,t:Math.max(0,t)};
+  state.currentPos=t;
+  lastPersistedPosition=t;
+  try{await set('books',state.books)}catch{}
+}
+function scheduleProgressSave(force=false){
+  if(!state.current)return;
+  const t=Number(audio.currentTime)||0;
+  state.currentPos=t;
+  state.current.pos={i:state.currentIndex,t};
+  if(force){clearTimeout(progressSaveTimer);progressSaveTimer=null;saveProgress();return;}
+  if(progressSaveTimer)return;
+  progressSaveTimer=setTimeout(()=>{progressSaveTimer=null;saveProgress()},1200);
+}
 function updatePlayerUI(){if(!state.current)return;const b=state.current,f=b.files[state.currentIndex];const seek=$('seek');if(seek&&audio.duration)seek.value=(audio.currentTime/audio.duration)*1000;const ct=$('curTime'),dt=$('durTime');if(ct)ct.textContent=fmt(audio.currentTime);if(dt)dt.textContent=fmt(audio.duration||f?.duration);const p=$('playBtn');if(p)p.innerHTML=icon(state.playing?'pause':'play');const ch=document.querySelector('.chapter');if(ch)ch.textContent=`Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;updateMiniPlayer()}
-function closePlayer(){closeVisualizer();audio.pause();saveProgress();if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl=''};state.current=null;state.playing=false;render()}
+function closePlayer(){closeVisualizer();scheduleProgressSave(true);audio.pause();if(state.blobUrl){URL.revokeObjectURL(state.blobUrl);state.blobUrl=''};state.current=null;state.playing=false;render()}
 
 function miniProgress(){
   if(!state.current)return 0;
@@ -384,7 +402,19 @@ function updateMiniPlayer(){
 audio.addEventListener('play',async()=>{state.playing=true;updatePlayerUI();await saveProgress();setMediaSession()});
 audio.addEventListener('pause',async()=>{state.playing=false;updatePlayerUI();await saveProgress();setMediaSession()});
 let lastSavedSecond=-1;
-audio.addEventListener('timeupdate',()=>{if(!state.current)return;state.currentPos=audio.currentTime;state.current.pos={i:state.currentIndex,t:audio.currentTime};updatePlayerUI();const sec=Math.floor(audio.currentTime);if(sec!==lastSavedSecond && sec%5===0){lastSavedSecond=sec;set('books',state.books)}});
+audio.addEventListener('timeupdate',()=>{
+  if(!state.current)return;
+  state.currentPos=audio.currentTime;
+  state.current.pos={i:state.currentIndex,t:audio.currentTime};
+  updatePlayerUI();
+  const sec=Math.floor(audio.currentTime);
+  if(sec!==lastSavedSecond && sec%5===0){lastSavedSecond=sec;scheduleProgressSave();}
+});
+audio.addEventListener('seeking',()=>scheduleProgressSave());
+audio.addEventListener('seeked',()=>scheduleProgressSave(true));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')scheduleProgressSave(true)});
+window.addEventListener('pagehide',()=>scheduleProgressSave(true));
+window.addEventListener('beforeunload',()=>scheduleProgressSave(true));
 audio.addEventListener('error',()=>showToast('Ошибка воспроизведения файла'));
 function setMediaSession(){if(!('mediaSession' in navigator)||!state.current)return;const b=state.current,f=b.files[state.currentIndex];try{navigator.mediaSession.metadata=new MediaMetadata({title:f?.name||b.title,artist:b.author||b.title,album:b.title,artwork:b.cover?[{src:b.cover,sizes:'512x512'}]:[]});navigator.mediaSession.playbackState=state.playing?'playing':'paused';navigator.mediaSession.setActionHandler('play',()=>togglePlay(true));navigator.mediaSession.setActionHandler('pause',()=>audio.pause());navigator.mediaSession.setActionHandler('previoustrack',prevTrack);navigator.mediaSession.setActionHandler('nexttrack',nextTrack);navigator.mediaSession.setActionHandler('seekbackward',()=>seekBy(-10));navigator.mediaSession.setActionHandler('seekforward',()=>seekBy(30))}catch{}}
 

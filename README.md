@@ -26,3 +26,10 @@ Workflow `.github/workflows/android.yml` автоматически собира
 После сборки APK доступен в **Actions → workflow run → Artifacts → shelf-debug-apk**.
 
 CI устанавливает Node.js 22, Java 21, выполняет `npm install`, `npx cap sync android` и `./gradlew assembleDebug`.
+
+
+## GitHub Actions
+
+Workflow: `.github/workflows/android.yml`. It installs Node 22 and Java 21, runs `npm install`, synchronizes Capacitor, verifies the Gradle wrapper, and builds `app-debug.apk`. The APK is published as the `shelf-debug-apk` artifact.
+
+The repository intentionally contains only the Capacitor application (`www/` + `android/`).
