@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <meta name="theme-color" content="#090807">
   <meta name="application-name" content="AudioShelf">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
   <title>AudioShelf</title>
   <link rel="stylesheet" href="styles.css">
@@ -24,17 +24,6 @@
 
   <div id="modalRoot"></div>
   <div id="toast" class="toast"></div>
-  <div id="scanOverlay" class="scan-overlay hidden" aria-live="polite">
-    <div class="scan-card">
-      <div class="scan-orb"><span></span></div>
-      <div class="scan-copy">
-        <strong id="scanOverlayTitle">Добавляем книги</strong>
-        <span id="scanOverlayText">Сканирование продолжается в фоне…</span>
-      </div>
-      <div class="scan-progress-big"><i id="scanOverlayBar"></i></div>
-      <div class="scan-stats"><span id="scanOverlayBooks">0 книг</span><span id="scanOverlayFiles">0 файлов</span></div>
-    </div>
-  </div>
 
   <script src="lib/idb-keyval.js"></script>
   <script src="lib/jsmediatags.min.js"></script>

@@ -12,6 +12,9 @@ let analyser = null;
 let gainNode = null;
 let bassFilter = null;
 let trebleFilter = null;
+let eqFilters = [];
+const EQ_BANDS = [60,120,250,500,1000,2000,4000,8000,12000,16000];
+let nativeScanListenersReady = false;
 let visualizerFrame = 0;
 let visualizerOpen = false;
 
@@ -51,15 +54,11 @@ function durationOfBook(b){return (b.files||[]).reduce((a,f)=>a+(Number(f.durati
 function uid(){return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 
 let state = {
-  screen:'shelf', books:[], folders:[], playlists:[], settings:{theme:'dark',threeD:true,coverSize:'Средний',autoscan:true,volume:1,bass:0,treble:0},
+  screen:'shelf', books:[], folders:[], playlists:[], settings:{theme:'dark',threeD:true,coverSize:'Средний',autoscan:true,volume:1,bass:0,treble:0}, scan:{active:false,total:0,processed:0,books:0,name:''},
   query:'', librarySort:'recent', selectedFolderIds:[], current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null,
   searchTimer:null
 };
 let scanResult=[];
-let scanListenersReady=false;
-let scanWaiters=new Map();
-let scanEventBuffer=new Map();
-let activeScan=null;
 let toastTimer;
 let progressSaveTimer = null;
 let lastPersistedPosition = 0;
@@ -75,93 +74,12 @@ async function loadState(){
   document.documentElement.dataset.theme=state.settings.theme||'dark';
   const last=readLastPlayback();
   if(last?.bookId){const b=state.books.find(x=>x.id===last.bookId);if(b){state.current=b;state.currentIndex=Math.max(0,Math.min(Number(last.index)||0,b.files.length-1));state.currentPos=Math.max(0,(Number(last.pos)||0)-10);b.pos={...(b.pos||{}),i:state.currentIndex,t:state.currentPos};}}
+  initNativeScanListeners();
   render();
-  await setupScanListeners();
   if(state.settings.autoscan && state.folders.length && isNative()) setTimeout(()=>scanAllFolders(true),500);
 }
 function isNative(){return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())}
 function plugin(name){return window.Capacitor?.Plugins?.[name] || null}
-async function setupScanListeners(){
-  if(scanListenersReady)return;
-  const P=plugin('ShelfFiles');
-  if(!P?.addListener)return;
-  scanListenersReady=true;
-  await P.addListener('scanStarted',e=>handleScanEvent(e.scanId,'started',e));
-  await P.addListener('scanGroup',e=>handleScanEvent(e.scanId,'group',e));
-  await P.addListener('scanProgress',e=>handleScanEvent(e.scanId,'progress',e));
-  async function handleScanEvent(id,type,e){
-    if(!activeScan || id!==activeScan.id){
-      const a=scanEventBuffer.get(id)||[];a.push({type,e});scanEventBuffer.set(id,a);return;
-    }
-    if(type==='started'){activeScan.files=0;activeScan.groups=0;showScanOverlay(true);updateScanOverlay();return;}
-    if(type==='group'){
-      activeScan.files=Math.max(activeScan.files,Number(e.filesFound)||0);
-      activeScan.groups=Math.max(activeScan.groups,Number(e.groupsFound)||0);
-      const folder=state.folders.find(f=>f.id===activeScan.folderId);
-      if(folder){const cleanPath=String(e.path||'__root__').replace(/^\/+|\/+$/g,'')||'__root__';activeScan.seen.add(`${folder.id}:${cleanPath}`);await mergeScanGroup(cleanPath,e.files||[],folder);}
-      updateScanOverlay();return;
-    }
-    if(type==='progress'){
-      activeScan.files=Math.max(activeScan.files,Number(e.filesFound)||0);
-      activeScan.groups=Math.max(activeScan.groups,Number(e.groupsFound)||0);updateScanOverlay();
-    }
-  }
-  await P.addListener('scanWarning',e=>{
-    if(activeScan && e.scanId===activeScan.id) console.warn('ShelfFiles.scanWarning',e);
-  });
-  await P.addListener('scanError',e=>finishNativeScan(e.scanId,e.message||'Ошибка сканирования',true));
-  await P.addListener('scanFinished',e=>finishNativeScan(e.scanId,'',false));
-}
-async function handleBufferedScanEvent(ev){
-  if(!activeScan)return;
-  if(ev.type==='started'){activeScan.files=0;activeScan.groups=0;return;}
-  if(ev.type==='group'){
-    const e=ev.e;activeScan.files=Math.max(activeScan.files,Number(e.filesFound)||0);activeScan.groups=Math.max(activeScan.groups,Number(e.groupsFound)||0);
-    const folder=state.folders.find(f=>f.id===activeScan.folderId);
-    if(folder){const cleanPath=String(e.path||'__root__').replace(/^\/+|\/+$/g,'')||'__root__';activeScan.seen.add(`${folder.id}:${cleanPath}`);await mergeScanGroup(cleanPath,e.files||[],folder);}
-    updateScanOverlay();return;
-  }
-  if(ev.type==='progress'){activeScan.files=Math.max(activeScan.files,Number(ev.e.filesFound)||0);activeScan.groups=Math.max(activeScan.groups,Number(ev.e.groupsFound)||0);updateScanOverlay();}
-}
-function showScanOverlay(on){const el=$('scanOverlay');if(el)el.classList.toggle('hidden',!on)}
-function updateScanOverlay(){
-  if(!activeScan)return;
-  const bar=$('scanOverlayBar');
-  // The SAF provider does not expose a cheap total without doing a second full traversal.
-  // Let the bar crawl smoothly toward 92% while books arrive; completion jumps to 100%.
-  const pct=Math.min(92,Math.max(4,92*(1-Math.exp(-(activeScan.files||0)/28))));
-  if(bar)bar.style.width=pct.toFixed(1)+'%';
-  const b=$('scanOverlayBooks'),f=$('scanOverlayFiles'),t=$('scanOverlayText');
-  if(b)b.textContent=`${activeScan.groups} ${plural(activeScan.groups,'книга','книги','книг')}`;
-  if(f)f.textContent=`${activeScan.files} ${plural(activeScan.files,'файл','файла','файлов')}`;
-  if(t)t.textContent=activeScan.files?`Добавлено. Остальное сканируется в фоне…`:'Сканирование папки…';
-}
-function finishNativeScan(id,message,isError){
-  if(!activeScan || activeScan.id!==id){
-    const a=scanEventBuffer.get(id)||[];a.push({type:isError?'error':'finished',e:{message}});scanEventBuffer.set(id,a);return;
-  }
-  const waiter=scanWaiters.get(id);scanWaiters.delete(id);
-  if(isError){waiter?.reject(new Error(message));return;}
-  waiter?.resolve({files:activeScan.files,groups:activeScan.groups});
-}
-async function startNativeFolderScan(folder){
-  const P=plugin('ShelfFiles');
-  if(!P)throw new Error('Сканирование папок доступно в Android-версии');
-  await setupScanListeners();
-  const r=await P.scanFolder({uri:folder.uri});
-  const id=r?.scanId;
-  if(!id)throw new Error('Не удалось запустить сканирование');
-  activeScan={id,folderId:folder.id,files:0,groups:0,seen:new Set()};
-  showScanOverlay(true);updateScanOverlay();
-  const promise=new Promise((resolve,reject)=>scanWaiters.set(id,{resolve,reject}));
-  const buffered=scanEventBuffer.get(id)||[];scanEventBuffer.delete(id);
-  for(const ev of buffered){
-    if(ev.type==='finished'){scanWaiters.get(id)?.resolve({files:activeScan.files,groups:activeScan.groups});scanWaiters.delete(id);}
-    else if(ev.type==='error'){scanWaiters.get(id)?.reject(new Error(ev.e?.message||'Ошибка сканирования'));scanWaiters.delete(id);}
-    else await handleBufferedScanEvent(ev);
-  }
-  return promise;
-}
 async function persist(){await Promise.all([set('books',state.books),set('folders',state.folders),set('playlists',state.playlists),set('settings',state.settings)])}
 function showToast(msg){clearTimeout(toastTimer);const t=$('toast');t.textContent=msg;t.classList.add('show');toastTimer=setTimeout(()=>t.classList.remove('show'),2300)}
 function setScreen(screen){state.screen=screen;state.query='';if(screen==='player' && !state.current){showToast('Сначала выберите книгу на полке');state.screen='shelf'}document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.nav===state.screen));render();if(state.screen==='player'&&state.current&&!state.blobUrl)loadChapter(state.currentIndex,state.currentPos,false)}
@@ -186,7 +104,7 @@ function renderShelf(){
   html+=`<div class="shelf-area">`;
   if(!books.length){html+=`<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Полка пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`}
   else {for(let i=0;i<books.length;i+=3){html+=`<div class="shelf-row">${books.slice(i,i+3).map(bookCard).join('')}</div>`}}
-  html+=`</div></section>`;
+  html+=`</div>${state.scan?.active?scanDock():''}</section>`;
   main.innerHTML=html;
   $('emptyAdd')?.addEventListener('click',openAddSheet);
   document.querySelectorAll('.book-card').forEach(el=>el.onclick=()=>openPlayer(el.dataset.id));
@@ -301,69 +219,37 @@ async function pickFolder(){
     const f=await P.pickFolder();
     if(!f?.uri)return;
     let old=state.folders.find(x=>x.uri===f.uri);
-    if(!old){old={id:uid(),name:f.name||'Music',uri:f.uri};state.folders.push(old)}
+    if(!old){old={id:uid(),name:f.name||'Аудиокниги',uri:f.uri};state.folders.push(old)}
     if(!state.selectedFolderIds.includes(old.id))state.selectedFolderIds.push(old.id);
-    await persist();await set('foldersSelected',state.selectedFolderIds);
+    await persist(); await set('foldersSelected',state.selectedFolderIds);
     closeModal();
-    state.screen='shelf';render();
-    // The picker returns immediately. The library is usable while the worker scans.
-    scanAllFolders(true,true);
+    state.screen='shelf'; state.scan={active:true,total:0,processed:0,books:0,name:old.name}; render();
+    await startFolderScan(old);
   }catch(e){console.error('ShelfFiles.pickFolder',e);showToast(e?.message||e?.errorMessage||'Не удалось выбрать папку')}
 }
+function scanDock(){const p=state.scan||{};const pct=p.total?Math.min(100,p.processed/p.total*100):8;return `<div class="scan-dock" id="scanDock"><div class="scan-dock-top"><span class="scan-spinner"></span><div><b>Добавляем книги</b><small>${escapeHtml(p.name||'Сканирование')} · ${p.books} книг</small></div><strong>${Math.round(pct)}%</strong></div><div class="scan-dock-bar"><i id="scanDockBar" style="width:${pct}%"></i></div><div class="scan-dock-foot">${p.processed} из ${p.total||'…'} аудиофайлов</div></div>`}
+async function startFolderScan(folder){const P=plugin('ShelfFiles');if(!P)return;try{await P.scanFolder({uri:folder.uri,folderId:folder.id,folderName:folder.name});}catch(e){state.scan.active=false;render();showToast(e?.message||'Не удалось начать сканирование')}}
 async function scanAllFolders(silent=false,returnToShelf=false){
-  const P=plugin('ShelfFiles');if(!P){showToast('Сканирование папок доступно в Android-версии');return}
-  const ids=[...state.selectedFolderIds];const folders=state.folders.filter(f=>ids.includes(f.id));
+  const ids=[...state.selectedFolderIds],folders=state.folders.filter(f=>ids.includes(f.id));
   if(!folders.length){showToast('Сначала выберите папку');openFolderSheet();return}
-  if(returnToShelf){closeModal();state.screen='shelf';render();}
-  let total=0,booksTouched=0;
-  try{
-    for(const folder of folders){
-      const r=await startNativeFolderScan(folder);
-      total+=r.files;booksTouched+=r.groups;
-      // Remove stale entries only after the complete folder scan succeeded.
-      const seen=activeScan?.seen||new Set();
-      state.books=state.books.filter(b=>b.sourceFolderId!==folder.id || seen.has(b.srcPath));
-      await set('books',state.books);
-      activeScan=null;
-    }
-    const bar=$('scanOverlayBar');if(bar)bar.style.width='100%';
-    const txt=$('scanOverlayText');if(txt)txt.textContent=`Готово · ${booksTouched} ${plural(booksTouched,'книга','книги','книг')}`;
-    setTimeout(()=>showScanOverlay(false),700);
-    render();
-    if(!silent)showToast(`Сканирование завершено: ${booksTouched} ${plural(booksTouched,'книга','книги','книг')}`);
-  }catch(e){
-    console.error('ShelfFiles.scanFolder',e);
-    showScanOverlay(false);
-    showToast(e?.message||'Ошибка сканирования');
-  }
+  closeModal(); state.screen='shelf'; state.scan={active:true,total:0,processed:0,books:0,name:folders.length===1?folders[0].name:'Сканирование папок'}; render();
+  for(const f of folders) await startFolderScan(f);
 }
-async function mergeScanGroup(path,rawFiles,folder){
-  if(!rawFiles?.length)return;
-  const cleanPath=String(path||'__root__').replace(/^\/+|\/+$/g,'')||'__root__';
-  const sourcePath=`${folder.id}:${cleanPath}`;
-  const files=rawFiles.map(toNativeFile).sort(naturalFile);
-  const old=state.books.find(b=>b.srcPath===sourcePath && b.sourceFolderId===folder.id);
-  const oldFiles=new Map((old?.files||[]).map(f=>[f.uri||f.fileName,f]));
-  const mergedFiles=files.map(f=>{
-    const prev=oldFiles.get(f.uri||f.fileName);
-    return prev?{...f,duration:prev.duration||f.duration,sound:prev.sound||f.sound}:f;
-  });
-  const first=mergedFiles[0];
-  const title=cleanPath==='__root__'?stripExt(first?.name||folder.name||'Новая книга'):stripExt(cleanPath.split('/').pop()||folder.name);
-  const tags=first?.tags||{};
-  const book={
-    id:old?.id||uid(),title:old?.title||tags.album||title,author:old?.author||tags.artist||'',cover:old?.cover||tags.cover||'',
-    files:mergedFiles,srcPath:sourcePath,sourceFolderId:folder.id,added:old?.added||Date.now(),pos:old?.pos||{i:0,t:0},marks:old?.marks||[]
-  };
-  const idx=state.books.findIndex(b=>b.srcPath===sourcePath && b.sourceFolderId===folder.id);
-  if(idx>=0)state.books[idx]=book;else state.books.unshift(book);
-  await set('books',state.books);
-  if(state.screen==='shelf')render();
+function initNativeScanListeners(){
+  if(nativeScanListenersReady||!isNative())return; const P=plugin('ShelfFiles'); if(!P?.addListener)return; nativeScanListenersReady=true;
+  P.addListener('scanStarted',e=>{state.scan.active=true;state.scan.total=Number(e.totalFiles)||0;state.scan.processed=0;state.scan.books=0;state.scan.name=e.folderName||'Сканирование';updateScanDock()});
+  P.addListener('scanBook',async e=>{const folder=state.folders.find(f=>f.id===e.folderId);if(!folder)return;const fs=(e.files||[]).map(f=>({...f,folderId:e.folderId,folderName:e.folderName}));if(!fs.length)return;const files=fs.sort(naturalFile).map(toNativeFile);const first=files[0];const path=String(e.path||'');const title=path?path.split('/').pop():stripExt(first?.name||e.title||folder.name);const book={id:uid(),title:stripExt(e.title||title),author:'',cover:'',files,srcPath:`${folder.id}:${path}`,sourceFolderId:folder.id,added:Date.now(),pos:{i:0,t:0},marks:[]};state.books.unshift(book);state.scan.books++;await set('books',state.books);if(state.screen==='shelf')renderShelf();updateScanDock();});
+  P.addListener('scanProgress',e=>{state.scan.total=Number(e.totalFiles)||state.scan.total;state.scan.processed=Number(e.processedFiles)||0;state.scan.books=Number(e.books)||state.scan.books;updateScanDock()});
+  P.addListener('scanComplete',e=>{state.scan.total=Number(e.totalFiles)||state.scan.total;state.scan.processed=Number(e.processedFiles)||state.scan.total;state.scan.books=Number(e.books)||state.scan.books;updateScanDock();setTimeout(()=>{state.scan.active=false;render();showToast(`Добавлено книг: ${state.scan.books}`)},650)});
+  P.addListener('scanError',e=>{state.scan.active=false;render();showToast(e?.message||'Ошибка фонового сканирования')});
 }
-function renderScanFound(groups){const el=$('scanFound');if(!el)return;el.innerHTML=`<div class="section-title">Найдено</div>${groups.slice(0,40).map(([path,fs])=>`<div class="folder-card"><div class="setting-icon">${icon('music')}</div><div class="folder-info"><div class="folder-name">${escapeHtml(path.split('/').pop()||path)}</div><div class="folder-path">${fs.length} файлов · ${escapeHtml(path)}</div></div></div>`).join('')}`}
+function updateScanDock(){const el=$('scanDock');if(!el){if(state.scan.active&&state.screen==='shelf')renderShelf();return}const p=state.scan,pct=p.total?Math.min(100,p.processed/p.total*100):8;const bar=$('scanDockBar');if(bar)bar.style.width=pct+'%';const foot=el.querySelector('.scan-dock-foot');if(foot)foot.textContent=`${p.processed} из ${p.total||'…'} аудиофайлов`;const small=el.querySelector('small');if(small)small.textContent=`${p.name||'Сканирование'} · ${p.books} книг`;const strong=el.querySelector('.scan-dock-top>strong');if(strong)strong.textContent=Math.round(pct)+'%' }
+function renderScanFound(groups){const el=$('scanFound');if(!el)return;el.innerHTML=''}
+function groupScannedFiles(files){const byDir=new Map();for(const f of files){const rel=String(f.path||f.relativePath||f.name||'').replace(/^\/+|\/+$/g,'');const parts=rel.split('/').filter(Boolean);const dir=parts.length>1?parts.slice(0,-1).join('/'):'__root__';const a=byDir.get(dir)||[];a.push({...f,path:rel,relativePath:rel});byDir.set(dir,a)}return [...byDir.entries()];}
+async function mergeScan(groups,folder){return 0}
 function toNativeFile(f){return {uri:f.uri,name:stripExt(f.name),fileName:f.name,mime:f.mime||f.mimeType||'audio/*',size:Number(f.size)||0,modified:Number(f.modified||f.lastModified)||0,duration:Number(f.duration)||0,album:f.album||'',title:f.title||'',artist:f.artist||'',tags:{album:f.album||'',title:f.title||'',artist:f.artist||'',cover:f.cover||''},sound:{preset:'flat',volume:Number(state.settings.volume??1),bass:Number(state.settings.bass)||0,treble:Number(state.settings.treble)||0}}}
 function naturalFile(a,b){return a.name.localeCompare(b.name,'ru',{numeric:true,sensitivity:'base'})}
-async function nativeFileBlob(f){const P=plugin('ShelfFiles');const r=await P.readFile({uri:f.uri});const bin=atob(r.base64);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:f.mime||'audio/*'})}
+async function nativeFileBlob(f){if(f?.uri&&window.Capacitor?.convertFileSrc){const src=window.Capacitor.convertFileSrc(f.uri);try{const r=await fetch(src);if(r.ok)return await r.blob()}catch{}}const P=plugin('ShelfFiles');const r=await P.readFile({uri:f.uri});const bin=atob(r.base64);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:f.mime||'audio/*'})}
 async function readTags(blob){return new Promise(resolve=>{if(!window.jsmediatags)return resolve({});try{jsmediatags.read(blob,{onSuccess:x=>{let cover='';try{const p=x.tags?.picture;if(p){const bytes=new Uint8Array(p.data);let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);cover=`data:${p.format};base64,${btoa(binary)}`}}catch{}resolve({title:x.tags?.title||'',artist:x.tags?.artist||'',album:x.tags?.album||'',cover})},onError:()=>resolve({})})}catch{resolve({})}})}
 function stripExt(s=''){return s.replace(/\.[^.]+$/,'')}
 
@@ -409,7 +295,7 @@ function renderPlayer(){
     </div>
     <div class="visualizer-overlay hidden" id="visualizer" aria-hidden="true">
       <canvas id="visualizerCanvas"></canvas>
-      <div class="visualizer-head"><button class="icon-btn" id="visualizerClose">${icon('back')}</button><div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div></div>
+      <div class="visualizer-head"><button class="icon-btn visualizer-x" id="visualizerClose" aria-label="Закрыть">${icon('close')}</button><div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div></div>
       <div class="visualizer-center"><span>${icon('music')}</span><b>AudioShelf</b></div>
     </div>
   </section>`;
@@ -445,70 +331,32 @@ async function togglePlay(forcePlay=false){
   }catch(e){showToast('Не удалось изменить воспроизведение')}
 }
 const SOUND_PRESETS={
-  flat:{name:'Плоский',volume:1,bass:0,treble:0},
-  voice:{name:'Голос',volume:1,bass:-3,treble:5},
-  bass:{name:'Бас',volume:1,bass:7,treble:-1},
-  rock:{name:'Рок',volume:1,bass:4,treble:4},
-  classical:{name:'Классика',volume:1,bass:2,treble:3},
-  jazz:{name:'Джаз',volume:1,bass:3,treble:2},
-  night:{name:'Ночь',volume:.82,bass:-2,treble:-3}
+  flat:{name:'Плоский',gain:0,eq:[0,0,0,0,0,0,0,0,0,0]},
+  voice:{name:'Голос',gain:0,eq:[-3,-2,-1,2,4,5,4,2,1,0]},
+  bass:{name:'Бас',gain:0,eq:[6,5,4,2,0,-1,-2,-2,-1,0]},
+  rock:{name:'Рок',gain:0,eq:[4,3,2,-1,-2,1,3,4,4,3]},
+  classical:{name:'Классика',gain:0,eq:[3,2,1,0,-1,-1,1,2,3,3]},
+  jazz:{name:'Джаз',gain:0,eq:[3,2,1,0,-1,1,3,3,2,1]},
+  night:{name:'Ночь',gain:-2,eq:[-2,-1,0,1,2,1,0,-2,-3,-4]}
 };
-function ensureFileSound(f){
-  if(!f)return;
-  f.sound={preset:'flat',volume:Number(state.settings.volume??1),bass:Number(state.settings.bass)||0,treble:Number(state.settings.treble)||0,...(f.sound||{})};
-}
-function applyAudioSettings(){
-  const f=state.current?.files?.[state.currentIndex];
-  if(f){ensureFileSound(f);applyCurrentFileSound();return}
-  const volume=Math.max(0,Math.min(1,Number(state.settings.volume??1)));
-  if(gainNode)gainNode.gain.value=volume;
-  if(bassFilter)bassFilter.gain.value=Number(state.settings.bass)||0;
-  if(trebleFilter)trebleFilter.gain.value=Number(state.settings.treble)||0;
-  audio.volume=volume;
-}
-function applyCurrentFileSound(){
-  const f=state.current?.files?.[state.currentIndex];if(!f)return;
-  ensureFileSound(f);
-  const volume=Math.max(0,Math.min(1,Number(f.sound.volume??1)));
-  if(gainNode)gainNode.gain.value=volume;
-  if(bassFilter)bassFilter.gain.value=Number(f.sound.bass)||0;
-  if(trebleFilter)trebleFilter.gain.value=Number(f.sound.treble)||0;
-  audio.volume=volume;
-}
-function saveCurrentFileSound(){const f=state.current?.files?.[state.currentIndex];if(!f)return;ensureFileSound(f);set('books',state.books).catch(()=>{});applyCurrentFileSound()}
+function ensureFileSound(f){if(!f)return;f.sound={preset:'flat',volume:Number(state.settings.volume??1),gain:0,eq:[0,0,0,0,0,0,0,0,0,0],bass:Number(state.settings.bass)||0,treble:Number(state.settings.treble)||0,...(f.sound||{})};if(!Array.isArray(f.sound.eq)||f.sound.eq.length!==10)f.sound.eq=[0,0,0,0,0,0,0,0,0,0];}
+function applyAudioSettings(){const f=state.current?.files?.[state.currentIndex];if(f){ensureFileSound(f);applyCurrentFileSound();return}audio.volume=Math.max(0,Math.min(1,Number(state.settings.volume??1)))}
+function applyCurrentFileSound(){const f=state.current?.files?.[state.currentIndex];if(!f)return;ensureFileSound(f);const s=f.sound;audio.volume=Math.max(0,Math.min(1,Number(s.volume??1)));if(gainNode)gainNode.gain.value=1;eqFilters.forEach((filter,i)=>filter.gain.value=Number(s.eq[i])||0);}
+function saveCurrentFileSound(){set('books',state.books).catch(()=>{});applyCurrentFileSound()}
+function eqLabel(hz){return hz>=1000?(hz/1000)+'k':String(hz)}
 function openCurrentSound(){
-  const f=state.current?.files?.[state.currentIndex];if(!f)return;ensureFileSound(f);
-  const s=f.sound;
-  const presets=Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(p.name)}</b><small>${p.bass>0?'+':''}${p.bass} / ${p.treble>0?'+':''}${p.treble} dB</small></button>`).join('');
-  modalRoot.innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><h3>Звук · ${escapeHtml(f.name)}</h3><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="preset-grid">${presets}</div><div class="sound-setting"><div class="sound-head"><span>Громкость</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min=0 max=100 value="${Math.round(s.volume*100)}"></div><div class="sound-setting"><div class="sound-head"><span>Бас</span><b id="fileBassValue">${s.bass>0?'+':''}${s.bass} dB</b></div><input class="sound-range" id="fileBass" type="range" min=-12 max=12 value="${s.bass}"></div><div class="sound-setting"><div class="sound-head"><span>Высокие частоты</span><b id="fileTrebleValue">${s.treble>0?'+':''}${s.treble} dB</b></div><input class="sound-range" id="fileTreble" type="range" min=-12 max=12 value="${s.treble}"></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить файл</button></div></div></div>`;
+  const f=state.current?.files?.[state.currentIndex];if(!f)return;ensureFileSound(f);const s=f.sound;
+  const presets=Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(p.name)}</b><small>${p.eq.filter(x=>x>0).length?'объёмный':'нейтральный'}</small></button>`).join('');
+  const bands=EQ_BANDS.map((hz,i)=>`<div class="eq-band"><span>${eqLabel(hz)}</span><input type="range" min="-12" max="12" step="1" value="${Number(s.eq[i])||0}" data-eq="${i}" orient="vertical"><b id="eqv${i}">${(s.eq[i]>0?'+':'')}${s.eq[i]} dB</b></div>`).join('');
+  modalRoot.innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>Звук</h3><small>${escapeHtml(f.name)}</small></div><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="sound-label">Пресет</div><div class="preset-grid">${presets}</div><div class="sound-setting"><div class="sound-head"><span>Громкость файла</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="100" value="${Math.round(s.volume*100)}"></div><div class="eq-panel"><div class="sound-head"><span>10-полосный эквалайзер</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить эквалайзер</button></div></div></div>`;
   $('soundBack').onclick=e=>{if(e.target.id==='soundBack'||e.target.closest('[data-close]'))closeModal()};
-  document.querySelectorAll('[data-preset]').forEach(btn=>btn.onclick=()=>{const id=btn.dataset.preset,p=SOUND_PRESETS[id];Object.assign(s,{preset:id,volume:p.volume,bass:p.bass,treble:p.treble});applyCurrentFileSound();set('books',state.books);openCurrentSound()});
+  document.querySelectorAll('[data-preset]').forEach(btn=>btn.onclick=()=>{const id=btn.dataset.preset,p=SOUND_PRESETS[id];s.preset=id;s.eq=[...p.eq];applyCurrentFileSound();set('books',state.books);openCurrentSound()});
   $('fileVol').oninput=e=>{s.preset='custom';s.volume=Number(e.target.value)/100;$('fileVolValue').textContent=Math.round(s.volume*100)+'%';applyCurrentFileSound();set('books',state.books)};
-  $('fileBass').oninput=e=>{s.preset='custom';s.bass=Number(e.target.value);$('fileBassValue').textContent=(s.bass>0?'+':'')+s.bass+' dB';applyCurrentFileSound();set('books',state.books)};
-  $('fileTreble').oninput=e=>{s.preset='custom';s.treble=Number(e.target.value);$('fileTrebleValue').textContent=(s.treble>0?'+':'')+s.treble+' dB';applyCurrentFileSound();set('books',state.books)};
-  $('soundDefault').onclick=()=>{Object.assign(s,{preset:'flat',volume:1,bass:0,treble:0});applyCurrentFileSound();set('books',state.books);openCurrentSound()};
+  document.querySelectorAll('[data-eq]').forEach(inp=>inp.oninput=e=>{const i=Number(inp.dataset.eq);s.preset='custom';s.eq[i]=Number(e.target.value);const v=$('eqv'+i);if(v)v.textContent=(s.eq[i]>0?'+':'')+s.eq[i]+' dB';applyCurrentFileSound();set('books',state.books)});
+  $('soundDefault').onclick=()=>{s.preset='flat';s.eq=[0,0,0,0,0,0,0,0,0,0];s.volume=1;applyCurrentFileSound();set('books',state.books);openCurrentSound()};
 }
 async function ensureAudioGraph(){
-  if(!audioContext){
-    const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC)return;
-    audioContext=new AC();
-    audioSource=audioContext.createMediaElementSource(audio);
-    gainNode=audioContext.createGain();
-    bassFilter=audioContext.createBiquadFilter();
-    bassFilter.type='lowshelf'; bassFilter.frequency.value=180;
-    trebleFilter=audioContext.createBiquadFilter();
-    trebleFilter.type='highshelf'; trebleFilter.frequency.value=4200;
-    analyser=audioContext.createAnalyser();
-    analyser.fftSize=256;
-    analyser.smoothingTimeConstant=.82;
-    audioSource.connect(bassFilter);
-    bassFilter.connect(trebleFilter);
-    trebleFilter.connect(gainNode);
-    gainNode.connect(analyser);
-    analyser.connect(audioContext.destination);
-    applyAudioSettings();
-  }
+  if(!audioContext){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;audioContext=new AC();audioSource=audioContext.createMediaElementSource(audio);gainNode=audioContext.createGain();bassFilter=audioContext.createBiquadFilter();bassFilter.type='lowshelf';bassFilter.frequency.value=180;trebleFilter=audioContext.createBiquadFilter();trebleFilter.type='highshelf';trebleFilter.frequency.value=4200;eqFilters=EQ_BANDS.map((hz,i)=>{const f=audioContext.createBiquadFilter();f.type='peaking';f.frequency.value=hz;f.Q.value=1.05;f.gain.value=0;return f});analyser=audioContext.createAnalyser();analyser.fftSize=256;analyser.smoothingTimeConstant=.82;let node=audioSource;eqFilters.forEach(f=>{node.connect(f);node=f});node.connect(gainNode);gainNode.connect(analyser);analyser.connect(audioContext.destination);applyAudioSettings()}
   if(audioContext.state==='suspended')await audioContext.resume();
 }
 function bindPlayerSwipe(){
