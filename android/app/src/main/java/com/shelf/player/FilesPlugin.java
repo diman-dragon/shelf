@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
+import android.media.MediaMetadataRetriever;
 import android.util.Base64;
 
 import java.io.ByteArrayOutputStream;
@@ -202,6 +203,7 @@ public class FilesPlugin extends Plugin {
                 file.put("mimeType", mime);
                 file.put("size", size);
                 file.put("lastModified", modified);
+                addMetadata(file, documentUri);
                 result.put(file);
             }
         } catch (Exception ignored) {
@@ -264,6 +266,7 @@ public class FilesPlugin extends Plugin {
                     file.put("mimeType", mime);
                     file.put("size", size);
                     file.put("lastModified", modified);
+                    addMetadata(file, childUri);
                     result.put(file);
                 }
             }
@@ -272,6 +275,28 @@ public class FilesPlugin extends Plugin {
             if (cursor != null) {
                 cursor.close();
             }
+        }
+    }
+
+    private void addMetadata(JSObject file, Uri uri) {
+        MediaMetadataRetriever r = new MediaMetadataRetriever();
+        try {
+            r.setDataSource(getContext(), uri);
+            String title = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
+            String album = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
+            String artist = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
+            String duration = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (title != null) file.put("title", title);
+            if (album != null) file.put("album", album);
+            if (artist != null) file.put("artist", artist);
+            if (duration != null) {
+                try { file.put("duration", Long.parseLong(duration) / 1000.0); } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {
+            // Some document providers do not expose metadata. The JS side then
+            // treats the file as a standalone audiobook.
+        } finally {
+            try { r.release(); } catch (Exception ignored) {}
         }
     }
 
