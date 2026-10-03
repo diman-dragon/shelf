@@ -5,7 +5,7 @@
   "description": "Аудиокниги — локальный проигрыватель аудиокниг",
   "dependencies": {
     "@capacitor/android": "^6.2.0",
-    "@capacitor/cli": "^6.2.0",
+    "@capacitor/cli": "^8.4.3",
     "@capacitor/core": "^6.2.0",
     "idb-keyval": "6.2.1",
     "jsmediatags": "3.9.7"
