@@ -226,7 +226,7 @@ public class FilesPlugin extends Plugin {
         try {
             String docId = DocumentsContract.getDocumentId(documentUri);
             Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
-            dirs = getContentResolver().query(children,
+            dirs = getContext().getContentResolver().query(children,
                 new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null,
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC");
             if (dirs == null) return;
