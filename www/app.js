@@ -191,9 +191,20 @@ function folderRow(f){const on=state.selectedFolderIds.includes(f.id);return `<d
 async function toggleFolder(id){if(state.selectedFolderIds.includes(id))state.selectedFolderIds=state.selectedFolderIds.filter(x=>x!==id);else state.selectedFolderIds.push(id);await set('foldersSelected',state.selectedFolderIds);openFolderSheet()}
 async function pickFolder(){
   const P=plugin('ShelfFiles');
-  if(!P){showToast('Выбор папки доступен в Android-версии');return}
-  try{const f=await P.pickFolder();if(!f?.uri)return;let old=state.folders.find(x=>x.uri===f.uri);if(!old){old={id:uid(),name:f.name||'Музыка',uri:f.uri};state.folders.push(old)}if(!state.selectedFolderIds.includes(old.id))state.selectedFolderIds.push(old.id);await persist();openFolderSheet();showToast('Папка добавлена')}
-  catch(e){if(!String(e?.message||e).includes('Отмена'))showToast(e?.message||'Не удалось выбрать папку')}
+  if(!P){showToast('Модуль доступа к папкам не загружен');return}
+  try{
+    const f=await P.pickFolder();
+    if(!f?.uri)return;
+    let old=state.folders.find(x=>x.uri===f.uri);
+    if(!old){old={id:uid(),name:f.name||'Музыка',uri:f.uri};state.folders.push(old)}
+    if(!state.selectedFolderIds.includes(old.id))state.selectedFolderIds.push(old.id);
+    await persist();
+    openFolderSheet();
+    showToast('Папка добавлена');
+  }catch(e){
+    console.error('ShelfFiles.pickFolder',e);
+    showToast(e?.message||e?.errorMessage||'Не удалось выбрать папку');
+  }
 }
 async function scanAllFolders(silent=false){
   const P=plugin('ShelfFiles');if(!P){showToast('Сканирование папок доступно в Android-версии');return}

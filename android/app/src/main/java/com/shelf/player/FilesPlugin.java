@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.database.Cursor;
 import android.util.Base64;
+import com.getcapacitor.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -25,29 +26,29 @@ public class FilesPlugin extends Plugin {
 
   @PluginMethod
   public void pickFolder(PluginCall call) {
-    pendingPick = call;
     Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
     i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
       | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
       | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
-    getActivity().startActivityForResult(i, PICK_TREE);
+    startActivityForResult(call, i, "folderPickerResult");
   }
 
-  @Override
-  protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
-    super.handleOnActivityResult(requestCode, resultCode, data);
-    if (requestCode != PICK_TREE || pendingPick == null) return;
-    PluginCall call = pendingPick;
-    pendingPick = null;
-    if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+  @com.getcapacitor.annotation.ActivityCallback
+  private void folderPickerResult(PluginCall call, ActivityResult result) {
+    if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null
+        || result.getData().getData() == null) {
       call.reject("Отмена");
       return;
     }
+
+    Intent data = result.getData();
     Uri uri = data.getData();
     try {
       int takeFlags = data.getFlags() &
         (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-      getContext().getContentResolver().takePersistableUriPermission(uri, takeFlags);
+      if (takeFlags != 0) {
+        getContext().getContentResolver().takePersistableUriPermission(uri, takeFlags);
+      }
     } catch (Exception ignored) { }
 
     JSObject r = new JSObject();
