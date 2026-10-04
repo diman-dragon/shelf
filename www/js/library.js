@@ -13,7 +13,15 @@ export function renderShelf(){
   const totalBooks = state.books.length;
   let totalProg = 0;
   if(totalBooks > 0) {
-    const sum = state.books.reduce((acc, b) => acc + progress(b, audioTime), 0);
+    const sum = state.books.reduce((acc, b) => {
+      const isCurrent = state.current && state.current.id === b.id;
+      if(!isCurrent && b.cachedProgress !== undefined){
+        return acc + b.cachedProgress;
+      }
+      const p = progress(b, audioTime);
+      if(!isCurrent) b.cachedProgress = p;
+      return acc + p;
+    }, 0);
     totalProg = Math.round(sum / totalBooks);
   }
   const subtitle = `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${totalBooks} ${plural(totalBooks,'книга','книги','книг')} &middot; Общий прогресс: ${totalProg}%</span>`;
@@ -36,14 +44,21 @@ export function renderShelf(){
 }
 
 export function libraryBookRow(b, audioTime = null){
-  const prog = progress(b, audioTime);
+  const isCurrent = state.current && state.current.id === b.id;
+  const prog = (!isCurrent && b.cachedProgress !== undefined) ? b.cachedProgress : (() => {
+    const p = progress(b, audioTime);
+    if(!isCurrent) b.cachedProgress = p;
+    return p;
+  })();
+  if(b.fileCount === undefined) b.fileCount = b.files?.length ?? 0;
+  if(b.totalDuration === undefined) b.totalDuration = durationOfBook(b);
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}">
     <div class="lib-row-main">
       <div class="lib-thumb">${bookCover(b)}</div>
       <div class="lib-info">
         <div class="lib-title">${escapeHtml(b.title)}</div>
         <div class="lib-author">${escapeHtml(b.author||'Автор не указан')}</div>
-        <div class="lib-meta">${b.files.length} ${plural(b.files.length,'глава','главы','глав')} &middot; ${fmt(durationOfBook(b))}</div>
+        <div class="lib-meta">${b.fileCount} ${plural(b.fileCount,'глава','главы','глав')} &middot; ${fmt(b.totalDuration)}</div>
       </div>
     </div>
     <div class="lib-progress-line"><i style="width:${prog}%"></i></div>
@@ -61,7 +76,11 @@ export function sortBooks(books){
   const s = state.librarySort;
   if(s === 'title') copy.sort((a,b) => (a.title||'').localeCompare(b.title||'', 'ru'));
   else if(s === 'author') copy.sort((a,b) => (a.author||'').localeCompare(b.author||'', 'ru'));
-  else if(s === 'duration') copy.sort((a,b) => durationOfBook(b) - durationOfBook(a));
+  else if(s === 'duration') copy.sort((a,b) => {
+    const da = a.totalDuration ?? (a.totalDuration = durationOfBook(a));
+    const db = b.totalDuration ?? (b.totalDuration = durationOfBook(b));
+    return db - da;
+  });
   else copy.sort((a,b) => (b.added||0) - (a.added||0));
   return copy;
 }
