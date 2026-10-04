@@ -531,7 +531,7 @@ button, .icon-btn, .tool, .control, .play-main, .nav-item, [data-action], [data-
   -webkit-tap-highlight-color: transparent;
 }
 #modalRoot:empty { pointer-events: none !important; display: contents; }
-.hidden { display: none !important; }
+.hidden { display: none !important; pointer-events: none !important; }
 
 @media (min-width: 700px) {
   #app { max-width: 520px; margin: 0 auto; box-shadow: 0 0 70px rgba(0,0,0,0.5); }

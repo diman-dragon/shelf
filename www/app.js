@@ -39,7 +39,10 @@ async function loadState(){
   }
 }
 
+let appInitialized = false;
 async function initApp(){
+  if(appInitialized) return;
+  appInitialized = true;
   state.selectedFolderIds = (await get?.('foldersSelected')) || [];
   document.querySelectorAll('.nav-ico').forEach(n => {
     n.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`;
@@ -50,8 +53,11 @@ async function initApp(){
 
 if(window.Capacitor){
   document.addEventListener('deviceready', initApp, {once: true});
-} else if(document.readyState === 'loading'){
+  setTimeout(initApp, 300);
+}
+
+if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', initApp, {once: true});
 } else {
-  initApp();
+  setTimeout(initApp, 50);
 }

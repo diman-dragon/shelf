@@ -139,7 +139,7 @@
   display: flex;
   flex-direction: column;
 }
-.side-panel.hidden { display: none; }
+.side-panel.hidden { display: none !important; pointer-events: none !important; }
 .side-panel-head {
   display: flex;
   align-items: center;
@@ -209,7 +209,7 @@
   overflow: hidden;
   touch-action: pan-y;
 }
-.visualizer-overlay.hidden { display: none; }
+.visualizer-overlay.hidden { display: none !important; pointer-events: none !important; }
 .visualizer-overlay canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .visualizer-head {
   position: absolute;
