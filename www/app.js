@@ -1,8 +1,12 @@
 /* app.js — Main Application Entry Point */
 import { state, ICONS, DEFAULT_PLAYLISTS, isNative } from './js/state.js';
 import { readLastPlayback } from './js/storage.js';
-import { render, bindNav, showToast } from './js/ui.js';
+import { render, bindNav, showToast, setScreen } from './js/ui.js';
+import { closeModal } from './js/ui-utils.js';
+import { closeQueuePanel } from './js/player.js';
+import { closeVisualizer } from './js/visualizer.js';
 import { initNativeScanListeners, scanAllFolders } from './js/scanner.js';
+import { App } from '@capacitor/app';
 
 const { get, set } = window.idbKeyval || {};
 
@@ -16,6 +20,33 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('[Unhandled Rejection]', event.reason);
   try { showToast(`Ошибка: ${event.reason?.message || 'Сбой операции'}`); } catch {}
 });
+
+// Native Android Back Button handling
+if(isNative()){
+  App.addListener('backButton', () => {
+    const modalBack = document.getElementById('modalBack');
+    const queuePanel = document.getElementById('queuePanel');
+    const visualizer = document.getElementById('visualizer');
+
+    if(modalBack || (window.modalRoot && window.modalRoot.innerHTML !== '')){
+      closeModal();
+      return;
+    }
+    if(queuePanel && !queuePanel.classList.contains('hidden')){
+      closeQueuePanel();
+      return;
+    }
+    if(visualizer && !visualizer.classList.contains('hidden')){
+      closeVisualizer();
+      return;
+    }
+    if(state.screen !== 'shelf'){
+      setScreen('shelf');
+      return;
+    }
+    App.minimizeApp();
+  });
+}
 
 async function loadState(){
   try {

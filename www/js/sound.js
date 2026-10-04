@@ -5,6 +5,8 @@ import { closeModal } from './ui.js';
 
 export const audio = new Audio();
 audio.preload = 'auto';
+audio.volume = 1;
+audio.muted = false;
 
 export let audioContext = null;
 let audioSource = null;

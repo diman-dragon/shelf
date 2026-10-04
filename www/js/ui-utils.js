@@ -38,7 +38,8 @@ export function bookCover(b, extra=''){
   const title = escapeHtml(b.title || 'Без названия');
   const author = escapeHtml(b.author || '');
   const body = b.cover ?
-    `<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" loading="lazy" draggable="false">` :
+    `<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" loading="lazy" draggable="false" onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex'">` +
+    `<div class="fallback-cover ${extra}" style="display:none"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>` :
     `<div class="fallback-cover ${extra}"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>`;
   return `<div class="cover-frame">${body}</div>`;
 }
