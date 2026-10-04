@@ -14,7 +14,6 @@ async function loadState(){
     state.playlists = (await get?.('playlists')) || [];
     const settings = await get?.('settings');
     if(settings) state.settings = {...state.settings, ...settings};
-    if(Number(state.settings.volume) > 1) state.settings.volume = Number(state.settings.volume) / 100;
   } catch {}
 
   document.documentElement.dataset.theme = state.settings.theme || 'dark';

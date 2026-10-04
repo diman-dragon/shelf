@@ -1,7 +1,7 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
-import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative, main } from './state.js';
+import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative } from './state.js';
 import { persist, writeLastPlayback } from './storage.js';
-import { showToast, closeModal, openModal, bookCover, render } from './ui.js';
+import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying } from './ui.js';
 import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound } from './sound.js';
 import { openBookMenu } from './library.js';
 
@@ -245,20 +245,9 @@ export function miniProgress(){
 }
 
 export function updateMiniPlayer(){
+  // Mini-player removed: progress is shown under screen title instead
   const el = $('miniPlayer');
-  if(!el) return;
-  if(!state.current || state.screen === 'player'){ el.classList.add('hidden'); return; }
-  const b = state.current, f = b.files[state.currentIndex] || {};
-  el.classList.remove('hidden');
-  if(el.dataset.bookId !== b.id){
-    el.dataset.bookId = b.id;
-    el.innerHTML = `<button class="mini-main" id="miniOpen">${bookCover(b,'mini-cover')}<span class="mini-copy"><b>${escapeHtml(b.title)}</b><small>${escapeHtml(f.name||'')}</small></span><span class="mini-play" id="miniPlay">${icon(state.playing?'pause':'play')}</span></button><div class="mini-progress"><i></i></div>`;
-    $('miniOpen').onclick = () => openPlayer(b.id);
-    $('miniPlay').onclick = e => { e.stopPropagation(); togglePlay(); };
-  }
-  const i = $('miniPlay'); if(i) i.innerHTML = icon(state.playing ? 'pause' : 'play');
-  const label = el.querySelector('.mini-copy small'); if(label) label.textContent = f.name || '';
-  const bar = el.querySelector('.mini-progress i'); if(bar) bar.style.width = `${miniProgress()}%`;
+  if(el) el.classList.add('hidden');
 }
 
 audio.addEventListener('play', async () => { state.playing = true; updatePlayerUI(); await saveProgress(); setMediaSession(); });
@@ -269,6 +258,7 @@ audio.addEventListener('timeupdate', () => {
   state.currentPos = audio.currentTime;
   state.current.pos = {i: state.currentIndex, t: audio.currentTime};
   updatePlayerUI();
+  updateHeaderNowPlaying();
   const sec = Math.floor(audio.currentTime);
   if(sec !== lastSavedSecond && sec % 5 === 0){ lastSavedSecond = sec; scheduleProgressSave(); }
 });

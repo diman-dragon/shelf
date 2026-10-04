@@ -1,14 +1,13 @@
 /* ui.js — UI helpers, Modals, Settings, Playlists, Filters */
-import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $, main, modalRoot } from './state.js';
+import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $ } from './state.js';
 import { persist } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
-import { applyAudioSettings } from './sound.js';
+import { applyAudioSettings, audio } from './sound.js';
 import { openPlayer } from './player.js';
 import { renderShelf } from './library.js';
 import { renderPlayer, loadChapter, updateMiniPlayer } from './player.js';
 
 let toastTimer;
-let navDelegationReady = false;
 
 export function showToast(msg){
   clearTimeout(toastTimer);
@@ -29,7 +28,57 @@ export function openModal(body){
 export function closeModal(){ modalRoot.innerHTML = ''; }
 
 export function header(title, subtitle, actions=''){
-  return `<div class="topbar"><div><h2>${title}</h2>${subtitle?`<p>${subtitle}</p>`:''}</div><div class="top-actions">${actions}</div></div>`;
+  // Under title: if a book is active and we are not on player screen — show compact now-playing progress
+  let subHtml = '';
+  if(state.current && state.screen !== 'player'){
+    const b = state.current;
+    const pct = nowPlayingPct();
+    subHtml = `<div class="now-playing" id="headerNowPlaying" data-book-id="${escapeHtml(b.id)}">
+      <span class="now-playing-ico">${icon('book')}</span>
+      <div class="now-playing-track" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100">
+        <i style="width:${pct}%"></i>
+      </div>
+      <span class="now-playing-title">${escapeHtml(b.title||'')}</span>
+    </div>`;
+  } else if(subtitle){
+    subHtml = `<p>${subtitle}</p>`;
+  }
+  return `<div class="topbar"><div class="topbar-main"><h2>${title}</h2>${subHtml}</div><div class="top-actions">${actions}</div></div>`;
+}
+
+/** Current chapter progress 0–100 for header bar */
+export function nowPlayingPct(){
+  if(!state.current) return 0;
+  const b = state.current;
+  const i = Math.max(0, Math.min(state.currentIndex, (b.files||[]).length-1));
+  const f = b.files?.[i];
+  let d = 0, t = Number(state.currentPos) || 0;
+  try {
+    if(audio && Number(audio.duration) > 0) d = Number(audio.duration);
+    if(audio && Number.isFinite(audio.currentTime)) t = Number(audio.currentTime);
+  } catch {}
+  if(!d) d = Number(f?.duration) || 0;
+  return d > 0 ? Math.max(0, Math.min(100, (t / d) * 100)) : 0;
+}
+
+export function updateHeaderNowPlaying(){
+  const el = $('headerNowPlaying');
+  if(!el || !state.current) return;
+  const pct = nowPlayingPct();
+  const bar = el.querySelector('.now-playing-track i');
+  if(bar) bar.style.width = pct + '%';
+  const track = el.querySelector('.now-playing-track');
+  if(track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
+  const title = el.querySelector('.now-playing-title');
+  if(title && title.textContent !== (state.current.title||'')) title.textContent = state.current.title || '';
+}
+
+function bindHeaderNowPlaying(){
+  const el = $('headerNowPlaying');
+  if(!el) return;
+  el.onclick = () => {
+    if(state.current) openPlayer(state.current.id);
+  };
 }
 
 export function bookCover(b, extra=''){
@@ -50,21 +99,32 @@ export function progress(b){
   return Math.max(0, Math.min(100, ((i + (d ? t/d : 0)) / files.length) * 100));
 }
 
+let navBound = false;
+
 export function bindNav(){
-  if(navDelegationReady) return;
-  const root = $('app');
-  if(!root) return;
-  navDelegationReady = true;
-  root.addEventListener('click', e => {
-    const nav = e.target.closest('[data-nav]');
-    if(nav){ e.preventDefault(); setScreen(nav.dataset.nav); return; }
-    const action = e.target.closest('[data-action]');
-    if(action){
-      e.preventDefault();
-      const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[action.dataset.action];
-      if(fn) fn();
+  // Bottom nav lives outside #main — bind once with pointer + click for reliable mobile taps
+  if(!navBound){
+    navBound = true;
+    const nav = document.querySelector('.bottom-nav');
+    if(nav){
+      const go = (el) => {
+        const btn = el.closest('[data-nav]');
+        if(!btn) return;
+        setScreen(btn.dataset.nav);
+      };
+      nav.addEventListener('click', e => go(e.target), {passive:true});
+      nav.addEventListener('pointerup', e => {
+        if(e.pointerType === 'touch' || e.pointerType === 'pen') go(e.target);
+      }, {passive:true});
     }
-  }, {passive:false});
+  }
+  // Actions inside current screen (recreated on each render)
+  document.querySelectorAll('[data-action]').forEach(b => {
+    const a = b.dataset.action;
+    const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[a];
+    if(fn) b.onclick = fn;
+  });
+  bindHeaderNowPlaying();
 }
 
 export function setScreen(screen){
@@ -191,17 +251,19 @@ export function renderSettings(){
   $('formats').onclick = () => showToast('Поддерживаются MP3, M4A, M4B, AAC, OGG, OPUS, FLAC, WAV и WMA');
   $('themeSetting').onclick = toggleTheme;
   $('coverSize').onclick = cycleCoverSize;
-  const bindSound = (id, key, format, apply) => {
+  const bindSound = (id, key, format, apply, scale = 1) => {
     const el = $(id);
     if(!el) return;
     el.oninput = async e => {
-      state.settings[key] = key === 'volume' ? Number(e.target.value) / 100 : Number(e.target.value);
+      const raw = Number(e.target.value);
+      state.settings[key] = scale === 100 ? raw / 100 : raw;
       $(id.replace('Range','Value')).textContent = format(state.settings[key]);
-      apply(state.settings[key]);
+      apply();
       await persist();
     };
   };
-  bindSound('volumeRange','volume', v=>`${Math.round(v*100)}%`, applyAudioSettings);
+  // volume slider is 0–100 UI, state stores 0–1
+  bindSound('volumeRange','volume', v=>`${Math.round(v*100)}%`, applyAudioSettings, 100);
   bindSound('bassRange','bass', v=>`${v>0?'+':''}${v} dB`, applyAudioSettings);
   bindSound('trebleRange','treble', v=>`${v>0?'+':''}${v} dB`, applyAudioSettings);
   $('soundReset').onclick = async () => { state.settings.volume=1; state.settings.bass=0; state.settings.treble=0; applyAudioSettings(); await persist(); renderSettings(); };

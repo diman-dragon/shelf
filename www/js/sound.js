@@ -1,6 +1,7 @@
 /* sound.js — Web Audio API, Equalizer, Sound Enhancements */
-import { state, icon, escapeHtml, $, modalRoot } from './state.js';
+import { state, icon, escapeHtml } from './state.js';
 import { persist } from './storage.js';
+import { closeModal } from './ui.js';
 
 export const audio = new Audio();
 audio.preload = 'metadata';
@@ -36,7 +37,6 @@ export function ensureFileSound(f){
     treble:Number(state.settings.treble)||0,
     ...(f.sound||{})
   };
-  if(f.sound.volume > 1) f.sound.volume = f.sound.volume / 100;
   if(!Array.isArray(f.sound.eq) || f.sound.eq.length!==10) f.sound.eq=[0,0,0,0,0,0,0,0,0,0];
 }
 
@@ -44,10 +44,15 @@ export function applyAudioSettings(){
   const f = state.current?.files?.[state.currentIndex];
   if(f){
     ensureFileSound(f);
+    // keep file-level volume, but apply global bass/treble
+    f.sound.bass = Number(state.settings.bass) || 0;
+    f.sound.treble = Number(state.settings.treble) || 0;
     applyCurrentFileSound();
     return;
   }
   audio.volume = Math.max(0, Math.min(1, Number(state.settings.volume ?? 1)));
+  if(bassFilter) bassFilter.gain.value = Number(state.settings.bass) || 0;
+  if(trebleFilter) trebleFilter.gain.value = Number(state.settings.treble) || 0;
 }
 
 export function applyCurrentFileSound(){
@@ -55,10 +60,10 @@ export function applyCurrentFileSound(){
   if(!f) return;
   ensureFileSound(f);
   const s = f.sound;
-  audio.volume = Math.max(0, Math.min(1, Number(s.volume ?? 1)));
-  if(gainNode) gainNode.gain.value = Math.pow(10, Number(s.gain || 0) / 20);
-  if(bassFilter) bassFilter.gain.value = Number(s.bass) || 0;
-  if(trebleFilter) trebleFilter.gain.value = Number(s.treble) || 0;
+  audio.volume = Math.max(0, Math.min(1, Number(s.volume ?? state.settings.volume ?? 1)));
+  if(gainNode) gainNode.gain.value = 1;
+  if(bassFilter) bassFilter.gain.value = Number(s.bass ?? state.settings.bass) || 0;
+  if(trebleFilter) trebleFilter.gain.value = Number(s.treble ?? state.settings.treble) || 0;
   eqFilters.forEach((filter, i) => filter.gain.value = Number(s.eq[i]) || 0);
 }
 
@@ -113,10 +118,11 @@ export async function ensureAudioGraph(){
       return f;
     });
     analyser = audioContext.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = .82;
+    // Chain: source -> bass -> treble -> EQ bands -> gain -> analyser -> destination
     let node = audioSource;
-    if(bassFilter){ node.connect(bassFilter); node = bassFilter; }
+    node.connect(bassFilter); node = bassFilter;
+    node.connect(trebleFilter); node = trebleFilter;
     eqFilters.forEach(f => { node.connect(f); node = f; });
-    if(trebleFilter){ node.connect(trebleFilter); node = trebleFilter; }
     node.connect(gainNode);
     gainNode.connect(analyser);
     analyser.connect(audioContext.destination);
@@ -124,4 +130,3 @@ export async function ensureAudioGraph(){
   }
   if(audioContext.state === 'suspended') await audioContext.resume();
 }
-import { closeModal } from './ui.js';

@@ -1,35 +1,30 @@
-# Shelf — Capacitor
+# AudioShelf — только изменённые файлы
 
-Единственная реализация приложения: Capacitor (`www/` + `android/`).
+Положите поверх существующего проекта (сохраняя пути).
 
-## Локальный запуск
+## Изменения
 
-```bash
-npm install
-npx cap sync android
-npx cap open android
-```
+### Мобильные кнопки
+- Нижняя навигация: `position: fixed`, `touch-action: manipulation`
+- Привязка nav **один раз** (делегирование click + pointerup), без пересоздания обработчиков на каждый render
+- Иконки `pointer-events: none`, увеличенные hit-area у `.nav-item`
 
-Для сборки APK:
+### Прогресс вместо mini-player
+- Mini-player скрыт на всех экранах
+- Под заголовком (Библиотека / Плейлисты / Настройки): иконка книги + кликабельная полоска прогресса текущей главы + название
+- Клик по полоске/строке → открывает плеер
+- Если ничего не играет — как раньше (обычный подзаголовок)
+- На экране «Плеер» этой строки нет
 
-```bash
-npm install
-npm run android:build
-```
+### Ранее
+- Батчинг скана (только URI, без записи IDB/рендера на каждую книгу)
+- Громкость 0–1, бас/высокие реально в Web Audio
+- scanDock отображается
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
-
-## GitHub Actions
-
-Workflow `.github/workflows/android.yml` автоматически собирает debug APK при push/PR в `main` или `master`, а также вручную через **Actions → Android APK → Run workflow**.
-
-После сборки APK доступен в **Actions → workflow run → Artifacts → shelf-debug-apk**.
-
-CI устанавливает Node.js 22, Java 21, выполняет `npm install`, `npx cap sync android` и `./gradlew assembleDebug`.
-
-
-## GitHub Actions
-
-Workflow: `.github/workflows/android.yml`. It installs Node 22 and Java 21, runs `npm install`, synchronizes Capacitor, verifies the Gradle wrapper, and builds `app-debug.apk`. The APK is published as the `shelf-debug-apk` artifact.
-
-The repository intentionally contains only the Capacitor application (`www/` + `android/`).
+Файлы:
+- www/js/ui.js
+- www/js/player.js
+- www/js/scanner.js
+- www/js/library.js
+- www/js/sound.js
+- www/styles.css
