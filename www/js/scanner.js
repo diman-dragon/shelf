@@ -3,6 +3,7 @@ import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot } 
 import { persist } from './storage.js';
 import { openModal, closeModal, showToast, render } from './ui.js';
 import { renderShelf } from './library.js';
+import { audio } from './sound.js';
 
 const { get, set } = window.idbKeyval || {};
 let nativeScanListenersReady = false;

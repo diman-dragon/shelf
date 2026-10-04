@@ -4,7 +4,7 @@ import { persist } from './storage.js';
 import { showToast, closeModal, openModal, header, iconBtn, bookCover, progress, render } from './ui.js';
 import { openPlayer } from './player.js';
 import { openPlaylistChooser } from './ui.js';
-import { openFolderSheet, scanDock } from './scanner.js';
+import { openFolderSheet, scanDock, openAddSheet } from './scanner.js';
 import { audio } from './sound.js';
 
 let libraryDisplayLimit = 50;
