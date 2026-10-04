@@ -1,0 +1,398 @@
+/* player.js — Player screen, Audio playback, Chapters, Visualizer */
+import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative } from './state.js';
+import { persist, writeLastPlayback } from './storage.js';
+import { showToast, closeModal, openModal, bookCover, render } from './ui.js';
+import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound } from './sound.js';
+import { openBookMenu } from './library.js';
+
+const { get, set } = window.idbKeyval || {};
+let visualizerFrame = 0;
+let visualizerOpen = false;
+let progressSaveTimer = null;
+let lastSavedSecond = -1;
+
+export async function openPlayer(id){
+  const b = state.books.find(x => x.id === id);
+  if(!b) return;
+  if(state.current?.id === b.id){
+    state.screen = 'player';
+    render();
+    if(!state.blobUrl) await loadChapter(state.currentIndex, state.currentPos, false);
+    return;
+  }
+  if(state.current) await saveProgress();
+  state.current = b;
+  state.playing = false;
+  state.currentIndex = Math.max(0, Math.min(Number(b.pos?.i)||0, b.files.length-1));
+  const saved = Number(b.pos?.t) || 0;
+  state.currentPos = saved > 0 ? Math.max(0, saved - 10) : 0;
+  state.screen = 'player';
+  render();
+  await loadChapter(state.currentIndex, state.currentPos, false);
+  updateMiniPlayer();
+}
+
+export function renderPlayer(){
+  const b = state.current;
+  if(!b) return;
+  const i = Math.min(state.currentIndex, b.files.length-1);
+  const f = b.files[i];
+
+  main.innerHTML = `<section class="player" id="playerScreen">
+    <div class="player-inner">
+      <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="icon-btn" id="playerBack">${icon('back')}</button><div><h2>Плеер</h2></div></div><div class="top-actions"><button class="icon-btn" id="playerMark">${icon('bookmark')}</button><button class="icon-btn" id="playerMore">${icon('more')}</button></div></div>
+      <div class="player-cover" id="playerCover">${bookCover(b)}</div>
+      <div class="player-title">${escapeHtml(b.title)}</div>
+      <div class="player-author">${escapeHtml(b.author||'Автор не указан')}</div>
+      <div class="chapter">Глава ${i+1} из ${b.files.length} · ${escapeHtml(f.name)}</div>
+      <div class="seek"><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Позиция воспроизведения"></div>
+      <div class="time-row"><span id="curTime">0:00</span><span id="durTime">${fmt(f.duration)}</span></div>
+      <div class="controls">
+        <button class="control" id="prevBtn" aria-label="Предыдущая глава">${icon('prev')}</button>
+        <button class="control" id="backBtn" aria-label="Назад 15 секунд">${icon('rewind')}</button>
+        <button class="play-main" id="playBtn" aria-label="Воспроизведение">${icon(state.playing?'pause':'play')}</button>
+        <button class="control" id="forwardBtn" aria-label="Вперёд 30 секунд">${icon('forward')}</button>
+        <button class="control" id="nextBtn" aria-label="Следующая глава">${icon('next')}</button>
+      </div>
+      <div class="player-tools"><button class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>Скорость</button><button class="tool" id="sleepBtn"><strong>◷</strong>Таймер</button><button class="tool" id="queueBtn"><strong>☷</strong>Очередь</button><button class="tool" id="soundBtn"><strong>♫</strong>Звук</button></div>
+      <div class="chapter-list" id="chapterList">${chapterRows(b)}</div>
+      <div class="swipe-hint">Свайп вправо — визуализатор</div>
+    </div>
+    <div class="visualizer-overlay hidden" id="visualizer" aria-hidden="true">
+      <canvas id="visualizerCanvas"></canvas>
+      <div class="visualizer-head"><button class="icon-btn visualizer-x" id="visualizerClose" aria-label="Закрыть">${icon('close')}</button><div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div></div>
+      <div class="visualizer-center"><span>${icon('music')}</span><b>AudioShelf</b></div>
+    </div>
+  </section>`;
+
+  $('playerBack').onclick = closePlayer;
+  $('playBtn').onclick = () => togglePlay();
+  $('prevBtn').onclick = prevTrack;
+  $('nextBtn').onclick = nextTrack;
+  $('backBtn').onclick = () => seekBy(-15);
+  $('forwardBtn').onclick = () => seekBy(30);
+  $('seek').oninput = e => { if(audio.duration) audio.currentTime = audio.duration * (+e.target.value/1000); };
+  $('speedBtn').onclick = cycleSpeed;
+  $('sleepBtn').onclick = setSleep;
+  $('soundBtn').onclick = openCurrentSound;
+  $('playerMark').onclick = addBookmark;
+  $('queueBtn').onclick = () => showToast('Очередь следует за порядком глав');
+  $('playerMore').onclick = () => openBookMenu(b.id);
+  document.querySelectorAll('[data-chapter]').forEach(el => el.onclick = () => loadChapter(+el.dataset.chapter, 0, true));
+  document.querySelectorAll('[data-mark]').forEach(el => el.onclick = () => {
+    const m = b.marks?.[+el.dataset.mark];
+    if(m) loadChapter(m.i, m.t, true);
+  });
+  bindPlayerSwipe();
+  updatePlayerUI();
+}
+
+export function chapterRows(b){
+  let out = '';
+  (b.marks || []).forEach((m,k)=>{
+    out += `<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||'Глава')} · ${fmt(m.t)}</span><span>›</span></div>`;
+  });
+  b.files.forEach((f,i)=>{
+    out += `<div class="chapter-row ${i===state.currentIndex?'current':''}" data-chapter="${i}"><span>${i+1}. ${escapeHtml(f.name)}</span><span>${i===state.currentIndex?(state.playing?'▶':'Ⅱ'):fmt(f.duration)}</span></div>`;
+  });
+  return out;
+}
+
+export async function loadChapter(i, t=0, autoplay=true){
+  const b = state.current;
+  if(!b || !b.files[i]) return;
+  state.currentIndex = i;
+  state.currentPos = t || 0;
+  const f = b.files[i];
+  try {
+    if(f.key){
+      const blob = await get?.(f.key);
+      if(!blob){ showToast('Файл недоступен'); return; }
+      if(state.blobUrl) URL.revokeObjectURL(state.blobUrl);
+      state.blobUrl = URL.createObjectURL(blob);
+      audio.src = state.blobUrl;
+    } else if(f.uri){
+      audio.src = isNative() ? window.Capacitor.convertFileSrc(f.uri) : f.uri;
+    } else {
+      showToast('Файл недоступен');
+      return;
+    }
+  } catch(e) {
+    console.error('Audio load error:', e);
+    showToast('Не удалось открыть аудиофайл');
+    return;
+  }
+  audio.playbackRate = state.speed;
+  applyCurrentFileSound();
+  audio.onloadedmetadata = async () => {
+    if(state.currentPos) audio.currentTime = Math.min(state.currentPos, audio.duration || state.currentPos);
+    f.duration = audio.duration || f.duration;
+    await set?.('books', state.books);
+    updatePlayerUI();
+    if(autoplay) togglePlay(true);
+  };
+  audio.onended = () => {
+    if(i < b.files.length - 1) loadChapter(i+1, 0, true);
+    else { b.pos = {i:0, t:0}; saveProgress(); }
+  };
+  updatePlayerUI();
+}
+
+export async function togglePlay(forcePlay=false){
+  if(!state.current) return;
+  try {
+    if(forcePlay || audio.paused || audio.ended){
+      await ensureAudioGraph();
+      if(audioContext?.state === 'suspended') await audioContext.resume();
+      await audio.play();
+    } else {
+      audio.pause();
+    }
+    updatePlayerUI();
+  } catch(e) { showToast('Не удалось изменить воспроизведение'); }
+}
+
+export function seekBy(n){
+  if(audio.duration) audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + n));
+}
+
+export function prevTrack(){
+  if(audio.currentTime > 6) audio.currentTime = 0;
+  else if(state.currentIndex > 0) loadChapter(state.currentIndex - 1, 0, true);
+}
+
+export function nextTrack(){
+  if(state.currentIndex < state.current.files.length - 1) loadChapter(state.currentIndex + 1, 0, true);
+}
+
+export function cycleSpeed(){
+  const a = [.8, 1, 1.2, 1.5, 1.8, 2];
+  const current = Number(state.speed) || 1;
+  state.speed = current === 1 ? 1.2 : 1;
+  audio.playbackRate = state.speed;
+  showToast(state.speed === 1 ? 'Скорость: 1×' : 'Скорость: 1.2×');
+}
+
+export function setSleep(){
+  const v = prompt('Таймер сна, минут. 0 — выключить', '30');
+  if(v === null) return;
+  clearTimeout(state.sleepTimer);
+  const n = Number(v);
+  if(n > 0){
+    state.sleepTimer = setTimeout(() => audio.pause(), n * 60000);
+    showToast(`Таймер: ${n} мин`);
+  } else showToast('Таймер выключен');
+}
+
+export async function addBookmark(){
+  const b = state.current;
+  if(!b) return;
+  b.marks = b.marks || [];
+  b.marks.push({i: state.currentIndex, t: audio.currentTime || 0});
+  await set?.('books', state.books);
+  renderPlayer();
+  showToast('Закладка добавлена');
+}
+
+export async function saveProgress(){
+  const b = state.current;
+  if(!b) return;
+  const t = Number(audio.currentTime) || Number(state.currentPos) || 0;
+  b.pos = {i: state.currentIndex, t: Math.max(0, t)};
+  state.currentPos = t;
+  writeLastPlayback();
+  try { await set?.('books', state.books); } catch {}
+}
+
+export function scheduleProgressSave(force=false){
+  if(!state.current) return;
+  const t = Number(audio.currentTime) || 0;
+  state.currentPos = t;
+  state.current.pos = {i: state.currentIndex, t};
+  writeLastPlayback();
+  if(force){ clearTimeout(progressSaveTimer); progressSaveTimer = null; saveProgress(); return; }
+  if(progressSaveTimer) return;
+  progressSaveTimer = setTimeout(() => { progressSaveTimer = null; saveProgress(); }, 1200);
+}
+
+export function updatePlayerUI(){
+  if(!state.current) return;
+  const b = state.current, f = b.files[state.currentIndex];
+  const seek = $('seek');
+  if(seek && audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
+  const ct = $('curTime'), dt = $('durTime');
+  if(ct) ct.textContent = fmt(audio.currentTime);
+  if(dt) dt.textContent = fmt(audio.duration || f?.duration);
+  const p = $('playBtn');
+  if(p) p.innerHTML = icon(state.playing ? 'pause' : 'play');
+  const ch = document.querySelector('.chapter');
+  if(ch) ch.textContent = `Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;
+  updateMiniPlayer();
+}
+
+export function closePlayer(){
+  closeVisualizer();
+  scheduleProgressSave(true);
+  state.screen = 'shelf';
+  render();
+}
+
+export function miniProgress(){
+  if(!state.current) return 0;
+  const b = state.current, i = Math.max(0, Math.min(state.currentIndex, b.files.length-1)), f = b.files[i];
+  const d = Number(audio.duration) || Number(f?.duration) || 0;
+  return d ? Math.max(0, Math.min(100, audio.currentTime / d * 100)) : 0;
+}
+
+export function updateMiniPlayer(){
+  const el = $('miniPlayer');
+  if(!el) return;
+  if(!state.current || state.screen === 'player'){ el.classList.add('hidden'); return; }
+  const b = state.current, f = b.files[state.currentIndex] || {};
+  el.classList.remove('hidden');
+  if(el.dataset.bookId !== b.id){
+    el.dataset.bookId = b.id;
+    el.innerHTML = `<button class="mini-main" id="miniOpen">${bookCover(b,'mini-cover')}<span class="mini-copy"><b>${escapeHtml(b.title)}</b><small>${escapeHtml(f.name||'')}</small></span><span class="mini-play" id="miniPlay">${icon(state.playing?'pause':'play')}</span></button><div class="mini-progress"><i></i></div>`;
+    $('miniOpen').onclick = () => openPlayer(b.id);
+    $('miniPlay').onclick = e => { e.stopPropagation(); togglePlay(); };
+  }
+  const i = $('miniPlay'); if(i) i.innerHTML = icon(state.playing ? 'pause' : 'play');
+  const label = el.querySelector('.mini-copy small'); if(label) label.textContent = f.name || '';
+  const bar = el.querySelector('.mini-progress i'); if(bar) bar.style.width = `${miniProgress()}%`;
+}
+
+audio.addEventListener('play', async () => { state.playing = true; updatePlayerUI(); await saveProgress(); setMediaSession(); });
+audio.addEventListener('pause', async () => { state.playing = false; updatePlayerUI(); await saveProgress(); setMediaSession(); });
+
+audio.addEventListener('timeupdate', () => {
+  if(!state.current) return;
+  state.currentPos = audio.currentTime;
+  state.current.pos = {i: state.currentIndex, t: audio.currentTime};
+  updatePlayerUI();
+  const sec = Math.floor(audio.currentTime);
+  if(sec !== lastSavedSecond && sec % 5 === 0){ lastSavedSecond = sec; scheduleProgressSave(); }
+});
+audio.addEventListener('seeking', () => scheduleProgressSave());
+audio.addEventListener('seeked', () => scheduleProgressSave(true));
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') scheduleProgressSave(true); });
+
+export function stopNativePlayer(){ const P = plugin('Player'); if(P) P.stop().catch(()=>{}); }
+window.addEventListener('pagehide', () => { stopNativePlayer(); scheduleProgressSave(true); });
+window.addEventListener('beforeunload', () => { stopNativePlayer(); scheduleProgressSave(true); });
+audio.addEventListener('error', e => { console.error('Audio element error:', e); showToast('Ошибка воспроизведения файла'); });
+
+export function setMediaSession(){
+  if(!('mediaSession' in navigator) || !state.current) return;
+  const b = state.current, f = b.files[state.currentIndex];
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({title: f?.name || b.title, artist: b.author || b.title, album: b.title, artwork: b.cover?[{src: b.cover, sizes:'512x512'}]:[]});
+    navigator.mediaSession.playbackState = state.playing ? 'playing' : 'paused';
+    navigator.mediaSession.setActionHandler('play', () => togglePlay(true));
+    navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+    navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
+    navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
+    navigator.mediaSession.setActionHandler('seekbackward', () => seekBy(-10));
+    navigator.mediaSession.setActionHandler('seekforward', () => seekBy(30));
+  } catch {}
+}
+
+(function nativeBridge(){
+  const P = plugin('Player');
+  if(!P) return;
+  const push = () => {
+    if(!state.current) return;
+    const b = state.current, f = b.files[state.currentIndex];
+    P.update({title: f?.name||b.title, artist: b.author||b.title, playing: state.playing, pos: audio.currentTime||0, dur: audio.duration||f?.duration||0, cover: b.cover&&b.cover.length<400000?b.cover:''}).catch(()=>{});
+  };
+  ['play','pause','loadedmetadata','seeked','timeupdate'].forEach(ev => audio.addEventListener(ev, () => {
+    if(ev !== 'timeupdate' || Math.floor(audio.currentTime)%5 === 0) push();
+  }));
+  P.addListener('action', e => {
+    const a = e?.a;
+    if(a === 'toggle') togglePlay();
+    else if(a === 'play') togglePlay(true);
+    else if(a === 'pause') audio.pause();
+    else if(a === 'prev' || a === 'back10') a === 'prev' ? prevTrack() : seekBy(-10);
+    else if(a === 'next') nextTrack();
+    else if(a === 'forward') seekBy(30);
+  });
+})();
+
+export function bindPlayerSwipe(){
+  const player = $('playerScreen');
+  if(!player) return;
+  let sx = 0, sy = 0;
+  player.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; }, {passive:true});
+  player.addEventListener('pointerup', e => {
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if(Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    if(dx > 0 && !visualizerOpen) openVisualizer();
+    else if(dx < 0 && visualizerOpen) closeVisualizer();
+  }, {passive:true});
+  $('visualizerClose')?.addEventListener('click', closeVisualizer);
+}
+
+export function openVisualizer(){
+  const el = $('visualizer');
+  if(!el) return;
+  visualizerOpen = true;
+  el.classList.remove('hidden');
+  el.setAttribute('aria-hidden', 'false');
+  ensureAudioGraph().then(() => startVisualizer()).catch(() => showToast('Визуализатор недоступен'));
+}
+
+export function closeVisualizer(){
+  visualizerOpen = false;
+  const el = $('visualizer');
+  if(el){ el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); }
+  stopVisualizer();
+}
+
+export function startVisualizer(){
+  const canvas = $('visualizerCanvas');
+  if(!canvas || !analyser) return;
+  stopVisualizer();
+  const ctx = canvas.getContext('2d');
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  const draw = () => {
+    if(!visualizerOpen){ visualizerFrame = 0; return; }
+    const dpr = Math.min(window.devicePixelRatio||1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+    if(canvas.width !== Math.floor(w*dpr) || canvas.height !== Math.floor(h*dpr)){
+      canvas.width = Math.floor(w*dpr); canvas.height = Math.floor(h*dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    analyser.getByteFrequencyData(data); ctx.clearRect(0,0,w,h);
+    const cx = w/2, cy = h*.55;
+    const bg = ctx.createRadialGradient(cx,cy,20,cx,cy,Math.max(w,h)*.7);
+    bg.addColorStop(0,'rgba(225,169,91,.16)'); bg.addColorStop(.35,'rgba(110,67,35,.08)'); bg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = bg; ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle = 'rgba(239,188,112,.10)'; ctx.lineWidth = 1;
+    for(let r=70; r<Math.min(w,h)*.42; r+=42){ ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); }
+    const n = 96; const points = [];
+    for(let i=0; i<n; i++){
+      const idx = Math.floor(i*data.length/n); const v = data[idx]/255;
+      const a = (i/n)*Math.PI*2 - Math.PI/2;
+      const r = Math.min(w,h)*.18 + v*Math.min(w,h)*.16;
+      points.push([cx+Math.cos(a)*r, cy+Math.sin(a)*r, v]);
+    }
+    const grad = ctx.createLinearGradient(0,0,w,h);
+    grad.addColorStop(0,'#ffd99a'); grad.addColorStop(.5,'#e0a35d'); grad.addColorStop(1,'#a9633d');
+    ctx.beginPath(); points.forEach((p,i)=>{ i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1]); }); ctx.closePath();
+    ctx.strokeStyle = grad; ctx.lineWidth = 2.2; ctx.shadowBlur = 18; ctx.shadowColor = 'rgba(230,168,91,.55)'; ctx.stroke(); ctx.shadowBlur = 0;
+    const bars = 48, base = Math.min(w,h)*.29;
+    for(let i=0; i<bars; i++){
+      const idx = Math.floor(i*data.length/bars); const v = data[idx]/255;
+      const a = (i/bars)*Math.PI*2 - Math.PI/2;
+      const inner = base+4, outer = base+10+v*Math.min(w,h)*.12;
+      ctx.strokeStyle = `rgba(240,183,103,${.22+v*.65})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*inner, cy+Math.sin(a)*inner); ctx.lineTo(cx+Math.cos(a)*outer, cy+Math.sin(a)*outer); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(247,238,220,.72)'; ctx.font = '600 12px Inter,system-ui'; ctx.textAlign = 'center'; ctx.fillText('AUDIO', cx, cy-3);
+    ctx.fillStyle = 'rgba(247,238,220,.30)'; ctx.font = '500 8px Inter,system-ui'; ctx.letterSpacing = '3px'; ctx.fillText('S H E L f', cx, cy+14);
+    visualizerFrame = requestAnimationFrame(draw);
+  };
+  draw();
+}
+
+export function stopVisualizer(){
+  if(visualizerFrame){ cancelAnimationFrame(visualizerFrame); visualizerFrame = 0; }
+}

@@ -3,12 +3,10 @@ package com.shelf.player;
 import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
-import android.util.Base64;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -163,30 +161,7 @@ public class FilesPlugin extends Plugin {
                 f.put("mimeType", mime);
                 if (sizeCol >= 0 && !cursor.isNull(sizeCol)) f.put("size", cursor.getLong(sizeCol));
                 if (modCol >= 0 && !cursor.isNull(modCol)) f.put("lastModified", cursor.getLong(modCol));
-
-                // Extract metadata (tags, cover, duration) using MediaMetadataRetriever
-                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                try {
-                    retriever.setDataSource(getContext(), child);
-                    String titleTag = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
-                    String artistTag = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
-                    String albumTag = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
-                    String durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
-                    if (titleTag != null && !titleTag.isEmpty()) f.put("title", titleTag);
-                    if (artistTag != null && !artistTag.isEmpty()) f.put("artist", artistTag);
-                    if (albumTag != null && !albumTag.isEmpty()) f.put("album", albumTag);
-                    if (durationStr != null) {
-                        try { f.put("duration", Double.parseDouble(durationStr) / 1000.0); } catch (Exception ignored) {}
-                    }
-                    byte[] art = retriever.getEmbeddedPicture();
-                    if (art != null) {
-                        String base64Art = "data:image/jpeg;base64," + Base64.encodeToString(art, Base64.NO_WRAP);
-                        f.put("cover", base64Art);
-                    }
-                } catch (Exception ignored) {
-                } finally {
-                    try { retriever.release(); } catch (Exception ignored) {}
-                }
+                f.put("duration", 0.0);
 
                 audioHere.add(f);
             }
@@ -195,26 +170,19 @@ public class FilesPlugin extends Plugin {
 
         if (!audioHere.isEmpty()) {
             JSArray arr = new JSArray();
-            String detectedAlbum = "";
-            String detectedArtist = "";
-            String detectedCover = "";
             for (JSObject f : audioHere) {
                 arr.put(f);
                 state.processed++;
-                if (detectedAlbum.isEmpty() && f.has("album")) detectedAlbum = f.optString("album", "");
-                if (detectedArtist.isEmpty() && f.has("artist")) detectedArtist = f.optString("artist", "");
-                if (detectedCover.isEmpty() && f.has("cover")) detectedCover = f.optString("cover", "");
             }
-            String defaultTitle = relativeDir.isEmpty() ? stripExt(audioHere.get(0).optString("name", "Книга")) : relativeDir.substring(relativeDir.lastIndexOf('/') + 1);
-            String title = !detectedAlbum.isEmpty() ? detectedAlbum : defaultTitle;
+            String title = relativeDir.isEmpty() ? stripExt(audioHere.get(0).optString("name", "Книга")) : relativeDir.substring(relativeDir.lastIndexOf('/') + 1);
 
             JSObject book = new JSObject();
             book.put("folderId", state.folderId);
             book.put("folderName", state.folderName);
             book.put("path", relativeDir);
             book.put("title", title);
-            book.put("author", detectedArtist);
-            book.put("cover", detectedCover);
+            book.put("author", "");
+            book.put("cover", "");
             book.put("files", arr);
             book.put("fileCount", audioHere.size());
             state.books++;
