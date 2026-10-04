@@ -108,7 +108,11 @@ export function bindNav(){
   document.querySelectorAll('[data-action]').forEach(b => {
     const a = b.dataset.action;
     const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[a];
-    if(fn) b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+    if(fn) {
+      const trigger = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+      b.onclick = trigger;
+      b.onpointerup = (e) => { if(e.pointerType === 'touch' || e.pointerType === 'pen') trigger(e); };
+    }
   });
   // SVG must never intercept taps (critical for Android WebView)
   document.querySelectorAll('button .icon, button svg, .nav-ico, .nav-ico svg').forEach(el => {

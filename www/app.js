@@ -39,11 +39,19 @@ async function loadState(){
   }
 }
 
-(async () => {
+async function initApp(){
   state.selectedFolderIds = (await get?.('foldersSelected')) || [];
   document.querySelectorAll('.nav-ico').forEach(n => {
     n.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`;
     n.style.pointerEvents = 'none';
   });
   await loadState();
-})();
+}
+
+if(window.Capacitor){
+  document.addEventListener('deviceready', initApp, {once: true});
+} else if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', initApp, {once: true});
+} else {
+  initApp();
+}
