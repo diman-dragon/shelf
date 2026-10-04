@@ -6,6 +6,10 @@ import { initNativeScanListeners, scanAllFolders } from './js/scanner.js';
 
 const { get, set } = window.idbKeyval || {};
 
+// Diagnostic listeners for Android WebView tap tracking
+document.addEventListener('click', e => { console.log('[DIAG_CLICK]', e.target); }, true);
+document.addEventListener('pointerdown', e => { console.log('[DIAG_POINTER]', e.target); }, true);
+
 async function loadState(){
   try {
     state.books = (await get?.('books')) || [];
@@ -13,7 +17,9 @@ async function loadState(){
     state.playlists = (await get?.('playlists')) || [];
     const settings = await get?.('settings');
     if(settings) state.settings = {...state.settings, ...settings};
-  } catch {}
+  } catch (e) {
+    console.error('[LoadState Error]', e);
+  }
 
   document.documentElement.dataset.theme = state.settings.theme || 'dark';
 
@@ -43,21 +49,20 @@ let appInitialized = false;
 async function initApp(){
   if(appInitialized) return;
   appInitialized = true;
-  state.selectedFolderIds = (await get?.('foldersSelected')) || [];
-  document.querySelectorAll('.nav-ico').forEach(n => {
-    n.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`;
-    n.style.pointerEvents = 'none';
-  });
-  await loadState();
-}
-
-if(window.Capacitor){
-  document.addEventListener('deviceready', initApp, {once: true});
-  setTimeout(initApp, 300);
+  try {
+    state.selectedFolderIds = (await get?.('foldersSelected')) || [];
+    document.querySelectorAll('.nav-ico').forEach(n => {
+      n.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`;
+      n.style.pointerEvents = 'none';
+    });
+    await loadState();
+  } catch (e) {
+    console.error('[InitApp Error]', e);
+  }
 }
 
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', initApp, {once: true});
 } else {
-  setTimeout(initApp, 50);
+  initApp();
 }
