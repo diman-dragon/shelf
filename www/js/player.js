@@ -141,17 +141,13 @@ export function renderPlayer(){
   on('playerMore', () => openBookMenu(b.id));
   on('visualizerClose', closeVisualizer);
   document.querySelectorAll('[data-chapter]').forEach(el => {
-    const trigger = () => { loadChapter(+el.dataset.chapter, 0, true); closeQueuePanel(); };
-    el.onclick = trigger;
-    el.onpointerup = (e) => { if(e.pointerType === 'touch' || e.pointerType === 'pen') trigger(); };
+    el.onclick = () => { loadChapter(+el.dataset.chapter, 0, true); closeQueuePanel(); };
   });
   document.querySelectorAll('[data-mark]').forEach(el => {
-    const trigger = () => {
+    el.onclick = () => {
       const m = b.marks?.[+el.dataset.mark];
       if(m){ loadChapter(m.i, m.t, true); closeQueuePanel(); }
     };
-    el.onclick = trigger;
-    el.onpointerup = (e) => { if(e.pointerType === 'touch' || e.pointerType === 'pen') trigger(); };
   });
   bindPlayerSwipe();
   updatePlayerUI();

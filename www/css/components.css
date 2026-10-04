@@ -527,7 +527,6 @@ button svg, button .icon, .icon-btn svg, .icon-btn .icon, .tool svg, .control sv
 }
 button, .icon-btn, .tool, .control, .play-main, .nav-item, [data-action], [data-nav], .library-book-item, .setting, .modal-row, .chapter-row {
   cursor: pointer;
-  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 #modalRoot:empty { pointer-events: none !important; display: contents; }

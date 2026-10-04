@@ -56,9 +56,7 @@ export function renderShelf(){
   }
 
   document.querySelectorAll('.library-book-item').forEach(el => {
-    const trigger = () => openPlayer(el.dataset.id);
-    el.onclick = trigger;
-    el.onpointerup = (e) => { if(e.pointerType === 'touch' || e.pointerType === 'pen') trigger(); };
+    el.onclick = () => openPlayer(el.dataset.id);
   });
 }
 

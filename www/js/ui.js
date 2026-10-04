@@ -88,19 +88,15 @@ export function progress(b, cachedAudioTime = null){
 let navBound = false;
 
 export function bindNav(){
-  // Bottom nav lives outside #main — bind once with pointer + click for reliable mobile taps
+  // Bottom nav lives outside #main — bind once with click
   if(!navBound){
     navBound = true;
     const nav = document.querySelector('.bottom-nav');
     if(nav){
-      const go = (el) => {
-        const btn = el.closest('[data-nav]');
+      nav.addEventListener('click', e => {
+        const btn = e.target.closest('[data-nav]');
         if(!btn) return;
         setScreen(btn.dataset.nav);
-      };
-      nav.addEventListener('click', e => go(e.target), {passive:true});
-      nav.addEventListener('pointerup', e => {
-        if(e.pointerType === 'touch' || e.pointerType === 'pen') go(e.target);
       }, {passive:true});
     }
   }
@@ -108,11 +104,7 @@ export function bindNav(){
   document.querySelectorAll('[data-action]').forEach(b => {
     const a = b.dataset.action;
     const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[a];
-    if(fn) {
-      const trigger = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
-      b.onclick = trigger;
-      b.onpointerup = (e) => { if(e.pointerType === 'touch' || e.pointerType === 'pen') trigger(e); };
-    }
+    if(fn) b.onclick = () => fn();
   });
   // SVG must never intercept taps (critical for Android WebView)
   document.querySelectorAll('button .icon, button svg, .nav-ico, .nav-ico svg').forEach(el => {
