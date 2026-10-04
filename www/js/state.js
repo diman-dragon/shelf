@@ -4,7 +4,6 @@ export const $ = id => document.getElementById(id);
 export const main = $('main');
 export const modalRoot = $('modalRoot');
 
-export const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
 export const NAV = ['shelf','player','playlists','settings'];
 export const DEFAULT_PLAYLISTS = [
   ['fav','Избранное','♥'],['road','Для дороги','▣'],['fantasy','Фантастика','◉'],
@@ -31,18 +30,16 @@ export const ICONS = {
   moon:'<path d="M20 15.5A8 8 0 0 1 8.5 4 8 8 0 1 0 20 15.5Z"/>', sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/>', download:'<path d="M12 3v11m0 0 4-4m-4 4-4-4M4 20h16"/>', headset:'<path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14v4h3v-6H4m16 2v4h-3v-6h3"/>',
   music:'<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>', sliders:'<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="17" r="2"/>',
-  eye:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/>', folderPlus:'<path d="M3 7h7l2 2h9v10H3V7Z"/><path d="M12 12v5m-2.5-2.5h5"/>',
-  refresh:'<path d="M20 11a8 8 0 0 0-14-4L4 9m0-5v5h5M4 13a8 8 0 0 0 14 4l2-2m0 5v-5h-5"/>', shuffle:'<path d="M16 3h5v5M3 7h3c3 0 5 10 9 10h6M16 21h5v-5M3 17h3c1.6 0 2.7-1.4 3.6-3"/>', repeat:'<path d="M17 2l4 4-4 4M3 6h18M7 22l-4-4 4-4M21 18H3"/>',
-  chevron:'<path d="m9 18 6-6-6-6"/>'
+  eye:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="2" r="2.5"/>', folderPlus:'<path d="M3 7h7l2 2h9v10H3V7Z"/><path d="M12 12v5m-2.5-2.5h5"/>',
+  refresh:'<path d="M20 11a8 8 0 0 0-14-4L4 9m0-5v5h5M4 13a8 8 0 0 0 14 4l2-2m0 5v-5h-5"/>', chevron:'<path d="m9 18 6-6-6-6"/>'
 };
 
 export let state = {
   screen:'shelf', books:[], folders:[], playlists:[],
-  settings:{theme:'dark',threeD:true,coverSize:'Средний',autoscan:true,volume:1,bass:0,treble:0},
+  settings:{theme:'dark',autoscan:false},
   scan:{active:false,total:0,processed:0,books:0,name:''},
   query:'', librarySort:'recent', selectedFolderIds:[],
-  current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null,
-  searchTimer:null
+  current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null
 };
 
 export function icon(name, cls='icon'){return `<span class="${cls}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]||ICONS.info}</svg></span>`}

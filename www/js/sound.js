@@ -4,8 +4,7 @@ import { persist } from './storage.js';
 import { closeModal } from './ui.js';
 
 export const audio = new Audio();
-audio.preload = 'metadata';
-audio.crossOrigin = 'anonymous';
+audio.preload = 'auto';
 
 export let audioContext = null;
 export let audioSource = null;
@@ -28,47 +27,28 @@ export const SOUND_PRESETS = {
 
 export function ensureBookSound(b){
   if(!b) return null;
-  // Prefer book-level sound; migrate legacy file-level once
-  const legacy = b.files?.[0]?.sound;
   b.sound = {
     preset:'flat',
-    volume:Number(state.settings.volume ?? 1),
+    volume:1,
     gain:0,
     eq:[0,0,0,0,0,0,0,0,0,0],
-    bass:Number(state.settings.bass)||0,
-    treble:Number(state.settings.treble)||0,
-    ...(legacy||{}),
+    bass:0,
+    treble:0,
     ...(b.sound||{})
   };
   if(!Array.isArray(b.sound.eq) || b.sound.eq.length!==10) b.sound.eq=[0,0,0,0,0,0,0,0,0,0];
   return b.sound;
 }
 
-/** @deprecated use ensureBookSound */
-export function ensureFileSound(f){
-  // keep for compatibility — no-op migration path
-  if(!f) return;
-  if(!f.sound) f.sound = {
-    preset:'flat', volume:Number(state.settings.volume ?? 1), gain:0,
-    eq:[0,0,0,0,0,0,0,0,0,0], bass:Number(state.settings.bass)||0, treble:Number(state.settings.treble)||0
-  };
-}
-
 export function applyAudioSettings(){
-  if(state.current){
-    applyCurrentFileSound();
-    return;
-  }
-  audio.volume = Math.max(0, Math.min(1, Number(state.settings.volume ?? 1)));
-  if(bassFilter) bassFilter.gain.value = Number(state.settings.bass) || 0;
-  if(trebleFilter) trebleFilter.gain.value = Number(state.settings.treble) || 0;
+  applyCurrentFileSound();
 }
 
 export function applyCurrentFileSound(){
   const b = state.current;
   if(!b) return;
   const s = ensureBookSound(b);
-  audio.volume = Math.max(0, Math.min(1, Number(s.volume ?? state.settings.volume ?? 1)));
+  audio.volume = Math.max(0, Math.min(1, Number(s.volume ?? 1)));
   if(gainNode) gainNode.gain.value = 1;
   if(bassFilter) bassFilter.gain.value = Number(s.bass) || 0;
   if(trebleFilter) trebleFilter.gain.value = Number(s.treble) || 0;

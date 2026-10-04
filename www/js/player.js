@@ -60,7 +60,6 @@ export async function openPlayer(id){
   state.screen = 'player';
   render();
   await loadChapter(state.currentIndex, state.currentPos, false);
-  updateMiniPlayer();
 }
 
 export function renderPlayer(){
@@ -190,18 +189,21 @@ export async function loadChapter(i, t=0, autoplay=true){
   }
   audio.playbackRate = state.speed;
   applyCurrentFileSound();
-  audio.onloadedmetadata = async () => {
+  audio.onloadedmetadata = () => {
     if(state.currentPos) audio.currentTime = Math.min(state.currentPos, audio.duration || state.currentPos);
-    f.duration = audio.duration || f.duration;
-    await set?.('books', state.books);
+    if(audio.duration && (!f.duration || f.duration !== audio.duration)){
+      f.duration = audio.duration;
+      clearTimeout(progressSaveTimer);
+      progressSaveTimer = setTimeout(() => { set?.('books', state.books); }, 1500);
+    }
     updatePlayerUI();
-    if(autoplay) togglePlay(true);
   };
   audio.onended = () => {
     if(i < b.files.length - 1) loadChapter(i+1, 0, true);
     else { b.pos = {i:0, t:0}; saveProgress(); }
   };
   updatePlayerUI();
+  if(autoplay) togglePlay(true);
 }
 
 export async function togglePlay(forcePlay=false){
@@ -300,7 +302,6 @@ export function updatePlayerUI(){
   document.querySelectorAll('[data-chapter]').forEach(el => {
     el.classList.toggle('current', +el.dataset.chapter === state.currentIndex);
   });
-  updateMiniPlayer();
   updateHeaderNowPlaying();
 }
 
@@ -328,25 +329,11 @@ export function closeQueuePanel(){
   panel.setAttribute('aria-hidden','true');
 }
 
-
 export function closePlayer(){
   closeVisualizer();
   scheduleProgressSave(true);
   state.screen = 'shelf';
   render();
-}
-
-export function miniProgress(){
-  if(!state.current) return 0;
-  const b = state.current, i = Math.max(0, Math.min(state.currentIndex, b.files.length-1)), f = b.files[i];
-  const d = Number(audio.duration) || Number(f?.duration) || 0;
-  return d ? Math.max(0, Math.min(100, audio.currentTime / d * 100)) : 0;
-}
-
-export function updateMiniPlayer(){
-  // Mini-player removed: progress is shown under screen title instead
-  const el = $('miniPlayer');
-  if(el) el.classList.add('hidden');
 }
 
 audio.addEventListener('play', async () => { state.playing = true; updatePlayerUI(); await saveProgress(); setMediaSession(); });

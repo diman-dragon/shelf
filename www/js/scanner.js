@@ -1,8 +1,7 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
-import { state, icon, escapeHtml, plugin, plural, isNative, AUDIO_EXT, $, uid, modalRoot } from './state.js';
+import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot } from './state.js';
 import { persist } from './storage.js';
 import { openModal, closeModal, showToast, render } from './ui.js';
-import { readTags } from './utils.js';
 import { renderShelf } from './library.js';
 
 const { get, set } = window.idbKeyval || {};
@@ -208,12 +207,7 @@ export function toNativeFile(f){
     mime: f.mime || f.mimeType || 'audio/*',
     size: Number(f.size) || 0,
     modified: Number(f.modified || f.lastModified) || 0,
-    duration: Number(f.duration) || 0,
-    album: f.album || '',
-    title: f.title || '',
-    artist: f.artist || '',
-    tags: {album:'', title:'', artist:'', cover:''},
-    sound: {preset:'flat', volume:Number(state.settings.volume??1), bass:Number(state.settings.bass)||0, treble:Number(state.settings.treble)||0}
+    duration: Number(f.duration) || 0
   };
 }
 
@@ -222,30 +216,3 @@ export function naturalFile(a, b){
 }
 
 export function stripExt(s=''){ return s.replace(/\.[^.]+$/, ''); }
-
-export async function pickFiles(){
-  const input = document.createElement('input');
-  input.type = 'file'; input.multiple = true; input.accept = 'audio/*';
-  input.onchange = async () => {
-    const fs = [...input.files].filter(f => AUDIO_EXT.test(f.name));
-    if(!fs.length) return;
-    const groups = [['Выбранные файлы', fs]];
-    for(const [path, files] of groups){
-      let tags = {};
-      try { tags = await readTags(files[0]); } catch {}
-      const title = files.length > 1 ? (tags.album || stripExt(files[0].name)) : (tags.title || stripExt(files[0].name));
-      const id = uid();
-      const fdata = [];
-      for(let i=0; i<files.length; i++){
-        const key = `blob:${id}:${i}`;
-        await set?.(key, files[i]);
-        fdata.push({key, name:stripExt(files[i].name), fileName:files[i].name, mime:files[i].type||'audio/*', size:files[i].size, duration:0});
-      }
-      state.books.unshift({id, title, author:tags.artist||'', cover:tags.cover||'', files:fdata, added:Date.now(), pos:{i:0,t:0}, marks:[]});
-    }
-    await set?.('books', state.books);
-    render();
-    showToast(`Добавлено файлов: ${fs.length}`);
-  };
-  input.click();
-}

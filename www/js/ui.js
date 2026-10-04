@@ -2,10 +2,9 @@
 import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $, modalRoot, main } from './state.js';
 import { persist } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
-import { applyAudioSettings, audio } from './sound.js';
-import { openPlayer } from './player.js';
-import { renderShelf } from './library.js';
-import { renderPlayer, loadChapter, updateMiniPlayer } from './player.js';
+import { audio } from './sound.js';
+import { openPlayer, renderPlayer, loadChapter } from './player.js';
+import { renderShelf, openLibraryFilter, openSort } from './library.js';
 
 let toastTimer;
 
@@ -153,30 +152,10 @@ export function render(){
   if(state.screen === 'playlists') renderPlaylists();
   if(state.screen === 'settings') renderSettings();
   bindNav();
-  updateMiniPlayer();
 }
 
 export function renderCurrentPlayer(){
   if(state.current) renderPlayer(); else renderShelf();
-}
-
-export function openLibraryFilter(){
-  openModal(`<h3>Поиск и фильтр</h3><input class="field" id="libSearchInput" placeholder="Название или автор" value="${escapeHtml(state.query)}"><div class="modal-actions"><button class="secondary" data-close>Закрыть</button><button class="primary" id="libSearchBtn">Найти</button></div>`);
-  $('libSearchBtn').onclick = () => {
-    state.query = $('libSearchInput').value;
-    closeModal();
-    render();
-  };
-}
-
-export function openSort(){
-  const sorts = [['recent','Сначала новые'],['title','По названию'],['author','По автору'],['duration','По длительности']];
-  openModal(`<h3>Сортировка</h3>${sorts.map(([id,name])=>`<div class="modal-row" data-sort="${id}"><span style="flex:1">${name}</span>${state.librarySort===id?'✓':''}</div>`).join('')}`);
-  document.querySelectorAll('[data-sort]').forEach(el => el.onclick = () => {
-    state.librarySort = el.dataset.sort;
-    closeModal();
-    render();
-  });
 }
 
 export function renderPlaylists(){
@@ -234,26 +213,17 @@ export function openPlaylist(id){
 export function renderSettings(){
   const s = state.settings;
   const folderCount = state.folders.length;
-  const volume = Math.round(Math.max(0, Math.min(1, Number(s.volume ?? 1))) * 100);
-  const bass = Number(s.bass) || 0, treble = Number(s.treble) || 0;
   main.innerHTML = `<section class="screen">${header('Настройки')}
     <div class="settings-group"><p class="settings-title">Хранилище</p>
       <div class="setting" id="settingsFolders"><div class="setting-icon">${icon('folder')}</div><div class="setting-main"><div class="setting-name">Выбранные папки</div><div class="setting-desc">${folderCount} ${plural(folderCount,'папка','папки','папок')}</div></div><div class="chevron">${icon('chevron')}</div></div>
-      <div class="setting" id="addFolder"><div class="setting-icon">${icon('folderPlus')}</div><div class="setting-main"><div class="setting-name">Добавить папку</div><div class="setting-desc">Музыка, Audiobooks, Books и другие</div></div><div class="chevron">${icon('chevron')}</div></div>
-    </div>
-    <div class="settings-group"><p class="settings-title">Звук</p>
-      <div class="sound-setting"><div class="sound-head"><span>${icon('headset')} Громкость</span><b id="volumeValue">${volume}%</b></div><input class="sound-range" id="volumeRange" type="range" min="0" max="100" value="${volume}"></div>
-      <div class="sound-setting"><div class="sound-head"><span>Бас</span><b id="bassValue">${bass>0?'+':''}${bass} dB</b></div><input class="sound-range" id="bassRange" type="range" min="-12" max="12" step="1" value="${bass}"></div>
-      <div class="sound-setting"><div class="sound-head"><span>Высокие частоты</span><b id="trebleValue">${treble>0?'+':''}${treble} dB</b></div><input class="sound-range" id="trebleRange" type="range" min="-12" max="12" step="1" value="${treble}"></div>
-      <button class="secondary sound-reset" id="soundReset">Сбросить настройки звука</button>
+      <div class="setting" id="addFolder"><div class="setting-icon">${icon('folderPlus')}</div><div class="setting-main"><div class="setting-name">Добавить папку</div><div class="setting-desc">Папки с аудиокнигами</div></div><div class="chevron">${icon('chevron')}</div></div>
     </div>
     <div class="settings-group"><p class="settings-title">Сканирование</p>
       <div class="setting" id="formats"><div class="setting-icon">${icon('music')}</div><div class="setting-main"><div class="setting-name">Форматы аудио</div><div class="setting-desc">MP3, M4A, M4B, AAC, OGG, OPUS, FLAC, WAV, WMA</div></div></div>
       ${settingToggle('autoscan','Автосканирование','Проверять выбранные папки при запуске',!!s.autoscan)}
     </div>
     <div class="settings-group"><p class="settings-title">Внешний вид</p>
-      <div class="setting" id="themeSetting"><div class="setting-icon">${icon(s.theme==='dark'?'moon':'sun')}</div><div class="setting-main"><div class="setting-name">Тема</div><div class="setting-desc">Переключить оформление</div></div><div class="setting-value">${s.theme==='dark'?'Тёмная':'Светлая'}</div></div>
-      <div class="setting" id="coverSize"><div class="setting-icon">${icon('eye')}</div><div class="setting-main"><div class="setting-name">Размер обложек</div><div class="setting-desc">В библиотеке и списках</div></div><div class="setting-value">${escapeHtml(s.coverSize||'Средний')} ${icon('chevron')}</div></div>
+      <div class="setting" id="themeSetting"><div class="setting-icon">${icon(s.theme==='dark'?'moon':'sun')}</div><div class="setting-main"><div class="setting-name">Тема оформления</div><div class="setting-desc">Тёмная или светлая тема</div></div><div class="setting-value">${s.theme==='dark'?'Тёмная':'Светлая'}</div></div>
     </div>
     <div class="settings-group"><p class="settings-title">О приложении</p><div class="setting"><div class="setting-icon">${icon('info')}</div><div class="setting-main"><div class="setting-name">AudioShelf</div><div class="setting-desc">Локальная библиотека · без аккаунта</div></div><div class="setting-value">2.2.0</div></div></div>
   </section>`;
@@ -261,47 +231,21 @@ export function renderSettings(){
   $('addFolder').onclick = pickFolder;
   $('formats').onclick = () => showToast('Поддерживаются MP3, M4A, M4B, AAC, OGG, OPUS, FLAC, WAV и WMA');
   $('themeSetting').onclick = toggleTheme;
-  $('coverSize').onclick = cycleCoverSize;
-  const bindSound = (id, key, format, apply, scale = 1) => {
-    const el = $(id);
-    if(!el) return;
-    el.oninput = async e => {
-      const raw = Number(e.target.value);
-      state.settings[key] = scale === 100 ? raw / 100 : raw;
-      $(id.replace('Range','Value')).textContent = format(state.settings[key]);
-      apply();
-      await persist();
-    };
-  };
-  // volume slider is 0–100 UI, state stores 0–1
-  bindSound('volumeRange','volume', v=>`${Math.round(v*100)}%`, applyAudioSettings, 100);
-  bindSound('bassRange','bass', v=>`${v>0?'+':''}${v} dB`, applyAudioSettings);
-  bindSound('trebleRange','treble', v=>`${v>0?'+':''}${v} dB`, applyAudioSettings);
-  $('soundReset').onclick = async () => { state.settings.volume=1; state.settings.bass=0; state.settings.treble=0; applyAudioSettings(); await persist(); renderSettings(); };
   document.querySelectorAll('[data-setting-toggle]').forEach(el => el.onclick = async () => {
     const k = el.dataset.settingToggle;
     state.settings[k] = !state.settings[k];
     await persist();
     renderSettings();
   });
-  applyAudioSettings();
 }
 
 export function settingToggle(k, name, desc, on){
   return `<div class="setting" data-setting-toggle="${k}"><div class="setting-icon">${icon(k==='autoscan'?'refresh':'eye')}</div><div class="setting-main"><div class="setting-name">${name}</div><div class="setting-desc">${desc}</div></div><div class="switch ${on?'on':''}"><i></i></div></div>`;
 }
 
-export function toggleTheme(){
+export async function toggleTheme(){
   state.settings.theme = state.settings.theme==='dark'?'light':'dark';
   document.documentElement.dataset.theme = state.settings.theme;
-  persist();
-  renderSettings();
-}
-
-export function cycleCoverSize(){
-  const x = ['Маленький','Средний','Большой'];
-  let i = x.indexOf(state.settings.coverSize);
-  state.settings.coverSize = x[(i+1)%x.length];
-  persist();
+  await persist();
   renderSettings();
 }
