@@ -8,11 +8,12 @@ import { openFolderSheet, scanDock } from './scanner.js';
 import { audio } from './sound.js';
 
 export function renderShelf(){
+  const audioTime = (typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime)) ? audio.currentTime : null;
   const books = sortBooks(filterBooks(state.books));
   const totalBooks = state.books.length;
   let totalProg = 0;
   if(totalBooks > 0) {
-    const sum = state.books.reduce((acc, b) => acc + progress(b), 0);
+    const sum = state.books.reduce((acc, b) => acc + progress(b, audioTime), 0);
     totalProg = Math.round(sum / totalBooks);
   }
   const subtitle = `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${totalBooks} ${plural(totalBooks,'книга','книги','книг')} &middot; Общий прогресс: ${totalProg}%</span>`;
@@ -25,7 +26,7 @@ export function renderShelf(){
   if(!books.length){
     html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Библиотека пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`;
   } else {
-    html += books.map(libraryBookRow).join('');
+    html += books.map(b => libraryBookRow(b, audioTime)).join('');
   }
   html += `</div>${state.scan?.active ? scanDock() : ''}</section>`;
   main.innerHTML = html;
@@ -34,8 +35,8 @@ export function renderShelf(){
   document.querySelectorAll('.library-book-item').forEach(el => el.onclick = () => openPlayer(el.dataset.id));
 }
 
-export function libraryBookRow(b){
-  const prog = progress(b);
+export function libraryBookRow(b, audioTime = null){
+  const prog = progress(b, audioTime);
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}">
     <div class="lib-row-main">
       <div class="lib-thumb">${bookCover(b)}</div>

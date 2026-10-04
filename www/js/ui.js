@@ -52,15 +52,17 @@ export function nowPlayingPct(){
 }
 
 export function updateHeaderNowPlaying(){
-  const el = $('headerNowPlaying');
-  if(!el || !state.current) return;
-  const pct = nowPlayingPct();
-  const bar = el.querySelector('.now-playing-track i');
-  if(bar) bar.style.width = pct + '%';
-  const track = el.querySelector('.now-playing-track');
-  if(track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
-  const title = el.querySelector('.now-playing-title');
-  if(title && title.textContent !== (state.current.title||'')) title.textContent = state.current.title || '';
+  requestAnimationFrame(() => {
+    const el = $('headerNowPlaying');
+    if(!el || !state.current) return;
+    const pct = nowPlayingPct();
+    const bar = el.querySelector('.now-playing-track i');
+    if(bar) bar.style.width = pct + '%';
+    const track = el.querySelector('.now-playing-track');
+    if(track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
+    const title = el.querySelector('.now-playing-title');
+    if(title && title.textContent !== (state.current.title||'')) title.textContent = state.current.title || '';
+  });
 }
 
 function bindHeaderNowPlaying(){
@@ -75,12 +77,12 @@ export function bookCover(b, extra=''){
   const title = escapeHtml(b.title || 'Без названия');
   const author = escapeHtml(b.author || '');
   const body = b.cover ?
-    `<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" draggable="false">` :
+    `<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" loading="lazy" draggable="false">` :
     `<div class="fallback-cover ${extra}"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>`;
   return `<div class="cover-frame">${body}</div>`;
 }
 
-export function progress(b){
+export function progress(b, cachedAudioTime = null){
   const files = b.files || [];
   if(!files.length) return 0;
   const total = files.reduce((a,f)=>a+(Number(f.duration)||0), 0);
@@ -96,7 +98,11 @@ export function progress(b){
   if(state.current && state.current.id === b.id){
     i = Math.max(0, Math.min(state.currentIndex, files.length-1));
     let t = Number(state.currentPos)||0;
-    try { if(typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime)) t = audio.currentTime; } catch {}
+    if(cachedAudioTime !== null){
+      t = cachedAudioTime;
+    } else {
+      try { if(typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime)) t = audio.currentTime; } catch {}
+    }
     const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
     return Math.max(0, Math.min(100, ((before + t) / total) * 100));
   }
