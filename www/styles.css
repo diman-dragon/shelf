@@ -110,7 +110,27 @@ body{background:var(--bg);letter-spacing:.005em}
 .visualizer-x{background:rgba(15,13,11,.72)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:50%!important;width:42px!important;height:42px!important;box-shadow:0 6px 20px rgba(0,0,0,.35)}
 .sound-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:12px 0 5px}.sound-modal-head small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.eq-panel{margin-top:13px;padding:12px;border-radius:15px;background:linear-gradient(180deg,#1b1814,#13110f);border:1px solid #2c2721}.eq-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;height:180px;margin-top:9px;align-items:end}.eq-band{height:160px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px}.eq-band span{font-size:8px;color:var(--muted)}.eq-band b{font-size:7px;color:var(--muted);height:10px}.eq-band input{writing-mode:vertical-lr;direction:rtl;width:25px;height:118px;accent-color:var(--gold2);margin:0}.sound-modal{max-width:520px}
 @media(max-width:520px){.eq-grid{gap:2px}.eq-band input{width:21px}.eq-band span{font-size:7px}.eq-band b{font-size:6px}}
-button, a, .icon-btn, .nav-item, .tool, .book-card, .library-book-item, .playlist, .setting, .chapter-row, .modal-row, .folder-card {
+
+/* Mobile interaction hardening */
+button, .setting, .playlist, .library-book-item, [data-action], [data-nav], [data-folder], [data-folder-delete] {
   touch-action: manipulation;
-  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--nav);
+  min-height: var(--nav);
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+.mini-player { position: fixed; }
+@media(min-width:700px){
+  .bottom-nav { left: 50%; right: auto; width: min(520px, 100%); transform: translateX(-50%); }
+  .mini-player { left: 50%; right: auto; width: min(520px, 100%); transform: translateX(-50%); }
+}
+.library-book-item.cover-small .lib-thumb{width:48px;height:58px}
+.library-book-item.cover-medium .lib-thumb{width:57px;height:68px}
+.library-book-item.cover-large .lib-thumb{width:70px;height:84px}

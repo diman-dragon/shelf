@@ -1,8 +1,8 @@
 /* state.js — Application State, Constants & Helpers */
 const { get, set, del } = window.idbKeyval || {};
 export const $ = id => document.getElementById(id);
-const main = $('main');
-const modalRoot = $('modalRoot');
+export const main = $('main');
+export const modalRoot = $('modalRoot');
 
 export const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
 export const NAV = ['shelf','player','playlists','settings'];
@@ -39,7 +39,7 @@ export const ICONS = {
 export let state = {
   screen:'shelf', books:[], folders:[], playlists:[],
   settings:{theme:'dark',threeD:true,coverSize:'Средний',autoscan:true,volume:1,bass:0,treble:0},
-  scan:{active:false,total:0,processed:0,books:0,name:''},
+  scan:{active:false,total:0,processed:0,books:0,name:'',foldersTotal:0,foldersDone:0},
   query:'', librarySort:'recent', selectedFolderIds:[],
   current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null,
   searchTimer:null

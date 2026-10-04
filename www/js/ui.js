@@ -1,5 +1,5 @@
 /* ui.js — UI helpers, Modals, Settings, Playlists, Filters */
-import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $ } from './state.js';
+import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $, main, modalRoot } from './state.js';
 import { persist } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
 import { applyAudioSettings } from './sound.js';
@@ -8,6 +8,7 @@ import { renderShelf } from './library.js';
 import { renderPlayer, loadChapter, updateMiniPlayer } from './player.js';
 
 let toastTimer;
+let navDelegationReady = false;
 
 export function showToast(msg){
   clearTimeout(toastTimer);
@@ -50,12 +51,20 @@ export function progress(b){
 }
 
 export function bindNav(){
-  document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => setScreen(b.dataset.nav));
-  document.querySelectorAll('[data-action]').forEach(b => {
-    const a = b.dataset.action;
-    const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[a];
-    if(fn) b.onclick = fn;
-  });
+  if(navDelegationReady) return;
+  const root = $('app');
+  if(!root) return;
+  navDelegationReady = true;
+  root.addEventListener('click', e => {
+    const nav = e.target.closest('[data-nav]');
+    if(nav){ e.preventDefault(); setScreen(nav.dataset.nav); return; }
+    const action = e.target.closest('[data-action]');
+    if(action){
+      e.preventDefault();
+      const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[action.dataset.action];
+      if(fn) fn();
+    }
+  }, {passive:false});
 }
 
 export function setScreen(screen){
@@ -175,7 +184,7 @@ export function renderSettings(){
       <div class="setting" id="themeSetting"><div class="setting-icon">${icon(s.theme==='dark'?'moon':'sun')}</div><div class="setting-main"><div class="setting-name">Тема</div><div class="setting-desc">Переключить оформление</div></div><div class="setting-value">${s.theme==='dark'?'Тёмная':'Светлая'}</div></div>
       <div class="setting" id="coverSize"><div class="setting-icon">${icon('eye')}</div><div class="setting-main"><div class="setting-name">Размер обложек</div><div class="setting-desc">В библиотеке и списках</div></div><div class="setting-value">${escapeHtml(s.coverSize||'Средний')} ${icon('chevron')}</div></div>
     </div>
-    <div class="settings-group"><p class="settings-title">О приложении</p><div class="setting"><div class="setting-icon">${icon('info')}</div><div class="setting-main"><div class="setting-name">AudioShelf</div><div class="setting-desc">Локальная библиотека · без аккаунта</div></div><div class="setting-value">2.0.0</div></div></div>
+    <div class="settings-group"><p class="settings-title">О приложении</p><div class="setting"><div class="setting-icon">${icon('info')}</div><div class="setting-main"><div class="setting-name">AudioShelf</div><div class="setting-desc">Локальная библиотека · без аккаунта</div></div><div class="setting-value">2.2.0</div></div></div>
   </section>`;
   $('settingsFolders').onclick = openFolderSheet;
   $('addFolder').onclick = pickFolder;
@@ -186,7 +195,7 @@ export function renderSettings(){
     const el = $(id);
     if(!el) return;
     el.oninput = async e => {
-      state.settings[key] = Number(e.target.value);
+      state.settings[key] = key === 'volume' ? Number(e.target.value) / 100 : Number(e.target.value);
       $(id.replace('Range','Value')).textContent = format(state.settings[key]);
       apply(state.settings[key]);
       await persist();

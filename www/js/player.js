@@ -1,5 +1,5 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
-import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative } from './state.js';
+import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative, main } from './state.js';
 import { persist, writeLastPlayback } from './storage.js';
 import { showToast, closeModal, openModal, bookCover, render } from './ui.js';
 import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound } from './sound.js';

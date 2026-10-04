@@ -1,5 +1,5 @@
 /* library.js — Library screen, Filtering, Sorting, Book management */
-import { state, icon, escapeHtml, fmt, durationOfBook, plural, $ } from './state.js';
+import { state, icon, escapeHtml, fmt, durationOfBook, plural, $, main } from './state.js';
 import { persist } from './storage.js';
 import { showToast, closeModal, openModal, header, iconBtn, bookCover, progress, render } from './ui.js';
 import { openPlayer } from './player.js';
@@ -27,7 +27,11 @@ export function renderShelf(){
   } else {
     html += books.map(libraryBookRow).join('');
   }
-  html += `</div>${state.scan?.active?''+'':''}</section>`;
+  if(state.scan?.active){
+    const p = state.scan, pct = p.total ? Math.min(100, p.processed/p.total*100) : 8;
+    html += `<div class="scan-dock" id="scanDock"><div class="scan-dock-top"><span class="scan-spinner"></span><div><b>Добавляем книги</b><small>${escapeHtml(p.name||'Сканирование')} · ${p.books} книг</small></div><strong>${Math.round(pct)}%</strong></div><div class="scan-dock-bar"><i id="scanDockBar" style="width:${pct}%"></i></div><div class="scan-dock-foot">${p.processed} из ${p.total||'…'} аудиофайлов</div></div>`;
+  }
+  html += `</div></section>`;
   main.innerHTML = html;
   $('emptyAdd')?.addEventListener('click', openAddSheet);
   $('clearSearch')?.addEventListener('click', () => { state.query = ''; render(); });
@@ -38,7 +42,8 @@ export const renderLibrary = renderShelf;
 
 export function libraryBookRow(b){
   const prog = progress(b);
-  return `<div class="library-book-item" data-id="${escapeHtml(b.id)}">
+  const sizeClass = {'Маленький':'cover-small','Средний':'cover-medium','Большой':'cover-large'}[state.settings.coverSize] || 'cover-medium';
+  return `<div class="library-book-item ${sizeClass}" data-id="${escapeHtml(b.id)}">
     <div class="lib-row-main">
       <div class="lib-thumb">${bookCover(b)}</div>
       <div class="lib-info">

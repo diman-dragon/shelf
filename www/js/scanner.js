@@ -1,12 +1,55 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
-import { state, icon, escapeHtml, plugin, plural, isNative, AUDIO_EXT, $ } from './state.js';
+import { state, icon, escapeHtml, plugin, plural, isNative, AUDIO_EXT, $, modalRoot, uid } from './state.js';
 import { persist } from './storage.js';
 import { openModal, closeModal, showToast, render } from './ui.js';
 import { readTags } from './utils.js';
+import { audio } from './sound.js';
 import { renderShelf } from './library.js';
 
 const { get, set } = window.idbKeyval || {};
 let nativeScanListenersReady = false;
+let pendingBooks = [];
+let flushTimer = null;
+let flushPromise = Promise.resolve();
+
+function bookKey(book){
+  const path = String(book.srcPath || '').replace(/^([^:]+):/, '');
+  return `${book.sourceFolderId || ''}:${path}`;
+}
+
+function queueScannedBook(book){
+  const key = bookKey(book);
+  const existing = state.books.find(b => bookKey(b) === key);
+  if(existing){ Object.assign(existing, book, {id: existing.id, added: existing.added || book.added}); return; }
+  if(pendingBooks.some(b => bookKey(b) === key)) return;
+  pendingBooks.push(book);
+}
+
+function flushScannedBooks(){
+  flushPromise = flushPromise.then(async () => {
+    if(!pendingBooks.length) return;
+    while(pendingBooks.length){
+      const batch = pendingBooks.splice(0, 20);
+      let changed = false;
+      for(const book of batch){
+        const key = bookKey(book);
+        const existing = state.books.find(b => bookKey(b) === key);
+        if(existing){ Object.assign(existing, book, {id: existing.id, added: existing.added || book.added}); }
+        else { state.books.unshift(book); changed = true; }
+      }
+      if(changed || batch.length) await set?.('books', state.books);
+      if(state.screen === 'shelf') renderShelf();
+      updateScanDock();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  });
+  return flushPromise;
+}
+
+function scheduleFlush(){
+  if(flushTimer) return;
+  flushTimer = setTimeout(() => { flushTimer = null; flushScannedBooks(); }, 250);
+}
 
 export function openAddSheet(){ openFolderSheet(true); }
 
@@ -83,7 +126,7 @@ export async function pickFolder(){
     await set?.('foldersSelected', state.selectedFolderIds);
     closeModal();
     state.screen = 'shelf';
-    state.scan = {active:true, total:0, processed:0, books:0, name:old.name};
+    state.scan = {active:true, total:0, processed:0, books:0, name:old.name, foldersTotal:1, foldersDone:0};
     render();
     await startFolderScan(old);
   } catch(e) { showToast(e?.message || e?.errorMessage || 'Не удалось выбрать папку'); }
@@ -107,7 +150,7 @@ export async function scanAllFolders(silent=false, returnToShelf=false){
   if(!folders.length){ showToast('Сначала выберите папку'); openFolderSheet(); return; }
   closeModal();
   state.screen = 'shelf';
-  state.scan = {active:true, total:0, processed:0, books:0, name:folders.length===1?folders[0].name:'Сканирование папок'};
+  state.scan = {active:true, total:0, processed:0, books:0, name:folders.length===1?folders[0].name:'Сканирование папок', foldersTotal:folders.length, foldersDone:0};
   render();
   for(const f of folders) await startFolderScan(f);
 }
@@ -122,12 +165,13 @@ export function initNativeScanListeners(){
     state.scan.active = true;
     state.scan.total = Number(e.totalFiles) || 0;
     state.scan.processed = 0;
-    state.scan.books = 0;
+    if(!state.scan.foldersTotal) state.scan.foldersTotal = 1;
+    if(state.scan.foldersDone === 0) state.scan.books = 0;
     state.scan.name = e.folderName || 'Сканирование';
     updateScanDock();
   });
 
-  P.addListener('scanBook', async e => {
+  P.addListener('scanBook', e => {
     const folder = state.folders.find(f => f.id === e.folderId);
     if(!folder) return;
     const fs = (e.files || []).map(f => ({...f, folderId: e.folderId, folderName: e.folderName}));
@@ -137,26 +181,30 @@ export function initNativeScanListeners(){
     const path = String(e.path || '');
     const title = path ? path.split('/').pop() : stripExt(first?.name || e.title || folder.name);
     const book = {id:uid(), title:stripExt(e.title || title), author:'', cover:'', files, srcPath:`${folder.id}:${path}`, sourceFolderId:folder.id, added:Date.now(), pos:{i:0,t:0}, marks:[]};
-    state.books.unshift(book);
+    queueScannedBook(book);
     state.scan.books++;
-    await set?.('books', state.books);
-    if(state.screen === 'shelf') renderShelf();
-    updateScanDock();
+    scheduleFlush();
   });
 
   P.addListener('scanProgress', e => {
     state.scan.total = Number(e.totalFiles) || state.scan.total;
     state.scan.processed = Number(e.processedFiles) || 0;
-    state.scan.books = Number(e.books) || state.scan.books;
     updateScanDock();
   });
 
-  P.addListener('scanComplete', e => {
-    state.scan.total = Number(e.totalFiles) || state.scan.total;
-    state.scan.processed = Number(e.processedFiles) || state.scan.total;
-    state.scan.books = Number(e.books) || state.scan.books;
+  P.addListener('scanComplete', async e => {
+    state.scan.total = Math.max(state.scan.total, Number(e.totalFiles) || 0);
+    state.scan.processed += Number(e.processedFiles) || 0;
+    state.scan.foldersDone = Math.min(state.scan.foldersTotal || 1, (state.scan.foldersDone || 0) + 1);
     updateScanDock();
-    setTimeout(() => { state.scan.active = false; render(); showToast(`Добавлено книг: ${state.scan.books}`); }, 650);
+    if(flushTimer){ clearTimeout(flushTimer); flushTimer = null; }
+    await flushScannedBooks();
+    if(state.scan.foldersDone >= (state.scan.foldersTotal || 1)){
+      setTimeout(() => { state.scan.active = false; state.scan.foldersTotal = 0; state.scan.foldersDone = 0; render(); showToast(`Обновлено книг: ${state.scan.books}`); }, 250);
+    } else {
+      state.scan.name = 'Сканирование папок';
+      updateScanDock();
+    }
   });
 
   P.addListener('scanError', e => {

@@ -1,0 +1,21 @@
+# AudioShelf project structure
+
+- `www/` — web UI and application logic.
+  - `app.js` — application bootstrap/state loading.
+  - `js/state.js` — shared state, DOM references and helpers.
+  - `js/ui.js` — screens, settings, navigation and modal UI.
+  - `js/library.js` — library rendering/filtering/sorting.
+  - `js/scanner.js` — folder selection and scan event handling.
+  - `js/player.js` — playback/player screen.
+  - `js/sound.js` — Web Audio/equalizer.
+  - `js/storage.js` — IndexedDB persistence.
+  - `js/utils.js` — media metadata utilities.
+  - `lib/` — bundled runtime libraries.
+- `android/` — Capacitor Android project and custom native plugins.
+  - `FilesPlugin.java` — SAF folder selection and one-pass recursive scan.
+  - `PlayerPlugin.java` / `PlayerService.java` — native playback integration.
+  - `PlayerWidget.java` — Android widget.
+- `.github/workflows/android.yml` — Android CI.
+- `capacitor.config.json` — Capacitor configuration.
+- `package.json` — pinned dependency versions.
+- `BUILD.md` — build instructions.
