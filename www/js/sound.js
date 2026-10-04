@@ -1,12 +1,13 @@
 /* sound.js — Web Audio API, Equalizer, Sound Enhancements */
 import { state, icon, escapeHtml, $ } from './state.js';
 import { persist } from './storage.js';
-import { closeModal } from './ui.js';
+import { closeModal } from './ui-utils.js';
 
 export const audio = new Audio();
 audio.preload = 'auto';
 audio.volume = 1;
 audio.muted = false;
+audio.defaultMuted = false;
 
 export let audioContext = null;
 let audioSource = null;
@@ -46,6 +47,7 @@ export function applyCurrentFileSound(){
   const b = state.current;
   if(!b) return;
   const s = ensureBookSound(b);
+  audio.muted = false;
   audio.volume = Math.max(0, Math.min(1, Number(s.volume ?? 1)));
   if(gainNode) gainNode.gain.value = 1;
   if(bassFilter) bassFilter.gain.value = Number(s.bass) || 0;
@@ -102,6 +104,12 @@ export async function ensureAudioGraph(){
       f.type = 'peaking'; f.frequency.value = hz; f.Q.value = 1.05; f.gain.value = 0;
       return f;
     });
+    // WebView can suspend/interrupt the context (background, audio focus) while <audio> keeps "playing" — recover
+    audioContext.onstatechange = () => {
+      if(audioContext && audioContext.state !== 'running' && !audio.paused && !audio.ended){
+        audioContext.resume().catch(() => {});
+      }
+    };
     analyser = audioContext.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = .82;
     // Chain: source -> bass -> treble -> EQ bands -> gain -> analyser -> destination
     let node = audioSource;
@@ -114,4 +122,16 @@ export async function ensureAudioGraph(){
     applyCurrentFileSound();
   }
   if(audioContext.state === 'suspended') await audioContext.resume();
+}
+
+/**
+ * Guarantees that "playing" really means audible: unmuted, volume restored, AudioContext running.
+ * Call whenever the player is shown again or the app returns to foreground.
+ */
+export async function ensureAudible(){
+  audio.muted = false;
+  if(state.current) applyCurrentFileSound();
+  if(audioContext && audioContext.state !== 'running'){
+    try { await audioContext.resume(); } catch {}
+  }
 }

@@ -3,11 +3,17 @@ package com.shelf.player;
 import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
+import android.util.Base64;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -27,13 +33,35 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "ShelfFiles")
 public class FilesPlugin extends Plugin {
     private static final String PICK_FOLDER_CALLBACK = "folderPickerResult";
+    private static final int COVER_MAX_PX = 360;
+    private static final int COVER_FILE_LIMIT = 8 * 1024 * 1024;
     private final ExecutorService scanExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService metaExecutor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
     protected void handleOnDestroy() {
         scanExecutor.shutdownNow();
+        metaExecutor.shutdownNow();
         super.handleOnDestroy();
+    }
+
+    /** Duration (+ optional embedded cover) of one audio file — used for books scanned by older versions */
+    @PluginMethod
+    public void getMeta(final PluginCall call) {
+        final String u = call.getString("uri", null);
+        if (u == null || u.trim().isEmpty()) {
+            call.reject("Не передан URI файла");
+            return;
+        }
+        final boolean wantCover = Boolean.TRUE.equals(call.getBoolean("cover", false));
+        metaExecutor.execute(() -> {
+            Meta m = readMeta(Uri.parse(u), wantCover);
+            JSObject r = new JSObject();
+            r.put("duration", m.duration);
+            r.put("cover", m.cover);
+            call.resolve(r);
+        });
     }
 
     @PluginMethod
@@ -110,6 +138,8 @@ public class FilesPlugin extends Plugin {
         Cursor cursor = null;
         List<JSObject> audioHere = new ArrayList<>();
         List<DirEntry> subDirs = new ArrayList<>();
+        Uri folderCover = null;
+        int folderCoverScore = -1;
 
         try {
             String docId = DocumentsContract.getDocumentId(documentUri);
@@ -142,6 +172,9 @@ public class FilesPlugin extends Plugin {
                         if (!name.equals(".") && !name.equals("..")) {
                             subDirs.add(new DirEntry(child, relativeDir.isEmpty() ? name : relativeDir + "/" + name));
                         }
+                    } else if (isImage(name, mime)) {
+                        int score = coverScore(name);
+                        if (score > folderCoverScore) { folderCoverScore = score; folderCover = child; }
                     } else if (isAudio(name, mime)) {
                         JSObject f = new JSObject();
                         f.put("uri", child.toString());
@@ -162,8 +195,17 @@ public class FilesPlugin extends Plugin {
         }
 
         if (!audioHere.isEmpty()) {
+            // cover: image file in the book folder first, otherwise the art embedded in the first audio file
+            String cover = "";
+            if (folderCover != null) cover = encodeCover(readBytes(folderCover, COVER_FILE_LIMIT));
+
             JSArray arr = new JSArray();
-            for (JSObject f : audioHere) {
+            for (int idx = 0; idx < audioHere.size(); idx++) {
+                JSObject f = audioHere.get(idx);
+                boolean needCover = idx == 0 && cover.isEmpty();
+                Meta m = readMeta(Uri.parse(f.optString("uri", "")), needCover);
+                f.put("duration", m.duration);
+                if (needCover && !m.cover.isEmpty()) cover = m.cover;
                 arr.put(f);
                 state.processed++;
             }
@@ -190,7 +232,7 @@ public class FilesPlugin extends Plugin {
             book.put("path", relativeDir);
             book.put("title", title);
             book.put("author", author);
-            book.put("cover", "");
+            book.put("cover", cover);
             book.put("files", arr);
             book.put("fileCount", audioHere.size());
             book.put("srcPath", state.folderId + ":" + relativeDir);
@@ -202,6 +244,87 @@ public class FilesPlugin extends Plugin {
         for (DirEntry dir : subDirs) {
             scanDirectory(treeUri, dir.uri, dir.relPath, state);
         }
+    }
+
+    private static class Meta {
+        double duration = 0.0;
+        String cover = "";
+    }
+
+    private Meta readMeta(Uri fileUri, boolean wantCover) {
+        Meta meta = new Meta();
+        MediaMetadataRetriever r = new MediaMetadataRetriever();
+        try {
+            r.setDataSource(getContext(), fileUri);
+            String d = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (d != null) {
+                try { meta.duration = Math.max(0L, Long.parseLong(d.trim())) / 1000.0; } catch (NumberFormatException ignored) { }
+            }
+            if (wantCover) meta.cover = encodeCover(r.getEmbeddedPicture());
+        } catch (Exception ignored) {
+        } finally {
+            try { r.release(); } catch (Exception ignored) { }
+        }
+        return meta;
+    }
+
+    private byte[] readBytes(Uri uri, int limit) {
+        try (InputStream in = getContext().getContentResolver().openInputStream(uri)) {
+            if (in == null) return null;
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n, total = 0;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > limit) return null;
+                out.write(buf, 0, n);
+            }
+            return out.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Downscale to <= COVER_MAX_PX and return as a data:image/jpeg;base64 URL ("" on failure) */
+    private String encodeCover(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return "";
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return "";
+            int sample = 1;
+            while (bounds.outWidth / sample > COVER_MAX_PX * 2 || bounds.outHeight / sample > COVER_MAX_PX * 2) sample *= 2;
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = sample;
+            Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opts);
+            if (bmp == null) return "";
+            int w = bmp.getWidth(), h = bmp.getHeight();
+            float scale = Math.min(1f, (float) COVER_MAX_PX / Math.max(w, h));
+            if (scale < 1f) {
+                Bitmap scaled = Bitmap.createScaledBitmap(bmp, Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)), true);
+                if (scaled != bmp) { bmp.recycle(); bmp = scaled; }
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            bmp.compress(Bitmap.CompressFormat.JPEG, 82, out);
+            bmp.recycle();
+            return "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private boolean isImage(String name, String mime) {
+        String n = name.toLowerCase(Locale.ROOT);
+        return (mime != null && mime.startsWith("image/")) || n.matches(".*\\.(jpg|jpeg|png|webp)$");
+    }
+
+    /** Prefer conventional cover names; any other image is a weaker fallback */
+    private int coverScore(String name) {
+        String base = stripExt(name).toLowerCase(Locale.ROOT);
+        if (base.equals("cover") || base.equals("folder") || base.equals("front")) return 3;
+        if (base.contains("cover") || base.contains("album") || base.contains("artwork") || base.contains("poster")) return 2;
+        return 1;
     }
 
     private void emitProgress(ScanState s) {

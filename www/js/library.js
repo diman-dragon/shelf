@@ -6,24 +6,17 @@ import { openPlayer } from './player.js';
 import { openPlaylistChooser } from './ui.js';
 import { openFolderSheet, scanDock, openAddSheet } from './scanner.js';
 import { audio } from './sound.js';
+import { hydrateLibraryCovers } from './meta.js';
 
 let libraryDisplayLimit = 50;
 
 export function renderShelf(){
-  const audioTime = (typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime)) ? audio.currentTime : null;
   const books = sortBooks(filterBooks(state.books));
   const totalBooks = state.books.length;
   let totalProg = 0;
   if(totalBooks > 0) {
-    const sum = state.books.reduce((acc, b) => {
-      const isCurrent = state.current && state.current.id === b.id;
-      if(!isCurrent && b.cachedProgress !== undefined){
-        return acc + b.cachedProgress;
-      }
-      const p = progress(b, audioTime);
-      if(!isCurrent) b.cachedProgress = p;
-      return acc + p;
-    }, 0);
+    // computed fresh every time: a cached value went stale as soon as progress or durations changed
+    const sum = state.books.reduce((acc, b) => acc + progress(b), 0);
     totalProg = Math.round(sum / totalBooks);
   }
   const subtitle = `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${totalBooks} ${plural(totalBooks,'книга','книги','книг')} &middot; Общий прогресс: ${totalProg}%</span>`;
@@ -37,7 +30,7 @@ export function renderShelf(){
     html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Библиотека пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`;
   } else {
     const limit = books.length > 100 ? Math.min(books.length, libraryDisplayLimit) : books.length;
-    html += books.slice(0, limit).map(b => libraryBookRow(b, audioTime)).join('');
+    html += books.slice(0, limit).map(b => libraryBookRow(b)).join('');
     if(limit < books.length){
       html += `<div id="loadMoreBooks" style="text-align:center;padding:16px;color:var(--gold2);cursor:pointer;font-size:13px">Загрузить ещё (${books.length - limit})...</div>`;
     }
@@ -58,24 +51,22 @@ export function renderShelf(){
   document.querySelectorAll('.library-book-item').forEach(el => {
     el.onclick = () => openPlayer(el.dataset.id);
   });
+
+  // books scanned by an older version have no cover yet — load them quietly in the background
+  hydrateLibraryCovers(books.length > 100 ? books.slice(0, libraryDisplayLimit) : books);
 }
 
-export function libraryBookRow(b, audioTime = null){
-  const isCurrent = state.current && state.current.id === b.id;
-  const prog = (!isCurrent && b.cachedProgress !== undefined) ? b.cachedProgress : (() => {
-    const p = progress(b, audioTime);
-    if(!isCurrent) b.cachedProgress = p;
-    return p;
-  })();
-  if(b.fileCount === undefined) b.fileCount = b.files?.length ?? 0;
-  if(b.totalDuration === undefined) b.totalDuration = durationOfBook(b);
+export function libraryBookRow(b){
+  const prog = progress(b);
+  const fileCount = b.files?.length ?? 0;
+  const totalDuration = durationOfBook(b);
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}">
     <div class="lib-row-main">
       <div class="lib-thumb">${bookCover(b)}</div>
       <div class="lib-info">
         <div class="lib-title">${escapeHtml(b.title)}</div>
         <div class="lib-author">${escapeHtml(b.author||'Автор не указан')}</div>
-        <div class="lib-meta">${b.fileCount} ${plural(b.fileCount,'глава','главы','глав')} &middot; ${fmt(b.totalDuration)}</div>
+        <div class="lib-meta">${fileCount} ${plural(fileCount,'глава','главы','глав')} &middot; ${totalDuration > 0 ? fmt(totalDuration) : '—'}</div>
       </div>
     </div>
     <div class="lib-progress-line"><i style="width:${prog}%"></i></div>
@@ -93,11 +84,7 @@ export function sortBooks(books){
   const s = state.librarySort;
   if(s === 'title') copy.sort((a,b) => (a.title||'').localeCompare(b.title||'', 'ru'));
   else if(s === 'author') copy.sort((a,b) => (a.author||'').localeCompare(b.author||'', 'ru'));
-  else if(s === 'duration') copy.sort((a,b) => {
-    const da = a.totalDuration ?? (a.totalDuration = durationOfBook(a));
-    const db = b.totalDuration ?? (b.totalDuration = durationOfBook(b));
-    return db - da;
-  });
+  else if(s === 'duration') copy.sort((a,b) => durationOfBook(b) - durationOfBook(a));
   else copy.sort((a,b) => (b.added||0) - (a.added||0));
   return copy;
 }

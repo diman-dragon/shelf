@@ -12,6 +12,7 @@ import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 
 public class PlayerService extends Service {
@@ -19,6 +20,7 @@ public class PlayerService extends Service {
   static volatile int coverHash;
   private static final int NOTIFICATION_ID = 1;
   private static final String CHANNEL_ID = "player";
+  private static final String ACTION_STOP_SERVICE = "STOP_SERVICE";
   private MediaSession session;
   private String title = "Полка";
   private String artist = "";
@@ -44,15 +46,19 @@ public class PlayerService extends Service {
       @Override public void onSkipToPrevious() { PlayerPlugin.emit("prev"); }
       @Override public void onRewind() { PlayerPlugin.emit("back10"); }
       @Override public void onFastForward() { PlayerPlugin.emit("forward"); }
+      // Close (X): pause the WebView audio, remove the notification, stop the service
+      @Override public void onStop() { closePlayer(); }
+      @Override public void onCustomAction(String action, Bundle extras) {
+        if (ACTION_STOP_SERVICE.equals(action)) closePlayer();
+      }
     });
     session.setActive(true);
   }
 
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent != null) {
-      if ("STOP_SERVICE".equals(intent.getAction())) {
-        stopForeground(true);
-        stopSelf();
+      if (ACTION_STOP_SERVICE.equals(intent.getAction())) {
+        closePlayer();
         return START_NOT_STICKY;
       }
       String t=intent.getStringExtra("title"), a=intent.getStringExtra("artist");
@@ -75,7 +81,7 @@ public class PlayerService extends Service {
 
   private PendingIntent action(String a){
     if("stop".equals(a)) {
-      Intent intent = new Intent(this, PlayerService.class).setAction("STOP_SERVICE");
+      Intent intent = new Intent(this, PlayerService.class).setAction(ACTION_STOP_SERVICE);
       return PendingIntent.getService(this, 999, intent, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
     }
     return PlayerWidget.pi(this,a);
@@ -91,8 +97,11 @@ public class PlayerService extends Service {
     session.setMetadata(md.build());
 
     long actions=PlaybackState.ACTION_PLAY|PlaybackState.ACTION_PAUSE|PlaybackState.ACTION_PLAY_PAUSE|
-      PlaybackState.ACTION_SKIP_TO_NEXT|PlaybackState.ACTION_SKIP_TO_PREVIOUS|PlaybackState.ACTION_REWIND;
+      PlaybackState.ACTION_SKIP_TO_NEXT|PlaybackState.ACTION_SKIP_TO_PREVIOUS|PlaybackState.ACTION_REWIND|
+      PlaybackState.ACTION_STOP;
+    // Android 13+ builds the media controls from the session state, so the close button is also a custom action
     session.setPlaybackState(new PlaybackState.Builder().setActions(actions)
+      .addCustomAction(ACTION_STOP_SERVICE,"Закрыть",android.R.drawable.ic_menu_close_clear_cancel)
       .setState(playing?PlaybackState.STATE_PLAYING:PlaybackState.STATE_PAUSED,position,1f).build());
 
     Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL_ID):new Notification.Builder(this);
@@ -106,11 +115,31 @@ public class PlayerService extends Service {
       .addAction(android.R.drawable.ic_media_rew,"-10 с",action("back10"))
       .addAction(playing?android.R.drawable.ic_media_pause:android.R.drawable.ic_media_play,playing?"Пауза":"Пуск",action("toggle"))
       .addAction(android.R.drawable.ic_media_next,"Далее",action("next"))
+      .addAction(android.R.drawable.ic_menu_close_clear_cancel,"Закрыть",action("stop"))
       .setStyle(new Notification.MediaStyle().setMediaSession(session.getSessionToken()).setShowActionsInCompactView(0,2,3));
     Notification n=b.build();
     if(Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
     else startForeground(NOTIFICATION_ID,n);
     PlayerWidget.title=title;PlayerWidget.artist=artist;PlayerWidget.playing=playing;PlayerWidget.push(this);
+  }
+
+  /** Real stop: tell JS to pause <audio>, drop foreground state + notification, stop the service */
+  private void closePlayer() {
+    PlayerPlugin.emit("stop");
+    try { if (session != null) session.setActive(false); } catch (Exception ignored) { }
+    if (Build.VERSION.SDK_INT >= 24) stopForeground(Service.STOP_FOREGROUND_REMOVE);
+    else stopForeground(true);
+    NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+    if (nm != null) nm.cancel(NOTIFICATION_ID);
+    PlayerWidget.playing = false;
+    PlayerWidget.push(this);
+    stopSelf();
+  }
+
+  // App swiped away from recents: nothing can keep playing, so remove the notification too
+  @Override public void onTaskRemoved(Intent rootIntent) {
+    closePlayer();
+    super.onTaskRemoved(rootIntent);
   }
 
   @Override public void onDestroy(){if(session!=null){session.setActive(false);session.release();session=null;}super.onDestroy();}

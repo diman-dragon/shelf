@@ -8,8 +8,9 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: calc(8px + env(safe-area-inset-top)) 14px calc(8px + env(safe-area-inset-bottom));
-  touch-action: auto;
+  /* bottom nav is in the layout flow now, so only a small gap is needed here */
+  padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
+  touch-action: pan-y;
 }
 .player-inner {
   flex: 1;
@@ -20,10 +21,15 @@
   width: min(100%, 470px);
   margin: 0 auto;
   overflow: hidden;
+  touch-action: pan-y; /* vertical scroll stays native, horizontal is handled by the swipe logic */
 }
 .player-top { display: flex; justify-content: space-between; align-items: center; min-height: 44px; margin-bottom: 6px; }
 .player-cover {
-  width: min(44vw, 190px);
+  height: clamp(110px, 31vh, 270px);
+  height: clamp(110px, 31dvh, 270px);
+  width: auto;
+  max-width: 62vw;
+  flex: none;
   aspect-ratio: 0.69;
   margin: 4px auto 8px;
   border-radius: 12px;
@@ -32,6 +38,7 @@
   background: var(--panel2);
   box-shadow: 0 20px 45px rgba(0,0,0,0.35);
   contain: paint;
+  isolation: isolate;
 }
 .player-cover .fallback-cover .cover-title { font-size: 20px; }
 .player-title {
@@ -66,6 +73,7 @@
 }
 .seek { margin-top: 10px; }
 .seek input {
+  touch-action: none;
   width: 100%;
   height: 24px;
   accent-color: var(--gold2);
@@ -122,6 +130,7 @@
   font-size: 12px;
   margin-bottom: 2px;
 }
+@media (max-height: 640px) { .swipe-hint { display: none; } .player-tools .tool { padding: 6px 2px; } }
 .swipe-hint {
   text-align: center;
   color: var(--muted);
@@ -138,6 +147,7 @@
   background: var(--modal-bg);
   display: flex;
   flex-direction: column;
+  touch-action: pan-y;
 }
 .side-panel.hidden { display: none !important; pointer-events: none !important; }
 .side-panel-head {
@@ -150,7 +160,7 @@
 .side-panel-body {
   flex: 1;
   overflow: auto;
-  padding: 8px 14px calc(20px + var(--nav) + env(safe-area-inset-bottom));
+  padding: 8px 14px 20px;
   -webkit-overflow-scrolling: touch;
 }
 .side-panel .chapter-row {
@@ -198,16 +208,16 @@
 .eq-band { height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; }
 .eq-band span { font-size: 8px; color: var(--muted); }
 .eq-band b { font-size: 7px; color: var(--muted); height: 10px; }
-.eq-band input { writing-mode: vertical-lr; direction: rtl; width: 25px; height: 118px; accent-color: var(--gold2); margin: 0; }
+.eq-band input { touch-action: none; writing-mode: vertical-lr; direction: rtl; width: 25px; height: 118px; accent-color: var(--gold2); margin: 0; }
 
 /* Visualizer Overlay */
 .visualizer-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 60;
   background: radial-gradient(circle at 50% 50%, #25170e 0%, #0b0908 45%, #030303 100%);
   overflow: hidden;
-  touch-action: auto;
+  touch-action: pan-y;
 }
 .visualizer-overlay.hidden { display: none !important; pointer-events: none !important; }
 .visualizer-overlay canvas { position: absolute; inset: 0; width: 100%; height: 100%; }

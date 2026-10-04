@@ -1,9 +1,8 @@
 /* ui.js — UI helpers, Modals, Settings, Playlists, Filters */
 import { state, icon, escapeHtml, durationOfBook, uid, plural, $, modalRoot, main } from './state.js';
-import { persist } from './storage.js';
+import { persist, getSavedPosition } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
-import { audio } from './sound.js';
-import { openPlayer, renderPlayer, loadChapter } from './player.js';
+import { openPlayer, renderPlayer, ensureChapterLoaded } from './player.js';
 import { renderShelf, openLibraryFilter, openSort } from './library.js';
 import { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt } from './ui-utils.js';
 
@@ -16,7 +15,7 @@ export function header(title, subtitle, actions=''){
     const b = state.current;
     const pct = nowPlayingPct();
     subHtml = `<div class="now-playing" id="headerNowPlaying" data-book-id="${escapeHtml(b.id)}">
-      <span class="now-playing-ico">${icon('book')}</span>
+      <span class="now-playing-cover" data-cover-sig="${coverSig(b)}">${bookCover(b)}</span>
       <div class="now-playing-track" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100">
         <i style="width:${pct}%"></i>
       </div>
@@ -27,6 +26,8 @@ export function header(title, subtitle, actions=''){
   }
   return `<div class="topbar"><div class="topbar-main"><h2>${title}</h2>${subHtml}</div><div class="top-actions">${actions}</div></div>`;
 }
+
+function coverSig(b){ return `${b.id}:${b.cover ? b.cover.length : 0}`; }
 
 /** Whole-book progress 0–100 for header bar */
 export function nowPlayingPct(){
@@ -43,6 +44,12 @@ export function updateHeaderNowPlaying(){
     if(bar) bar.style.width = pct + '%';
     const track = el.querySelector('.now-playing-track');
     if(track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
+    const cov = el.querySelector('.now-playing-cover');
+    if(cov && cov.dataset.coverSig !== coverSig(state.current)){
+      cov.dataset.coverSig = coverSig(state.current);
+      cov.innerHTML = bookCover(state.current);
+    }
+    el.dataset.bookId = state.current.id;
     const title = el.querySelector('.now-playing-title');
     if(title && title.textContent !== (state.current.title||'')) title.textContent = state.current.title || '';
   });
@@ -56,31 +63,26 @@ function bindHeaderNowPlaying(){
   };
 }
 
-export function progress(b, cachedAudioTime = null){
+export function progress(b){
   const files = b.files || [];
   if(!files.length) return 0;
   const total = files.reduce((a,f)=>a+(Number(f.duration)||0), 0);
+  const isCurrent = !!state.current && state.current.id === b.id;
+  let i, t;
+  if(isCurrent){
+    i = state.currentIndex;
+    t = Number(state.currentPos) || 0;      // canonical, restored from storage even before audio is loaded
+  } else {
+    const s = getSavedPosition(b);
+    i = s.i; t = s.t;
+  }
+  i = Math.max(0, Math.min(i, files.length-1));
+  t = Math.max(0, t);
   if(total <= 0){
-    // fallback: by chapter index when durations unknown
-    const i = Math.max(0, Math.min(Number(b.pos?.i)||0, files.length-1));
-    const t = Math.max(0, Number(b.pos?.t)||0);
+    // durations still unknown: coarse estimate by chapter index
     const d = Math.max(0, Number(files[i]?.duration)||0);
     return Math.max(0, Math.min(100, ((i + (d ? t/d : 0)) / files.length) * 100));
   }
-  let i = Math.max(0, Math.min(Number(b.pos?.i)||0, files.length-1));
-  // live position for current book
-  if(state.current && state.current.id === b.id){
-    i = Math.max(0, Math.min(state.currentIndex, files.length-1));
-    let t = Number(state.currentPos)||0;
-    if(cachedAudioTime !== null){
-      t = cachedAudioTime;
-    } else {
-      try { if(typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime)) t = audio.currentTime; } catch {}
-    }
-    const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
-    return Math.max(0, Math.min(100, ((before + t) / total) * 100));
-  }
-  const t = Math.max(0, Number(b.pos?.t)||0);
   const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
   return Math.max(0, Math.min(100, ((before + t) / total) * 100));
 }
@@ -117,12 +119,17 @@ export function setScreen(screen){
   state.screen = screen;
   state.query = '';
   if(screen === 'player' && !state.current){ showToast('Сначала выберите книгу в библиотеке'); state.screen = 'shelf'; }
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === state.screen));
   render();
-  if(state.screen === 'player' && state.current && !state.blobUrl) loadChapter(state.currentIndex, state.currentPos, false);
+  // load the saved chapter/position only if <audio> doesn't already hold it (no reload → no silence / no reset)
+  if(state.screen === 'player' && state.current) ensureChapterLoaded();
+}
+
+function syncNavActive(){
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === state.screen));
 }
 
 export function render(){
+  syncNavActive();
   if(state.screen === 'shelf') renderShelf();
   if(state.screen === 'player') renderCurrentPlayer();
   if(state.screen === 'playlists') renderPlaylists();

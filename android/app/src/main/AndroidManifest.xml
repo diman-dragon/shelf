@@ -38,7 +38,7 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
     
-        <service android:name=".PlayerService" android:exported="false" android:foregroundServiceType="mediaPlayback"/>
+        <service android:name=".PlayerService" android:exported="false" android:stopWithTask="true" android:foregroundServiceType="mediaPlayback"/>
         <receiver android:name=".PlayerWidget" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>

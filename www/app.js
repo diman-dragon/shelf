@@ -1,6 +1,6 @@
 /* app.js — Main Application Entry Point */
 import { state, ICONS, DEFAULT_PLAYLISTS, isNative } from './js/state.js';
-import { readLastPlayback } from './js/storage.js';
+import { readLastPlayback, getSavedPosition, resumePosition } from './js/storage.js';
 import { render, bindNav, showToast, setScreen } from './js/ui.js';
 import { closeModal } from './js/ui-utils.js';
 import { closeQueuePanel } from './js/player.js';
@@ -72,10 +72,12 @@ async function loadState(){
   if(last?.bookId){
     const b = state.books.find(x => x.id === last.bookId);
     if(b){
+      // restore lastChapterIndex / lastPositionSec; the audio file itself is loaded lazily
+      // on first open/play, at exactly this position (saved data is NOT modified here)
+      const saved = getSavedPosition(b);
       state.current = b;
-      state.currentIndex = Math.max(0, Math.min(Number(last.index)||0, b.files.length-1));
-      state.currentPos = Math.max(0, (Number(last.pos||0) - 10));
-      b.pos = {...(b.pos||{}), i: state.currentIndex, t: state.currentPos};
+      state.currentIndex = saved.i;
+      state.currentPos = resumePosition(saved.t);
     }
   }
 

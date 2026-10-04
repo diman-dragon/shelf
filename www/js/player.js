@@ -1,72 +1,117 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
 import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative, main } from './state.js';
-import { persist, writeLastPlayback } from './storage.js';
+import { persist, writeLastPlayback, getSavedPosition, resumePosition } from './storage.js';
 import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying, progress } from './ui.js';
-import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound } from './sound.js';
+import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound, ensureAudible } from './sound.js';
 import { openBookMenu } from './library.js';
 import { openVisualizer, closeVisualizer } from './visualizer.js';
+import { hydrateBookMeta } from './meta.js';
 
 const { get, set } = window.idbKeyval || {};
 let progressSaveTimer = null;
 let lastSavedSecond = -1;
 
-/** Elapsed seconds across whole book */
+// --- loading state -----------------------------------------------------------
+// loadedKey   — which "bookId:chapterIndex" is currently inside <audio>
+// pendingSeek — position to jump to once metadata of the new source is ready
+// restoring   — true between "src assigned" and "metadata ready": audio.currentTime is 0
+//               there and must NOT overwrite the saved position
+let loadedKey = '';
+let pendingSeek = 0;
+let restoring = false;
+let loadToken = 0;
+let seekDragging = false;
+
+const curKey = () => state.current ? `${state.current.id}:${state.currentIndex}` : '';
+
+/** state.playing must always mirror the real <audio> state (src change silently sets paused=true) */
+function syncPlaying(){
+  state.playing = !!audio.src && !audio.paused && !audio.ended;
+  return state.playing;
+}
+
+export function bookTotal(b = state.current){
+  return (b?.files || []).reduce((a, f) => a + (Number(f.duration) || 0), 0);
+}
+
+/** Elapsed seconds across the whole book. state.currentPos is the canonical chapter position. */
 export function bookElapsed(b = state.current){
   if(!b) return 0;
   const files = b.files || [];
-  const i = Math.max(0, Math.min(state.current?.id === b.id ? state.currentIndex : (b.pos?.i||0), files.length-1));
-  let t = state.current?.id === b.id ? (Number(audio.currentTime)||Number(state.currentPos)||0) : (Number(b.pos?.t)||0);
-  const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
+  let i, t;
+  if(state.current?.id === b.id){
+    i = state.currentIndex;
+    t = Number(state.currentPos) || 0;
+  } else {
+    const s = getSavedPosition(b);
+    i = s.i; t = s.t;
+  }
+  i = Math.max(0, Math.min(i, files.length - 1));
+  const before = files.slice(0, i).reduce((a, f) => a + (Number(f.duration) || 0), 0);
   return before + t;
 }
 
-/** Seek within whole book (seconds from start) */
+/** Seek within whole book (seconds from the very start of the book) */
 export async function seekBook(sec){
   const b = state.current;
   if(!b) return;
   const files = b.files || [];
-  let left = Math.max(0, sec);
-  for(let i=0;i<files.length;i++){
+  let left = Math.max(0, Number(sec) || 0);
+  let idx = Math.max(0, files.length - 1);
+  for(let i = 0; i < files.length; i++){
     const d = Number(files[i].duration) || 0;
-    if(d > 0 && left > d && i < files.length-1){ left -= d; continue; }
-    if(i === state.currentIndex){
-      audio.currentTime = Math.min(left, audio.duration || left);
-      state.currentPos = audio.currentTime;
-      updatePlayerUI();
-      return;
-    }
-    await loadChapter(i, left, state.playing);
-    return;
+    if(i < files.length - 1 && d > 0 && left >= d){ left -= d; continue; }
+    idx = i;
+    break;
   }
+  if(idx === state.currentIndex && loadedKey === curKey() && !restoring){
+    const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : left;
+    audio.currentTime = Math.max(0, Math.min(left, dur));
+    state.currentPos = audio.currentTime;
+  } else {
+    await loadChapter(idx, left, syncPlaying());
+  }
+  snapshotPosition();
+  saveProgress();
+  updatePlayerUI();
 }
 
+/** Make sure the <audio> element really holds the current chapter (no reload if it already does) */
+export async function ensureChapterLoaded(){
+  const b = state.current;
+  if(!b) return;
+  if(loadedKey === curKey() && audio.src){ syncPlaying(); return; }
+  await loadChapter(state.currentIndex, state.currentPos, false);
+}
 
 export async function openPlayer(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
-  if(state.current?.id === b.id){
-    state.screen = 'player';
-    render();
-    if(!state.blobUrl) await loadChapter(state.currentIndex, state.currentPos, false);
-    return;
+  if(state.current?.id !== b.id){
+    if(state.current){ snapshotPosition(); await saveProgress(true); }
+    audio.pause();
+    const saved = getSavedPosition(b);
+    state.current = b;
+    state.currentIndex = saved.i;
+    state.currentPos = resumePosition(saved.t);
+    state.playing = false;
+    loadedKey = '';
   }
-  if(state.current) await saveProgress();
-  state.current = b;
-  state.playing = false;
-  state.currentIndex = Math.max(0, Math.min(Number(b.pos?.i)||0, b.files.length-1));
-  const saved = Number(b.pos?.t) || 0;
-  state.currentPos = saved > 0 ? Math.max(0, saved - 10) : 0;
   state.screen = 'player';
   render();
-  await loadChapter(state.currentIndex, state.currentPos, false);
+  await ensureChapterLoaded();
+  syncPlaying();
+  updatePlayerUI();
+  ensureAudible();
 }
 
 export function renderPlayer(){
   const b = state.current;
   if(!b) return;
+  syncPlaying();
   const i = Math.min(state.currentIndex, b.files.length-1);
   const f = b.files[i];
-  const totalDur = (b.files||[]).reduce((a,x)=>a+(Number(x.duration)||0),0);
+  const totalDur = bookTotal(b);
   const elapsed = bookElapsed(b);
   const pct = progress(b);
 
@@ -128,10 +173,21 @@ export function renderPlayer(){
   on('backBtn', () => seekBy(-15));
   on('forwardBtn', () => seekBy(30));
   const seekEl = $('seek');
-  if(seekEl) seekEl.oninput = e => {
-    const dur = audio.duration || state.current.files[state.currentIndex]?.duration || 0;
-    if(dur > 0) audio.currentTime = dur * (+e.target.value / 1000);
-  };
+  if(seekEl){
+    // Whole-book slider: dragging only previews the time, the jump happens on release
+    seekEl.addEventListener('input', e => {
+      seekDragging = true;
+      const ct = $('curTime');
+      if(ct) ct.textContent = fmt(bookTotal(b) * (+e.target.value / 1000));
+    });
+    seekEl.addEventListener('change', e => {
+      seekDragging = false;
+      const total = bookTotal(b);
+      if(total > 0) seekBook(total * (+e.target.value / 1000));
+      else updatePlayerUI();
+    });
+    seekEl.addEventListener('touchcancel', () => { seekDragging = false; updatePlayerUI(); }, {passive:true});
+  }
   on('speedBtn', cycleSpeed);
   on('sleepBtn', setSleep);
   on('soundBtn', openCurrentSound);
@@ -140,17 +196,24 @@ export function renderPlayer(){
   on('queueClose', closeQueuePanel);
   on('playerMore', () => openBookMenu(b.id));
   on('visualizerClose', closeVisualizer);
+  bindChapterRows();
+  bindPlayerSwipe();
+  updatePlayerUI();
+  if(state.playing) ensureAudible();   // returning to the player must never leave "Pause" + silence
+  // old libraries: fill missing chapter durations / cover in background
+  hydrateBookMeta(b, () => { if(state.screen === 'player' && state.current === b) updatePlayerUI(); });
+}
+
+function bindChapterRows(){
   document.querySelectorAll('[data-chapter]').forEach(el => {
     el.onclick = () => { loadChapter(+el.dataset.chapter, 0, true); closeQueuePanel(); };
   });
   document.querySelectorAll('[data-mark]').forEach(el => {
     el.onclick = () => {
-      const m = b.marks?.[+el.dataset.mark];
+      const m = state.current?.marks?.[+el.dataset.mark];
       if(m){ loadChapter(m.i, m.t, true); closeQueuePanel(); }
     };
   });
-  bindPlayerSwipe();
-  updatePlayerUI();
 }
 
 export function chapterRows(b){
@@ -166,67 +229,106 @@ export function chapterRows(b){
 
 export async function loadChapter(i, t=0, autoplay=true){
   const b = state.current;
-  if(!b || !b.files[i]) return;
+  const f = b?.files?.[i];
+  if(!f) return;
+  const token = ++loadToken;
   state.currentIndex = i;
-  state.currentPos = t || 0;
-  const f = b.files[i];
+  state.currentPos = Number(t) || 0;
+  pendingSeek = state.currentPos;
+  restoring = true;            // until metadata is ready, audio.currentTime (0) must not overwrite the position
+  loadedKey = `${b.id}:${i}`;
+
+  let src = '';
+  let newBlobUrl = '';
   try {
     if(f.key){
       const blob = await get?.(f.key);
-      if(!blob){ showToast('Файл недоступен'); return; }
-      if(state.blobUrl) URL.revokeObjectURL(state.blobUrl);
-      state.blobUrl = URL.createObjectURL(blob);
-      audio.src = state.blobUrl;
+      if(token !== loadToken) return;
+      if(!blob){ restoring = false; loadedKey = ''; showToast('Файл недоступен'); return; }
+      newBlobUrl = URL.createObjectURL(blob);
+      src = newBlobUrl;
     } else if(f.uri){
-      audio.src = isNative() ? window.Capacitor.convertFileSrc(f.uri) : f.uri;
+      src = isNative() ? window.Capacitor.convertFileSrc(f.uri) : f.uri;
     } else {
+      restoring = false; loadedKey = '';
       showToast('Файл недоступен');
       return;
     }
   } catch(e) {
     console.error('Audio load error:', e);
+    if(token === loadToken){ restoring = false; loadedKey = ''; }
     showToast('Не удалось открыть аудиофайл');
     return;
   }
+  if(token !== loadToken){ if(newBlobUrl) URL.revokeObjectURL(newBlobUrl); return; }
+
+  // Pause explicitly BEFORE swapping src: changing src on a playing element sets paused=true
+  // without a "pause" event, which used to leave the UI on "Pause" with no sound.
+  audio.pause();
+  audio.muted = false;
+  const oldBlob = state.blobUrl;
+  audio.src = src;
+  state.blobUrl = newBlobUrl;
+  if(oldBlob) URL.revokeObjectURL(oldBlob);
+  audio.defaultPlaybackRate = state.speed;
   audio.playbackRate = state.speed;
   applyCurrentFileSound();
+
   audio.onloadedmetadata = () => {
-    if(state.currentPos) audio.currentTime = Math.min(state.currentPos, audio.duration || state.currentPos);
-    if(audio.duration && (!f.duration || f.duration !== audio.duration)){
-      f.duration = audio.duration;
+    if(token !== loadToken) return;
+    const dur = Number.isFinite(audio.duration) ? audio.duration : 0;
+    const target = dur > 0 ? Math.min(pendingSeek, Math.max(0, dur - 0.5)) : pendingSeek;
+    if(target > 0) audio.currentTime = target;
+    state.currentPos = target > 0 ? target : 0;
+    restoring = false;
+    audio.playbackRate = state.speed;
+    if(dur > 0 && Math.abs((Number(f.duration) || 0) - dur) > 0.5){
+      f.duration = dur;
       clearTimeout(progressSaveTimer);
-      progressSaveTimer = setTimeout(() => { set?.('books', state.books); }, 1500);
+      progressSaveTimer = setTimeout(() => { progressSaveTimer = null; set?.('books', state.books); }, 1500);
     }
+    snapshotPosition();
     updatePlayerUI();
   };
   audio.onended = () => {
-    if(i < b.files.length - 1) loadChapter(i+1, 0, true);
-    else { b.pos = {i:0, t:0}; saveProgress(); }
+    if(token !== loadToken) return;
+    if(i < b.files.length - 1) loadChapter(i + 1, 0, true);
+    else { state.playing = false; loadChapter(0, 0, false).then(() => saveProgress(true)); }
   };
+  audio.onerror = () => { if(token === loadToken) restoring = false; };
+
+  syncPlaying();
   updatePlayerUI();
-  if(autoplay) togglePlay(true);
+  if(autoplay) await togglePlay(true);
 }
 
 export async function togglePlay(forcePlay=false){
   if(!state.current) return;
   try {
     if(forcePlay || audio.paused || audio.ended){
+      await ensureChapterLoaded();           // e.g. widget "play" right after app start
       await ensureAudioGraph();
-      if(audioContext?.state === 'suspended') await audioContext.resume();
+      await ensureAudible();                 // unmute, restore volume, resume AudioContext
       await audio.play();
     } else {
       audio.pause();
     }
-    updatePlayerUI();
-  } catch(e) { showToast('Не удалось изменить воспроизведение'); }
+  } catch(e) {
+    if(e?.name !== 'AbortError') showToast('Не удалось изменить воспроизведение');
+  }
+  syncPlaying();
+  updatePlayerUI();
 }
 
 export function seekBy(n){
-  if(audio.duration) audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + n));
+  if(restoring || !Number.isFinite(audio.duration) || !audio.duration) return;
+  audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + n));
+  state.currentPos = audio.currentTime;
+  updatePlayerUI();
 }
 
 export function prevTrack(){
-  if(audio.currentTime > 6) audio.currentTime = 0;
+  if(!restoring && audio.currentTime > 6){ audio.currentTime = 0; state.currentPos = 0; updatePlayerUI(); }
   else if(state.currentIndex > 0) loadChapter(state.currentIndex - 1, 0, true);
 }
 
@@ -240,7 +342,10 @@ export function cycleSpeed(){
   const current = Number(state.speed) || 1;
   const idx = SPEEDS.indexOf(current);
   state.speed = SPEEDS[(idx !== -1 ? idx + 1 : 1) % SPEEDS.length];
+  audio.defaultPlaybackRate = state.speed;
   audio.playbackRate = state.speed;
+  const sb = $('speedBtn');
+  if(sb) sb.innerHTML = `<strong>${state.speed.toFixed(1)}×</strong>Скорость`;
   showToast(`Скорость: ${state.speed.toFixed(1)}×`);
 }
 
@@ -262,18 +367,31 @@ export async function addBookmark(){
   const b = state.current;
   if(!b) return;
   b.marks = b.marks || [];
-  b.marks.push({i: state.currentIndex, t: audio.currentTime || 0});
+  b.marks.push({i: state.currentIndex, t: Number(state.currentPos) || 0});
   await set?.('books', state.books);
   renderPlayer();
   showToast('Закладка добавлена');
 }
 
-export async function saveProgress(force = false){
+/** Copy the live position onto the book object (never while audio.currentTime is not valid yet) */
+function snapshotPosition(){
   const b = state.current;
   if(!b) return;
-  const t = Number(audio.currentTime) || Number(state.currentPos) || 0;
-  b.pos = {i: state.currentIndex, t: Math.max(0, t)};
+  let t;
+  if(restoring) t = pendingSeek;
+  else if(loadedKey === curKey()) t = Number(audio.currentTime) || 0;
+  else t = Number(state.currentPos) || 0;
+  t = Math.max(0, t);
   state.currentPos = t;
+  b.pos = {i: state.currentIndex, t};
+  b.lastChapterIndex = state.currentIndex;
+  b.lastPositionSec = t;
+  b.lastSavedAt = Date.now();
+}
+
+export async function saveProgress(force = false){
+  if(!state.current) return;
+  snapshotPosition();
   writeLastPlayback();
 
   if(force){
@@ -292,20 +410,24 @@ export async function saveProgress(force = false){
 export function updatePlayerUI(){
   requestAnimationFrame(() => {
     if(!state.current) return;
+    syncPlaying();
     const b = state.current, f = b.files[state.currentIndex];
-    const dur = audio.duration || Number(f?.duration) || 0;
-    const cur = audio.currentTime || 0;
-    const chapterPct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
-    const seek = $('seek');
-    if(seek) seek.value = Math.round(chapterPct * 10);
-    const ct = $('curTime'), dt = $('durTime');
-    if(ct) ct.textContent = fmt(cur);
-    if(dt) dt.textContent = fmt(dur);
+    // Whole-book progress (sum of ALL chapters), not the length of the current file
+    const total = bookTotal(b);
+    const elapsed = bookElapsed(b);
+    const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
+    if(!seekDragging){
+      const seek = $('seek');
+      if(seek) seek.value = Math.round(pct * 10);
+      const ct = $('curTime');
+      if(ct) ct.textContent = fmt(elapsed);
+    }
+    const dt = $('durTime');
+    if(dt) dt.textContent = fmt(total);
     const pb = $('playBtn');
     if(pb) pb.innerHTML = icon(state.playing ? 'pause' : 'play');
     const ch = document.querySelector('.chapter');
     if(ch) ch.textContent = `Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;
-    // highlight current chapter in queue if open
     document.querySelectorAll('[data-chapter]').forEach(el => {
       el.classList.toggle('current', +el.dataset.chapter === state.currentIndex);
     });
@@ -319,13 +441,7 @@ export function openQueuePanel(){
   if(!panel) return;
   const list = $('chapterList');
   if(list && state.current) list.innerHTML = chapterRows(state.current);
-  document.querySelectorAll('[data-chapter]').forEach(el => el.onclick = () => { loadChapter(+el.dataset.chapter, 0, true); closeQueuePanel(); });
-  document.querySelectorAll('[data-mark]').forEach(el => {
-    el.onclick = () => {
-      const m = state.current?.marks?.[+el.dataset.mark];
-      if(m){ loadChapter(m.i, m.t, true); closeQueuePanel(); }
-    };
-  });
+  bindChapterRows();
   panel.classList.remove('hidden');
   panel.setAttribute('aria-hidden','false');
 }
@@ -344,21 +460,32 @@ export function closePlayer(){
   render();
 }
 
-audio.addEventListener('play', async () => { state.playing = true; updatePlayerUI(); await saveProgress(true); setMediaSession(); });
-audio.addEventListener('pause', async () => { state.playing = false; updatePlayerUI(); await saveProgress(true); setMediaSession(); });
+// --- <audio> events: UI state is always derived from the real element ---------
+function onPlayState(){
+  syncPlaying();
+  updatePlayerUI();
+  saveProgress(true);
+  setMediaSession();
+}
+audio.addEventListener('play', () => { ensureAudible(); onPlayState(); });
+audio.addEventListener('playing', () => { syncPlaying(); updatePlayerUI(); });
+audio.addEventListener('pause', onPlayState);
+audio.addEventListener('ended', () => { syncPlaying(); updatePlayerUI(); });
+audio.addEventListener('emptied', () => { syncPlaying(); updatePlayerUI(); });
 
 audio.addEventListener('timeupdate', () => {
-  if(!state.current) return;
+  if(!state.current || restoring || loadedKey !== curKey()) return;
   state.currentPos = audio.currentTime;
-  state.current.pos = {i: state.currentIndex, t: audio.currentTime};
+  snapshotPosition();
   updatePlayerUI();
-  updateHeaderNowPlaying();
   const sec = Math.floor(audio.currentTime);
   if(sec !== lastSavedSecond && sec % 5 === 0){ lastSavedSecond = sec; saveProgress(); }
 });
-audio.addEventListener('seeking', () => saveProgress());
-audio.addEventListener('seeked', () => saveProgress(true));
-document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') saveProgress(true); });
+audio.addEventListener('seeked', () => { if(!restoring) saveProgress(true); });
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden') saveProgress(true);
+  else { syncPlaying(); if(state.playing) ensureAudible(); updatePlayerUI(); }
+});
 
 export function stopNativePlayer(){ const P = plugin('Player'); if(P) P.stop().catch(()=>{}); }
 window.addEventListener('pagehide', () => { stopNativePlayer(); saveProgress(true); });
@@ -373,13 +500,8 @@ export function setMediaSession(){
     navigator.mediaSession.playbackState = state.playing ? 'playing' : 'paused';
     navigator.mediaSession.setActionHandler('play', () => togglePlay(true));
     navigator.mediaSession.setActionHandler('pause', () => audio.pause());
-    navigator.mediaSession.setActionHandler('stop', () => {
-      audio.pause();
-      audio.currentTime = 0;
-      state.playing = false;
-      updatePlayerUI();
-      if(navigator.mediaSession.metadata) navigator.mediaSession.metadata = null;
-    });
+    // "stop" = close the player controls: pause and keep the position (never rewind to 0)
+    navigator.mediaSession.setActionHandler('stop', () => { audio.pause(); stopNativePlayer(); });
     navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
     navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
     navigator.mediaSession.setActionHandler('seekbackward', () => seekBy(-10));
@@ -390,45 +512,96 @@ export function setMediaSession(){
 (function nativeBridge(){
   const P = plugin('Player');
   if(!P) return;
+  // After the user closes the notification (X) the service is gone: don't resurrect it
+  // with the next update() until playback is started again.
+  let suppressed = false;
+  let lastPushSec = -1;
   const push = () => {
-    if(!state.current) return;
+    if(suppressed || !state.current) return;
     const b = state.current, f = b.files[state.currentIndex];
-    P.update({title: f?.name||b.title, artist: b.author||b.title, playing: state.playing, pos: audio.currentTime||0, dur: audio.duration||f?.duration||0, cover: b.cover&&b.cover.length<400000?b.cover:''}).catch(()=>{});
+    P.update({
+      title: f?.name || b.title,
+      artist: b.author || b.title,
+      playing: state.playing,
+      pos: Number(state.currentPos) || 0,
+      dur: (Number.isFinite(audio.duration) && audio.duration) || f?.duration || 0,
+      cover: b.cover && b.cover.length < 400000 ? b.cover : ''
+    }).catch(()=>{});
   };
-  ['play','pause','loadedmetadata','seeked','timeupdate'].forEach(ev => audio.addEventListener(ev, () => {
-    if(ev !== 'timeupdate' || Math.floor(audio.currentTime)%5 === 0) push();
-  }));
+  audio.addEventListener('play', () => { suppressed = false; push(); });
+  ['pause','loadedmetadata','seeked'].forEach(ev => audio.addEventListener(ev, push));
+  audio.addEventListener('timeupdate', () => {
+    const sec = Math.floor(audio.currentTime);
+    if(sec % 5 === 0 && sec !== lastPushSec){ lastPushSec = sec; push(); }
+  });
   P.addListener('action', e => {
     const a = e?.a;
-    if(a === 'toggle') togglePlay();
-    else if(a === 'play') togglePlay(true);
+    if(a === 'toggle'){ suppressed = false; togglePlay(); }
+    else if(a === 'play'){ suppressed = false; togglePlay(true); }
     else if(a === 'pause') audio.pause();
-    else if(a === 'prev' || a === 'back10') a === 'prev' ? prevTrack() : seekBy(-10);
+    else if(a === 'stop'){ suppressed = true; audio.pause(); saveProgress(true); }
+    else if(a === 'prev') prevTrack();
+    else if(a === 'back10') seekBy(-10);
     else if(a === 'next') nextTrack();
     else if(a === 'forward') seekBy(30);
   });
 })();
 
+// --- Swipes on the player: thresholds + direction lock, vertical scroll is never blocked ---
 function bindPlayerSwipe(){
   const root = $('playerScreen');
   if(!root || root.dataset.swipeBound) return;
   root.dataset.swipeBound = '1';
-  let x0 = 0, y0 = 0, tracking = false;
+
+  const MIN_DX = 70;      // px the finger must travel horizontally
+  const LOCK_PX = 12;     // movement needed before the gesture direction is decided
+  const RATIO = 1.8;      // |dx| must dominate |dy| by this factor
+  const MAX_MS = 900;     // slower drags are not swipes
+  const EDGE = 22;        // keep Android system back-gesture zones free
+
+  let x0 = 0, y0 = 0, t0 = 0, active = false, mode = '';
+
   root.addEventListener('touchstart', e => {
-    if(!e.touches[0]) return;
-    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; tracking = true;
+    active = false; mode = '';
+    if(e.touches.length !== 1) return;
+    const t = e.touches[0];
+    if(t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return;
+    if(e.target.closest('input[type="range"]')) return;   // sliders handle their own drag
+    x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); active = true;
   }, {passive:true});
+
+  root.addEventListener('touchmove', e => {
+    if(!active) return;
+    const t = e.touches[0];
+    if(!t) return;
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if(!mode){
+      if(Math.abs(dx) < LOCK_PX && Math.abs(dy) < LOCK_PX) return;
+      mode = Math.abs(dx) > Math.abs(dy) * RATIO ? 'h' : 'v';
+    }
+    if(mode === 'h' && e.cancelable) e.preventDefault();   // only a locked horizontal gesture is captured
+  }, {passive:false});
+
   root.addEventListener('touchend', e => {
-    if(!tracking) return;
-    tracking = false;
+    const wasH = active && mode === 'h';
+    active = false;
+    if(!wasH) return;                                      // vertical / undecided → plain scroll or tap
     const t = e.changedTouches[0];
     if(!t) return;
     const dx = t.clientX - x0, dy = t.clientY - y0;
-    if(Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy)) return;
-    // swipe right → chapter list; swipe left → visualizer
-    if(dx > 0) openQueuePanel();
-    else openVisualizer();
+    if(Math.abs(dx) < MIN_DX || Math.abs(dx) < Math.abs(dy) * RATIO) return;
+    if(Date.now() - t0 > MAX_MS) return;
+    handleSwipe(dx > 0 ? 'right' : 'left');
   }, {passive:true});
+
+  root.addEventListener('touchcancel', () => { active = false; mode = ''; }, {passive:true});
 }
 
-
+function handleSwipe(dir){
+  const vis = $('visualizer'), queue = $('queuePanel');
+  if(vis && !vis.classList.contains('hidden')){ if(dir === 'right') closeVisualizer(); return; }
+  if(queue && !queue.classList.contains('hidden')){ if(dir === 'left') closeQueuePanel(); return; }
+  // swipe right → chapter list; swipe left → visualizer
+  if(dir === 'right') openQueuePanel();
+  else openVisualizer();
+}

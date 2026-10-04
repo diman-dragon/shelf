@@ -147,10 +147,15 @@ export function initNativeScanListeners(){
     if(book){
       book.title = titleFinal || book.title;
       if(authorFinal) book.author = authorFinal;
+      // keep already known durations if the scanner did not report them
+      const old = new Map((book.files || []).map(f => [f.uri, f]));
+      files.forEach(nf => { if(!(nf.duration > 0)){ const o = old.get(nf.uri); if(o?.duration > 0) nf.duration = o.duration; } });
       book.files = files;
       book.sourceFolderId = folder.id;
+      if(e.cover) book.cover = e.cover;
+      book.coverChecked = true;
     } else {
-      book = {id:uid(), title:titleFinal, author:authorFinal, cover:'', files, srcPath, sourceFolderId:folder.id, added:Date.now(), pos:{i:0,t:0}, marks:[]};
+      book = {id:uid(), title:titleFinal, author:authorFinal, cover:e.cover || '', coverChecked:true, files, srcPath, sourceFolderId:folder.id, added:Date.now(), pos:{i:0,t:0}, marks:[]};
       state.books.unshift(book);
       state.scan.books++;
     }
