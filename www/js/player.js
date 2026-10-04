@@ -1,7 +1,7 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
-import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative } from './state.js';
+import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative, main } from './state.js';
 import { persist, writeLastPlayback } from './storage.js';
-import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying } from './ui.js';
+import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying, openPlaylistChooser, progress } from './ui.js';
 import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound } from './sound.js';
 import { openBookMenu } from './library.js';
 
@@ -10,6 +10,37 @@ let visualizerFrame = 0;
 let visualizerOpen = false;
 let progressSaveTimer = null;
 let lastSavedSecond = -1;
+
+/** Elapsed seconds across whole book */
+export function bookElapsed(b = state.current){
+  if(!b) return 0;
+  const files = b.files || [];
+  const i = Math.max(0, Math.min(state.current?.id === b.id ? state.currentIndex : (b.pos?.i||0), files.length-1));
+  let t = state.current?.id === b.id ? (Number(audio.currentTime)||Number(state.currentPos)||0) : (Number(b.pos?.t)||0);
+  const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
+  return before + t;
+}
+
+/** Seek within whole book (seconds from start) */
+export async function seekBook(sec){
+  const b = state.current;
+  if(!b) return;
+  const files = b.files || [];
+  let left = Math.max(0, sec);
+  for(let i=0;i<files.length;i++){
+    const d = Number(files[i].duration) || 0;
+    if(d > 0 && left > d && i < files.length-1){ left -= d; continue; }
+    if(i === state.currentIndex){
+      audio.currentTime = Math.min(left, audio.duration || left);
+      state.currentPos = audio.currentTime;
+      updatePlayerUI();
+      return;
+    }
+    await loadChapter(i, left, state.playing);
+    return;
+  }
+}
+
 
 export async function openPlayer(id){
   const b = state.books.find(x => x.id === id);
@@ -37,51 +68,86 @@ export function renderPlayer(){
   if(!b) return;
   const i = Math.min(state.currentIndex, b.files.length-1);
   const f = b.files[i];
+  const totalDur = (b.files||[]).reduce((a,x)=>a+(Number(x.duration)||0),0);
+  const elapsed = bookElapsed(b);
+  const pct = progress(b);
 
-  main.innerHTML = `<section class="player" id="playerScreen">
+  main.innerHTML = `<section class="player player-fit" id="playerScreen">
     <div class="player-inner">
-      <div class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="icon-btn" id="playerBack">${icon('back')}</button><div><h2>Плеер</h2></div></div><div class="top-actions"><button class="icon-btn" id="playerMark">${icon('bookmark')}</button><button class="icon-btn" id="playerMore">${icon('more')}</button></div></div>
+      <div class="topbar player-top">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="button" class="icon-btn" id="playerBack" aria-label="Назад">${icon('back')}</button>
+          <div><h2>Плеер</h2></div>
+        </div>
+        <div class="top-actions">
+          <button type="button" class="icon-btn" id="playerPlaylist" aria-label="В плейлист">${icon('playlist')}</button>
+          <button type="button" class="icon-btn" id="playerMark" aria-label="Закладка">${icon('bookmark')}</button>
+          <button type="button" class="icon-btn" id="playerMore" aria-label="Ещё">${icon('more')}</button>
+        </div>
+      </div>
       <div class="player-cover" id="playerCover">${bookCover(b)}</div>
       <div class="player-title">${escapeHtml(b.title)}</div>
       <div class="player-author">${escapeHtml(b.author||'Автор не указан')}</div>
       <div class="chapter">Глава ${i+1} из ${b.files.length} · ${escapeHtml(f.name)}</div>
-      <div class="seek"><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Позиция воспроизведения"></div>
-      <div class="time-row"><span id="curTime">0:00</span><span id="durTime">${fmt(f.duration)}</span></div>
+      <div class="seek"><input id="seek" type="range" min="0" max="1000" value="${Math.round(pct*10)}" aria-label="Позиция в книге"></div>
+      <div class="time-row"><span id="curTime">${fmt(elapsed)}</span><span id="durTime">${fmt(totalDur)}</span></div>
       <div class="controls">
-        <button class="control" id="prevBtn" aria-label="Предыдущая глава">${icon('prev')}</button>
-        <button class="control" id="backBtn" aria-label="Назад 15 секунд">${icon('rewind')}</button>
-        <button class="play-main" id="playBtn" aria-label="Воспроизведение">${icon(state.playing?'pause':'play')}</button>
-        <button class="control" id="forwardBtn" aria-label="Вперёд 30 секунд">${icon('forward')}</button>
-        <button class="control" id="nextBtn" aria-label="Следующая глава">${icon('next')}</button>
+        <button type="button" class="control" id="prevBtn" aria-label="Предыдущая глава">${icon('prev')}</button>
+        <button type="button" class="control" id="backBtn" aria-label="Назад 15 секунд">${icon('rewind')}</button>
+        <button type="button" class="play-main" id="playBtn" aria-label="Воспроизведение">${icon(state.playing?'pause':'play')}</button>
+        <button type="button" class="control" id="forwardBtn" aria-label="Вперёд 30 секунд">${icon('forward')}</button>
+        <button type="button" class="control" id="nextBtn" aria-label="Следующая глава">${icon('next')}</button>
       </div>
-      <div class="player-tools"><button class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>Скорость</button><button class="tool" id="sleepBtn"><strong>◷</strong>Таймер</button><button class="tool" id="queueBtn"><strong>☷</strong>Очередь</button><button class="tool" id="soundBtn"><strong>♫</strong>Звук</button></div>
-      <div class="chapter-list" id="chapterList">${chapterRows(b)}</div>
-      <div class="swipe-hint">Свайп вправо — визуализатор</div>
+      <div class="player-tools">
+        <button type="button" class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>Скорость</button>
+        <button type="button" class="tool" id="sleepBtn"><strong>◷</strong>Таймер</button>
+        <button type="button" class="tool" id="queueBtn"><strong>☷</strong>Очередь</button>
+        <button type="button" class="tool" id="soundBtn"><strong>♫</strong>Звук</button>
+      </div>
+      <div class="swipe-hint">← визуализатор · список глав →</div>
+    </div>
+    <div class="side-panel queue-panel hidden" id="queuePanel" aria-hidden="true">
+      <div class="side-panel-head">
+        <button type="button" class="icon-btn" id="queueClose" aria-label="Закрыть">${icon('close')}</button>
+        <strong>Главы</strong>
+      </div>
+      <div class="side-panel-body chapter-list" id="chapterList">${chapterRows(b)}</div>
     </div>
     <div class="visualizer-overlay hidden" id="visualizer" aria-hidden="true">
       <canvas id="visualizerCanvas"></canvas>
-      <div class="visualizer-head"><button class="icon-btn visualizer-x" id="visualizerClose" aria-label="Закрыть">${icon('close')}</button><div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div></div>
+      <div class="visualizer-head">
+        <button type="button" class="icon-btn visualizer-x" id="visualizerClose" aria-label="Закрыть">${icon('close')}</button>
+        <div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div>
+      </div>
       <div class="visualizer-center"><span>${icon('music')}</span><b>AudioShelf</b></div>
     </div>
   </section>`;
 
-  $('playerBack').onclick = closePlayer;
-  $('playBtn').onclick = () => togglePlay();
-  $('prevBtn').onclick = prevTrack;
-  $('nextBtn').onclick = nextTrack;
-  $('backBtn').onclick = () => seekBy(-15);
-  $('forwardBtn').onclick = () => seekBy(30);
-  $('seek').oninput = e => { if(audio.duration) audio.currentTime = audio.duration * (+e.target.value/1000); };
-  $('speedBtn').onclick = cycleSpeed;
-  $('sleepBtn').onclick = setSleep;
-  $('soundBtn').onclick = openCurrentSound;
-  $('playerMark').onclick = addBookmark;
-  $('queueBtn').onclick = () => showToast('Очередь следует за порядком глав');
-  $('playerMore').onclick = () => openBookMenu(b.id);
-  document.querySelectorAll('[data-chapter]').forEach(el => el.onclick = () => loadChapter(+el.dataset.chapter, 0, true));
+  const on = (id, fn) => { const el = $(id); if(el) el.onclick = fn; };
+  on('playerBack', closePlayer);
+  on('playBtn', () => togglePlay());
+  on('prevBtn', prevTrack);
+  on('nextBtn', nextTrack);
+  on('backBtn', () => seekBy(-15));
+  on('forwardBtn', () => seekBy(30));
+  const seekEl = $('seek');
+  if(seekEl) seekEl.oninput = e => {
+    const total = (state.current.files||[]).reduce((a,x)=>a+(Number(x.duration)||0),0);
+    if(total > 0) seekBook(total * (+e.target.value/1000));
+  };
+  on('speedBtn', cycleSpeed);
+  on('sleepBtn', setSleep);
+  on('soundBtn', openCurrentSound);
+  on('playerMark', addBookmark);
+  on('playerPlaylist', () => openPlaylistChooser(b.id));
+  on('queueBtn', openQueuePanel);
+  on('queueClose', closeQueuePanel);
+  on('playerMore', () => openBookMenu(b.id));
+  on('visualizerClose', closeVisualizer);
+  document.querySelectorAll('[data-chapter]').forEach(el => el.onclick = () => { loadChapter(+el.dataset.chapter, 0, true); closeQueuePanel(); });
   document.querySelectorAll('[data-mark]').forEach(el => el.onclick = () => {
     const m = b.marks?.[+el.dataset.mark];
-    if(m) loadChapter(m.i, m.t, true);
+    if(m){ loadChapter(m.i, m.t, true); closeQueuePanel(); }
   });
   bindPlayerSwipe();
   updatePlayerUI();
@@ -218,17 +284,50 @@ export function scheduleProgressSave(force=false){
 export function updatePlayerUI(){
   if(!state.current) return;
   const b = state.current, f = b.files[state.currentIndex];
+  const total = (b.files||[]).reduce((a,x)=>a+(Number(x.duration)||0),0);
+  const elapsed = bookElapsed(b);
+  const pct = total > 0 ? (elapsed / total) * 100 : progress(b);
   const seek = $('seek');
-  if(seek && audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
+  if(seek) seek.value = Math.round(pct * 10);
   const ct = $('curTime'), dt = $('durTime');
-  if(ct) ct.textContent = fmt(audio.currentTime);
-  if(dt) dt.textContent = fmt(audio.duration || f?.duration);
-  const p = $('playBtn');
-  if(p) p.innerHTML = icon(state.playing ? 'pause' : 'play');
+  if(ct) ct.textContent = fmt(elapsed);
+  if(dt) dt.textContent = fmt(total || audio.duration || f?.duration);
+  const pb = $('playBtn');
+  if(pb) pb.innerHTML = icon(state.playing ? 'pause' : 'play');
   const ch = document.querySelector('.chapter');
   if(ch) ch.textContent = `Глава ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;
+  // highlight current chapter in queue if open
+  document.querySelectorAll('[data-chapter]').forEach(el => {
+    el.classList.toggle('current', +el.dataset.chapter === state.currentIndex);
+  });
   updateMiniPlayer();
+  updateHeaderNowPlaying();
 }
+
+export function openQueuePanel(){
+  closeVisualizer();
+  const panel = $('queuePanel');
+  if(!panel) return;
+  const list = $('chapterList');
+  if(list && state.current) list.innerHTML = chapterRows(state.current);
+  document.querySelectorAll('[data-chapter]').forEach(el => el.onclick = () => { loadChapter(+el.dataset.chapter, 0, true); closeQueuePanel(); });
+  document.querySelectorAll('[data-mark]').forEach(el => {
+    el.onclick = () => {
+      const m = state.current?.marks?.[+el.dataset.mark];
+      if(m){ loadChapter(m.i, m.t, true); closeQueuePanel(); }
+    };
+  });
+  panel.classList.remove('hidden');
+  panel.setAttribute('aria-hidden','false');
+}
+
+export function closeQueuePanel(){
+  const panel = $('queuePanel');
+  if(!panel) return;
+  panel.classList.add('hidden');
+  panel.setAttribute('aria-hidden','true');
+}
+
 
 export function closePlayer(){
   closeVisualizer();
@@ -308,22 +407,26 @@ export function setMediaSession(){
   });
 })();
 
-export function bindPlayerSwipe(){
-  const player = $('playerScreen');
-  if(!player) return;
-  let sx = 0, sy = 0, targetInteractive = false;
-  player.addEventListener('pointerdown', e => {
-    sx = e.clientX; sy = e.clientY;
-    targetInteractive = !!e.target.closest('button, input, a, .tool, .controls, .chapter-row, .modal');
+function bindPlayerSwipe(){
+  const root = $('playerScreen');
+  if(!root || root.dataset.swipeBound) return;
+  root.dataset.swipeBound = '1';
+  let x0 = 0, y0 = 0, tracking = false;
+  root.addEventListener('touchstart', e => {
+    if(!e.touches[0]) return;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; tracking = true;
   }, {passive:true});
-  player.addEventListener('pointerup', e => {
-    if(targetInteractive) return;
-    const dx = e.clientX - sx, dy = e.clientY - sy;
-    if(Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
-    if(dx > 0 && !visualizerOpen) openVisualizer();
-    else if(dx < 0 && visualizerOpen) closeVisualizer();
+  root.addEventListener('touchend', e => {
+    if(!tracking) return;
+    tracking = false;
+    const t = e.changedTouches[0];
+    if(!t) return;
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if(Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy)) return;
+    // swipe right → chapter list; swipe left → visualizer
+    if(dx > 0) openQueuePanel();
+    else openVisualizer();
   }, {passive:true});
-  $('visualizerClose')?.addEventListener('click', closeVisualizer);
 }
 
 export function openVisualizer(){

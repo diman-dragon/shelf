@@ -1,5 +1,5 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
-import { state, icon, escapeHtml, plugin, plural, isNative, AUDIO_EXT, $, uid } from './state.js';
+import { state, icon, escapeHtml, plugin, plural, isNative, AUDIO_EXT, $, uid, modalRoot } from './state.js';
 import { persist } from './storage.js';
 import { openModal, closeModal, showToast, render } from './ui.js';
 import { readTags } from './utils.js';
@@ -139,9 +139,21 @@ export function initNativeScanListeners(){
     const first = files[0];
     const path = String(e.path || '');
     const title = path ? path.split('/').pop() : stripExt(first?.name || e.title || folder.name);
-    const book = {id:uid(), title:stripExt(e.title || title), author:'', cover:'', files, srcPath:`${folder.id}:${path}`, sourceFolderId:folder.id, added:Date.now(), pos:{i:0,t:0}, marks:[]};
-    state.books.unshift(book);
-    state.scan.books++;
+    const srcPath = e.srcPath || `${folder.id}:${path}`;
+    const titleFinal = stripExt(e.title || title);
+    const authorFinal = (e.author || '').trim();
+    // Dedup by parent-folder key — rescan updates files instead of duplicating books
+    let book = state.books.find(b => b.srcPath === srcPath || (b.sourceFolderId === folder.id && b.srcPath === srcPath));
+    if(book){
+      book.title = titleFinal || book.title;
+      if(authorFinal) book.author = authorFinal;
+      book.files = files;
+      book.sourceFolderId = folder.id;
+    } else {
+      book = {id:uid(), title:titleFinal, author:authorFinal, cover:'', files, srcPath, sourceFolderId:folder.id, added:Date.now(), pos:{i:0,t:0}, marks:[]};
+      state.books.unshift(book);
+      state.scan.books++;
+    }
     // Batch IDB writes and UI updates — only links are stored, no need to persist/render every book
     clearTimeout(scanPersistTimer);
     scanPersistTimer = setTimeout(() => { set?.('books', state.books); }, SCAN_BATCH_MS);

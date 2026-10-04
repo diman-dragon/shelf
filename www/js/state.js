@@ -1,8 +1,8 @@
 /* state.js — Application State, Constants & Helpers */
 const { get, set, del } = window.idbKeyval || {};
 export const $ = id => document.getElementById(id);
-const main = $('main');
-const modalRoot = $('modalRoot');
+export const main = $('main');
+export const modalRoot = $('modalRoot');
 
 export const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
 export const NAV = ['shelf','player','playlists','settings'];

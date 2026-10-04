@@ -209,17 +209,34 @@ public class FilesPlugin extends Plugin {
                 arr.put(f);
                 state.processed++;
             }
-            String title = relativeDir.isEmpty() ? stripExt(audioHere.get(0).optString("name", "Книга")) : relativeDir.substring(relativeDir.lastIndexOf('/') + 1);
+            // Group strictly by parent directory (relativeDir). Title = folder name, author = parent folder if nested.
+            String title;
+            String author = "";
+            if (relativeDir.isEmpty()) {
+                title = stripExt(audioHere.get(0).optString("name", "Книга"));
+            } else {
+                int slash = relativeDir.lastIndexOf('/');
+                if (slash >= 0) {
+                    title = relativeDir.substring(slash + 1);
+                    String parent = relativeDir.substring(0, slash);
+                    int pslash = parent.lastIndexOf('/');
+                    author = pslash >= 0 ? parent.substring(pslash + 1) : parent;
+                } else {
+                    title = relativeDir;
+                }
+            }
 
             JSObject book = new JSObject();
             book.put("folderId", state.folderId);
             book.put("folderName", state.folderName);
             book.put("path", relativeDir);
             book.put("title", title);
-            book.put("author", "");
+            book.put("author", author);
             book.put("cover", "");
             book.put("files", arr);
             book.put("fileCount", audioHere.size());
+            // Stable key for JS dedup: folder + relative path of the book directory
+            book.put("srcPath", state.folderId + ":" + relativeDir);
             state.books++;
             emit("scanBook", book);
             emitProgress(state);

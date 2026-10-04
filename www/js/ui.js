@@ -1,5 +1,5 @@
 /* ui.js — UI helpers, Modals, Settings, Playlists, Filters */
-import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $ } from './state.js';
+import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $, modalRoot, main } from './state.js';
 import { persist } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
 import { applyAudioSettings, audio } from './sound.js';
@@ -46,19 +46,10 @@ export function header(title, subtitle, actions=''){
   return `<div class="topbar"><div class="topbar-main"><h2>${title}</h2>${subHtml}</div><div class="top-actions">${actions}</div></div>`;
 }
 
-/** Current chapter progress 0–100 for header bar */
+/** Whole-book progress 0–100 for header bar */
 export function nowPlayingPct(){
   if(!state.current) return 0;
-  const b = state.current;
-  const i = Math.max(0, Math.min(state.currentIndex, (b.files||[]).length-1));
-  const f = b.files?.[i];
-  let d = 0, t = Number(state.currentPos) || 0;
-  try {
-    if(audio && Number(audio.duration) > 0) d = Number(audio.duration);
-    if(audio && Number.isFinite(audio.currentTime)) t = Number(audio.currentTime);
-  } catch {}
-  if(!d) d = Number(f?.duration) || 0;
-  return d > 0 ? Math.max(0, Math.min(100, (t / d) * 100)) : 0;
+  return progress(state.current);
 }
 
 export function updateHeaderNowPlaying(){
@@ -93,10 +84,26 @@ export function bookCover(b, extra=''){
 export function progress(b){
   const files = b.files || [];
   if(!files.length) return 0;
-  const i = Math.max(0, Math.min(Number(b.pos?.i)||0, files.length-1));
+  const total = files.reduce((a,f)=>a+(Number(f.duration)||0), 0);
+  if(total <= 0){
+    // fallback: by chapter index when durations unknown
+    const i = Math.max(0, Math.min(Number(b.pos?.i)||0, files.length-1));
+    const t = Math.max(0, Number(b.pos?.t)||0);
+    const d = Math.max(0, Number(files[i]?.duration)||0);
+    return Math.max(0, Math.min(100, ((i + (d ? t/d : 0)) / files.length) * 100));
+  }
+  let i = Math.max(0, Math.min(Number(b.pos?.i)||0, files.length-1));
+  // live position for current book
+  if(state.current && state.current.id === b.id){
+    i = Math.max(0, Math.min(state.currentIndex, files.length-1));
+    let t = Number(state.currentPos)||0;
+    try { if(typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime)) t = audio.currentTime; } catch {}
+    const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
+    return Math.max(0, Math.min(100, ((before + t) / total) * 100));
+  }
   const t = Math.max(0, Number(b.pos?.t)||0);
-  const d = Math.max(0, Number(files[i]?.duration)||0);
-  return Math.max(0, Math.min(100, ((i + (d ? t/d : 0)) / files.length) * 100));
+  const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
+  return Math.max(0, Math.min(100, ((before + t) / total) * 100));
 }
 
 let navBound = false;
@@ -122,7 +129,11 @@ export function bindNav(){
   document.querySelectorAll('[data-action]').forEach(b => {
     const a = b.dataset.action;
     const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[a];
-    if(fn) b.onclick = fn;
+    if(fn) b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+  });
+  // SVG must never intercept taps (critical for Android WebView)
+  document.querySelectorAll('button .icon, button svg, .nav-ico, .nav-ico svg').forEach(el => {
+    el.style.pointerEvents = 'none';
   });
   bindHeaderNowPlaying();
 }
@@ -176,7 +187,7 @@ export function renderPlaylists(){
 }
 
 export function iconBtn(ic, label, action){
-  return `<button class="icon-btn" aria-label="${label}" data-action="${action}">${icon(ic)}</button>`;
+  return `<button type="button" class="icon-btn" aria-label="${label}" data-action="${action}">${icon(ic)}</button>`;
 }
 
 export function newPlaylist(){

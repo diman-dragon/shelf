@@ -1,30 +1,26 @@
-# AudioShelf — только изменённые файлы
+# AudioShelf — полная сборка
 
-Положите поверх существующего проекта (сохраняя пути).
+Capacitor: `www/` + `android/`.
 
-## Изменения
+## Кнопки на мобильном (исправлено)
+- `main` и `modalRoot` экспортируются из `state.js` (раньше ReferenceError ломал UI)
+- Нижняя навигация: `position:fixed`, `z-index:60`, `type="button"`
+- SVG/иконки: `pointer-events: none` (не перехватывают тап)
+- Capture-phase обработчик nav в `app.js` + делегирование в `bindNav`
+- Пустой `#modalRoot` не перекрывает экран
 
-### Мобильные кнопки
-- Нижняя навигация: `position: fixed`, `touch-action: manipulation`
-- Привязка nav **один раз** (делегирование click + pointerup), без пересоздания обработчиков на каждый render
-- Иконки `pointer-events: none`, увеличенные hit-area у `.nav-item`
+## Остальное
+- Книга = папка с аудио (SAF), author/title из пути, dedup по `srcPath`
+- Прогресс и seek по всей книге
+- Звук (EQ/пресеты) на книгу
+- Плеер в один экран; свайп ← визуализатор, → список глав
+- Плейлисты с плеера и меню книги
+- NotificationChannel + foreground mediaPlayback
 
-### Прогресс вместо mini-player
-- Mini-player скрыт на всех экранах
-- Под заголовком (Библиотека / Плейлисты / Настройки): иконка книги + кликабельная полоска прогресса текущей главы + название
-- Клик по полоске/строке → открывает плеер
-- Если ничего не играет — как раньше (обычный подзаголовок)
-- На экране «Плеер» этой строки нет
-
-### Ранее
-- Батчинг скана (только URI, без записи IDB/рендера на каждую книгу)
-- Громкость 0–1, бас/высокие реально в Web Audio
-- scanDock отображается
-
-Файлы:
-- www/js/ui.js
-- www/js/player.js
-- www/js/scanner.js
-- www/js/library.js
-- www/js/sound.js
-- www/styles.css
+## Сборка
+```bash
+npm install
+npx cap sync android
+npm run android:build
+```
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`

@@ -1,5 +1,5 @@
 /* library.js — Library screen, Filtering, Sorting, Book management */
-import { state, icon, escapeHtml, fmt, durationOfBook, plural, $ } from './state.js';
+import { state, icon, escapeHtml, fmt, durationOfBook, plural, $, main } from './state.js';
 import { persist } from './storage.js';
 import { showToast, closeModal, openModal, header, iconBtn, bookCover, progress, render } from './ui.js';
 import { openPlayer } from './player.js';

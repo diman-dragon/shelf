@@ -1,5 +1,5 @@
 /* sound.js — Web Audio API, Equalizer, Sound Enhancements */
-import { state, icon, escapeHtml } from './state.js';
+import { state, icon, escapeHtml, $ } from './state.js';
 import { persist } from './storage.js';
 import { closeModal } from './ui.js';
 
@@ -26,27 +26,36 @@ export const SOUND_PRESETS = {
   night:{name:'Ночь',gain:-2,eq:[-2,-1,0,1,2,1,0,-2,-3,-4]}
 };
 
-export function ensureFileSound(f){
-  if(!f) return;
-  f.sound = {
+export function ensureBookSound(b){
+  if(!b) return null;
+  // Prefer book-level sound; migrate legacy file-level once
+  const legacy = b.files?.[0]?.sound;
+  b.sound = {
     preset:'flat',
     volume:Number(state.settings.volume ?? 1),
     gain:0,
     eq:[0,0,0,0,0,0,0,0,0,0],
     bass:Number(state.settings.bass)||0,
     treble:Number(state.settings.treble)||0,
-    ...(f.sound||{})
+    ...(legacy||{}),
+    ...(b.sound||{})
   };
-  if(!Array.isArray(f.sound.eq) || f.sound.eq.length!==10) f.sound.eq=[0,0,0,0,0,0,0,0,0,0];
+  if(!Array.isArray(b.sound.eq) || b.sound.eq.length!==10) b.sound.eq=[0,0,0,0,0,0,0,0,0,0];
+  return b.sound;
+}
+
+/** @deprecated use ensureBookSound */
+export function ensureFileSound(f){
+  // keep for compatibility — no-op migration path
+  if(!f) return;
+  if(!f.sound) f.sound = {
+    preset:'flat', volume:Number(state.settings.volume ?? 1), gain:0,
+    eq:[0,0,0,0,0,0,0,0,0,0], bass:Number(state.settings.bass)||0, treble:Number(state.settings.treble)||0
+  };
 }
 
 export function applyAudioSettings(){
-  const f = state.current?.files?.[state.currentIndex];
-  if(f){
-    ensureFileSound(f);
-    // keep file-level volume, but apply global bass/treble
-    f.sound.bass = Number(state.settings.bass) || 0;
-    f.sound.treble = Number(state.settings.treble) || 0;
+  if(state.current){
     applyCurrentFileSound();
     return;
   }
@@ -56,50 +65,48 @@ export function applyAudioSettings(){
 }
 
 export function applyCurrentFileSound(){
-  const f = state.current?.files?.[state.currentIndex];
-  if(!f) return;
-  ensureFileSound(f);
-  const s = f.sound;
+  const b = state.current;
+  if(!b) return;
+  const s = ensureBookSound(b);
   audio.volume = Math.max(0, Math.min(1, Number(s.volume ?? state.settings.volume ?? 1)));
   if(gainNode) gainNode.gain.value = 1;
-  if(bassFilter) bassFilter.gain.value = Number(s.bass ?? state.settings.bass) || 0;
-  if(trebleFilter) trebleFilter.gain.value = Number(s.treble ?? state.settings.treble) || 0;
+  if(bassFilter) bassFilter.gain.value = Number(s.bass) || 0;
+  if(trebleFilter) trebleFilter.gain.value = Number(s.treble) || 0;
   eqFilters.forEach((filter, i) => filter.gain.value = Number(s.eq[i]) || 0);
 }
 
 export function eqLabel(hz){ return hz>=1000 ? (hz/1000)+'k' : String(hz); }
 
 export function openCurrentSound(){
-  const f = state.current?.files?.[state.currentIndex];
-  if(!f) return;
-  ensureFileSound(f);
-  const s = f.sound;
+  const b = state.current;
+  if(!b) return;
+  const s = ensureBookSound(b);
 
   const presets = Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(p.name)}</b><small>${p.eq.filter(x=>x>0).length?'объёмный':'нейтральный'}</small></button>`).join('');
   const bands = EQ_BANDS.map((hz,i)=>`<div class="eq-band"><span>${eqLabel(hz)}</span><input type="range" min="-12" max="12" step="1" value="${Number(s.eq[i])||0}" data-eq="${i}" orient="vertical"><b id="eqv${i}">${(s.eq[i]>0?'+':'')}${s.eq[i]} dB</b></div>`).join('');
 
-  modalRoot.innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>Звук главы</h3><small>${escapeHtml(f.name)}</small></div><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="sound-label">Пресет</div><div class="preset-grid">${presets}</div><div class="sound-setting"><div class="sound-head"><span>Громкость файла</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="100" value="${Math.round(s.volume*100)}"></div><div class="eq-panel"><div class="sound-head"><span>10-полосный эквалайзер файла</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить эквалайзер</button></div></div></div>`;
+  document.getElementById('modalRoot').innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>Звук книги</h3><small>${escapeHtml(b.title)}</small></div><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="sound-label">Пресет</div><div class="preset-grid">${presets}</div><div class="sound-setting"><div class="sound-head"><span>Громкость книги</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="100" value="${Math.round(s.volume*100)}"></div><div class="eq-panel"><div class="sound-head"><span>10-полосный эквалайзер книги</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить эквалайзер</button></div></div></div>`;
 
   $('soundBack').onclick = e => { if(e.target.id==='soundBack'||e.target.closest('[data-close]')) closeModal(); };
   document.querySelectorAll('[data-preset]').forEach(btn => btn.onclick = () => {
     const id = btn.dataset.preset, p = SOUND_PRESETS[id];
     s.preset = id; s.eq = [...p.eq];
-    applyCurrentFileSound(); set('books', state.books); openCurrentSound();
+    applyCurrentFileSound(); persist(); openCurrentSound();
   });
   $('fileVol').oninput = e => {
     s.preset = 'custom'; s.volume = Number(e.target.value)/100;
     $('fileVolValue').textContent = Math.round(s.volume*100)+'%';
-    applyCurrentFileSound(); set('books', state.books);
+    applyCurrentFileSound(); persist();
   };
   document.querySelectorAll('[data-eq]').forEach(inp => inp.oninput = e => {
     const i = Number(inp.dataset.eq);
     s.preset = 'custom'; s.eq[i] = Number(e.target.value);
     const v = $('eqv'+i); if(v) v.textContent = (s.eq[i]>0?'+':'')+s.eq[i]+' dB';
-    applyCurrentFileSound(); set('books', state.books);
+    applyCurrentFileSound(); persist();
   });
   $('soundDefault').onclick = () => {
     s.preset = 'flat'; s.eq = [0,0,0,0,0,0,0,0,0,0]; s.volume = 1;
-    applyCurrentFileSound(); set('books', state.books); openCurrentSound();
+    applyCurrentFileSound(); persist(); openCurrentSound();
   };
 }
 
