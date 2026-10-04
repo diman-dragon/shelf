@@ -7,6 +7,8 @@ import { openPlaylistChooser } from './ui.js';
 import { openFolderSheet, scanDock } from './scanner.js';
 import { audio } from './sound.js';
 
+let libraryDisplayLimit = 50;
+
 export function renderShelf(){
   const audioTime = (typeof audio !== 'undefined' && audio && Number.isFinite(audio.currentTime)) ? audio.currentTime : null;
   const books = sortBooks(filterBooks(state.books));
@@ -34,12 +36,25 @@ export function renderShelf(){
   if(!books.length){
     html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Библиотека пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`;
   } else {
-    html += books.map(b => libraryBookRow(b, audioTime)).join('');
+    const limit = books.length > 100 ? Math.min(books.length, libraryDisplayLimit) : books.length;
+    html += books.slice(0, limit).map(b => libraryBookRow(b, audioTime)).join('');
+    if(limit < books.length){
+      html += `<div id="loadMoreBooks" style="text-align:center;padding:16px;color:var(--gold2);cursor:pointer;font-size:13px">Загрузить ещё (${books.length - limit})...</div>`;
+    }
   }
   html += `</div>${state.scan?.active ? scanDock() : ''}</section>`;
   main.innerHTML = html;
   $('emptyAdd')?.addEventListener('click', openAddSheet);
-  $('clearSearch')?.addEventListener('click', () => { state.query = ''; render(); });
+  $('clearSearch')?.addEventListener('click', () => { state.query = ''; libraryDisplayLimit = 50; render(); });
+  
+  const loadMoreBtn = $('loadMoreBooks');
+  if(loadMoreBtn){
+    loadMoreBtn.onclick = () => {
+      libraryDisplayLimit += 50;
+      renderShelf();
+    };
+  }
+
   document.querySelectorAll('.library-book-item').forEach(el => el.onclick = () => openPlayer(el.dataset.id));
 }
 
@@ -89,6 +104,7 @@ export function openLibraryFilter(){
   openModal(`<h3>Поиск и фильтр</h3><input class="field" id="libSearchInput" placeholder="Название или автор" value="${escapeHtml(state.query)}"><div class="modal-actions"><button class="secondary" data-close>Закрыть</button><button class="primary" id="libSearchBtn">Найти</button></div>`);
   $('libSearchBtn').onclick = () => {
     state.query = $('libSearchInput').value;
+    libraryDisplayLimit = 50;
     closeModal();
     render();
   };
@@ -99,6 +115,7 @@ export function openSort(){
   openModal(`<h3>Сортировка</h3>${sorts.map(([id,name])=>`<div class="modal-row" data-sort="${id}"><span style="flex:1">${name}</span>${state.librarySort===id?'✓':''}</div>`).join('')}`);
   document.querySelectorAll('[data-sort]').forEach(el => el.onclick = () => {
     state.librarySort = el.dataset.sort;
+    libraryDisplayLimit = 50;
     closeModal();
     render();
   });
