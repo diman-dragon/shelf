@@ -41,7 +41,7 @@ async function loadState(){
     if(b){
       state.current = b;
       state.currentIndex = Math.max(0, Math.min(Number(last.index)||0, b.files.length-1));
-      state.currentPos = Math.max(0, (Number(last.pos||0) - 10);
+      state.currentPos = Math.max(0, (Number(last.pos||0) - 10));
       b.pos = {...(b.pos||{}), i: state.currentIndex, t: state.currentPos};
     }
   }
