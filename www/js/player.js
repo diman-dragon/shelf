@@ -129,8 +129,8 @@ export function renderPlayer(){
   on('forwardBtn', () => seekBy(30));
   const seekEl = $('seek');
   if(seekEl) seekEl.oninput = e => {
-    const total = (state.current.files||[]).reduce((a,x)=>a+(Number(x.duration)||0),0);
-    if(total > 0) seekBook(total * (+e.target.value/1000));
+    const dur = audio.duration || state.current.files[state.currentIndex]?.duration || 0;
+    if(dur > 0) audio.currentTime = dur * (+e.target.value / 1000);
   };
   on('speedBtn', cycleSpeed);
   on('sleepBtn', setSleep);
@@ -293,14 +293,14 @@ export function updatePlayerUI(){
   requestAnimationFrame(() => {
     if(!state.current) return;
     const b = state.current, f = b.files[state.currentIndex];
-    const total = (b.files||[]).reduce((a,x)=>a+(Number(x.duration)||0),0);
-    const elapsed = bookElapsed(b);
-    const pct = total > 0 ? (elapsed / total) * 100 : progress(b);
+    const dur = audio.duration || Number(f?.duration) || 0;
+    const cur = audio.currentTime || 0;
+    const chapterPct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
     const seek = $('seek');
-    if(seek) seek.value = Math.round(pct * 10);
+    if(seek) seek.value = Math.round(chapterPct * 10);
     const ct = $('curTime'), dt = $('durTime');
-    if(ct) ct.textContent = fmt(elapsed);
-    if(dt) dt.textContent = fmt(total || audio.duration || f?.duration);
+    if(ct) ct.textContent = fmt(cur);
+    if(dt) dt.textContent = fmt(dur);
     const pb = $('playBtn');
     if(pb) pb.innerHTML = icon(state.playing ? 'pause' : 'play');
     const ch = document.querySelector('.chapter');
@@ -373,6 +373,13 @@ export function setMediaSession(){
     navigator.mediaSession.playbackState = state.playing ? 'playing' : 'paused';
     navigator.mediaSession.setActionHandler('play', () => togglePlay(true));
     navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+    navigator.mediaSession.setActionHandler('stop', () => {
+      audio.pause();
+      audio.currentTime = 0;
+      state.playing = false;
+      updatePlayerUI();
+      if(navigator.mediaSession.metadata) navigator.mediaSession.metadata = null;
+    });
     navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
     navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
     navigator.mediaSession.setActionHandler('seekbackward', () => seekBy(-10));
