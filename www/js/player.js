@@ -233,12 +233,14 @@ export function nextTrack(){
   if(state.currentIndex < state.current.files.length - 1) loadChapter(state.currentIndex + 1, 0, true);
 }
 
+const SPEEDS = [.8, 1, 1.2, 1.5, 1.8, 2];
+
 export function cycleSpeed(){
-  const a = [.8, 1, 1.2, 1.5, 1.8, 2];
   const current = Number(state.speed) || 1;
-  state.speed = current === 1 ? 1.2 : 1;
+  const idx = SPEEDS.indexOf(current);
+  state.speed = SPEEDS[(idx !== -1 ? idx + 1 : 1) % SPEEDS.length];
   audio.playbackRate = state.speed;
-  showToast(state.speed === 1 ? 'Скорость: 1×' : 'Скорость: 1.2×');
+  showToast(`Скорость: ${state.speed.toFixed(1)}×`);
 }
 
 export function setSleep(){

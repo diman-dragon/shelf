@@ -1,5 +1,5 @@
 /* state.js — Application State, Constants & Helpers */
-const { get, set, del } = window.idbKeyval || {};
+const { get, set } = window.idbKeyval || {};
 export const $ = id => document.getElementById(id);
 export const main = $('main');
 export const modalRoot = $('modalRoot');

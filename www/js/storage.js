@@ -1,7 +1,7 @@
 /* storage.js — IDB persistence and playback state */
 import { state } from './state.js';
 
-const { get, set, del } = window.idbKeyval || {};
+const { get, set } = window.idbKeyval || {};
 const LAST_PLAYBACK_KEY = 'shelf:lastPlayback';
 
 export async function persist(){

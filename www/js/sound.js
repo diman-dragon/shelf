@@ -7,7 +7,7 @@ export const audio = new Audio();
 audio.preload = 'auto';
 
 export let audioContext = null;
-export let audioSource = null;
+let audioSource = null;
 export let analyser = null;
 export let gainNode = null;
 export let bassFilter = null;
@@ -38,10 +38,6 @@ export function ensureBookSound(b){
   };
   if(!Array.isArray(b.sound.eq) || b.sound.eq.length!==10) b.sound.eq=[0,0,0,0,0,0,0,0,0,0];
   return b.sound;
-}
-
-export function applyAudioSettings(){
-  applyCurrentFileSound();
 }
 
 export function applyCurrentFileSound(){
@@ -113,7 +109,7 @@ export async function ensureAudioGraph(){
     node.connect(gainNode);
     gainNode.connect(analyser);
     analyser.connect(audioContext.destination);
-    applyAudioSettings();
+    applyCurrentFileSound();
   }
   if(audioContext.state === 'suspended') await audioContext.resume();
 }

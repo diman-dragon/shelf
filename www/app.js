@@ -1,9 +1,8 @@
 /* app.js — Main Application Entry Point */
-import { state, NAV, ICONS, DEFAULT_PLAYLISTS } from './js/state.js';
+import { state, ICONS, DEFAULT_PLAYLISTS, isNative } from './js/state.js';
 import { readLastPlayback } from './js/storage.js';
 import { render, bindNav } from './js/ui.js';
 import { initNativeScanListeners, scanAllFolders } from './js/scanner.js';
-import { isNative } from './js/state.js';
 
 const { get, set } = window.idbKeyval || {};
 

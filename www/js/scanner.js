@@ -10,9 +10,9 @@ let scanPersistTimer = null;
 let scanRenderTimer = null;
 const SCAN_BATCH_MS = 280;
 
-export function openAddSheet(){ openFolderSheet(true); }
+export function openAddSheet(){ openFolderSheet(); }
 
-export function openFolderSheet(showAdd=false){
+export function openFolderSheet(){
   const folders = state.folders;
   const selected = folders.filter(f => state.selectedFolderIds.includes(f.id));
   modalRoot.innerHTML = `<div class="modal-back" id="folderBack"><div class="sheet" id="folderSheet"><div class="sheet-head"><button class="sheet-close" id="folderClose" aria-label="Закрыть">${icon('close')}</button><h2>Выбор папок</h2><span style="font-size:11px;color:var(--muted)">${selected.length} выбрано</span></div>

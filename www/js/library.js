@@ -34,8 +34,6 @@ export function renderShelf(){
   document.querySelectorAll('.library-book-item').forEach(el => el.onclick = () => openPlayer(el.dataset.id));
 }
 
-export const renderLibrary = renderShelf;
-
 export function libraryBookRow(b){
   const prog = progress(b);
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}">
