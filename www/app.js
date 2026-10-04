@@ -6,7 +6,6 @@ import { closeModal } from './js/ui-utils.js';
 import { closeQueuePanel } from './js/player.js';
 import { closeVisualizer } from './js/visualizer.js';
 import { initNativeScanListeners, scanAllFolders } from './js/scanner.js';
-import { App } from '@capacitor/app';
 
 const { get, set } = window.idbKeyval || {};
 
@@ -21,31 +20,34 @@ window.addEventListener('unhandledrejection', (event) => {
   try { showToast(`Ошибка: ${event.reason?.message || 'Сбой операции'}`); } catch {}
 });
 
-// Native Android Back Button handling
+// Native Android Back Button handling via window.Capacitor.Plugins
 if(isNative()){
-  App.addListener('backButton', () => {
-    const modalBack = document.getElementById('modalBack');
-    const queuePanel = document.getElementById('queuePanel');
-    const visualizer = document.getElementById('visualizer');
+  const App = window.Capacitor?.Plugins?.App;
+  if(App){
+    App.addListener('backButton', () => {
+      const modalBack = document.getElementById('modalBack');
+      const queuePanel = document.getElementById('queuePanel');
+      const visualizer = document.getElementById('visualizer');
 
-    if(modalBack || (window.modalRoot && window.modalRoot.innerHTML !== '')){
-      closeModal();
-      return;
-    }
-    if(queuePanel && !queuePanel.classList.contains('hidden')){
-      closeQueuePanel();
-      return;
-    }
-    if(visualizer && !visualizer.classList.contains('hidden')){
-      closeVisualizer();
-      return;
-    }
-    if(state.screen !== 'shelf'){
-      setScreen('shelf');
-      return;
-    }
-    App.minimizeApp();
-  });
+      if(modalBack || (window.modalRoot && window.modalRoot.innerHTML !== '')){
+        closeModal();
+        return;
+      }
+      if(queuePanel && !queuePanel.classList.contains('hidden')){
+        closeQueuePanel();
+        return;
+      }
+      if(visualizer && !visualizer.classList.contains('hidden')){
+        closeVisualizer();
+        return;
+      }
+      if(state.screen !== 'shelf'){
+        setScreen('shelf');
+        return;
+      }
+      App.minimizeApp();
+    });
+  }
 }
 
 async function loadState(){
