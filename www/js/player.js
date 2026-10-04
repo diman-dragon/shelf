@@ -1,7 +1,7 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
 import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative, main } from './state.js';
 import { persist, writeLastPlayback } from './storage.js';
-import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying, openPlaylistChooser, progress } from './ui.js';
+import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying, progress } from './ui.js';
 import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound } from './sound.js';
 import { openBookMenu } from './library.js';
 
@@ -79,7 +79,6 @@ export function renderPlayer(){
           <div><h2>Плеер</h2></div>
         </div>
         <div class="top-actions">
-          <button type="button" class="icon-btn" id="playerPlaylist" aria-label="В плейлист">${icon('playlist')}</button>
           <button type="button" class="icon-btn" id="playerMark" aria-label="Закладка">${icon('bookmark')}</button>
           <button type="button" class="icon-btn" id="playerMore" aria-label="Ещё">${icon('more')}</button>
         </div>
@@ -138,7 +137,6 @@ export function renderPlayer(){
   on('sleepBtn', setSleep);
   on('soundBtn', openCurrentSound);
   on('playerMark', addBookmark);
-  on('playerPlaylist', () => openPlaylistChooser(b.id));
   on('queueBtn', openQueuePanel);
   on('queueClose', closeQueuePanel);
   on('playerMore', () => openBookMenu(b.id));

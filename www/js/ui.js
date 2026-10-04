@@ -1,30 +1,13 @@
 /* ui.js — UI helpers, Modals, Settings, Playlists, Filters */
-import { state, icon, escapeHtml, fmt, durationOfBook, uid, plural, $, modalRoot, main } from './state.js';
+import { state, icon, escapeHtml, durationOfBook, uid, plural, $, modalRoot, main } from './state.js';
 import { persist } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
 import { audio } from './sound.js';
 import { openPlayer, renderPlayer, loadChapter } from './player.js';
 import { renderShelf, openLibraryFilter, openSort } from './library.js';
+import { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt } from './ui-utils.js';
 
-let toastTimer;
-
-export function showToast(msg){
-  clearTimeout(toastTimer);
-  const t = $('toast');
-  if(!t) return;
-  t.textContent = msg;
-  t.classList.add('show');
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 2300);
-}
-
-export function openModal(body){
-  modalRoot.innerHTML = `<div class="modal-back" id="modalBack"><div class="modal">${body}</div></div>`;
-  $('modalBack').addEventListener('click', e => {
-    if(e.target.id === 'modalBack' || e.target.closest('[data-close]')) closeModal();
-  });
-}
-
-export function closeModal(){ modalRoot.innerHTML = ''; }
+export { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt };
 
 export function header(title, subtitle, actions=''){
   // Under title: if a book is active and we are not on player screen — show compact now-playing progress
@@ -71,15 +54,6 @@ function bindHeaderNowPlaying(){
   el.onclick = () => {
     if(state.current) openPlayer(state.current.id);
   };
-}
-
-export function bookCover(b, extra=''){
-  const title = escapeHtml(b.title || 'Без названия');
-  const author = escapeHtml(b.author || '');
-  const body = b.cover ?
-    `<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" loading="lazy" draggable="false">` :
-    `<div class="fallback-cover ${extra}"><div class="cover-title">${title}</div>${author?`<div class="cover-author">${author}</div>`:''}</div>`;
-  return `<div class="cover-frame">${body}</div>`;
 }
 
 export function progress(b, cachedAudioTime = null){
@@ -171,10 +145,6 @@ export function renderPlaylists(){
   document.querySelectorAll('[data-action="newPlaylist"]').forEach(el => el.onclick = newPlaylist);
 }
 
-export function iconBtn(ic, label, action){
-  return `<button type="button" class="icon-btn" aria-label="${label}" data-action="${action}">${icon(ic)}</button>`;
-}
-
 export function newPlaylist(){
   openModal(`<h3>Новый плейлист</h3><input class="field" id="newPlName" placeholder="Название"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="newPlSave">Создать</button></div>`);
   $('newPlSave').onclick = async () => {
@@ -243,10 +213,6 @@ export function renderSettings(){
     await persist();
     renderSettings();
   });
-}
-
-export function settingToggle(k, name, desc, on){
-  return `<div class="setting" data-setting-toggle="${k}"><div class="setting-icon">${icon(k==='autoscan'?'refresh':'eye')}</div><div class="setting-main"><div class="setting-name">${name}</div><div class="setting-desc">${desc}</div></div><div class="switch ${on?'on':''}"><i></i></div></div>`;
 }
 
 export async function toggleTheme(){
