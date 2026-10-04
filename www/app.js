@@ -45,21 +45,5 @@ async function loadState(){
     n.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`;
     n.style.pointerEvents = 'none';
   });
-  // Reliable taps in Android WebView (capture phase)
-  const handleTap = (e) => {
-    const t = e.target;
-    if(!t || !t.closest) return;
-    const nav = t.closest('[data-nav]');
-    if(nav && nav.closest('.bottom-nav')){
-      e.preventDefault();
-      e.stopPropagation();
-      import('./js/ui.js').then(m => m.setScreen(nav.dataset.nav));
-      return;
-    }
-  };
-  document.addEventListener('click', handleTap, true);
-  document.addEventListener('pointerup', (e) => {
-    if(e.pointerType === 'touch' || e.pointerType === 'pen') handleTap(e);
-  }, true);
   await loadState();
 })();

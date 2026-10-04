@@ -244,14 +244,17 @@ export function cycleSpeed(){
 }
 
 export function setSleep(){
-  const v = prompt('Таймер сна, минут. 0 — выключить', '30');
-  if(v === null) return;
-  clearTimeout(state.sleepTimer);
-  const n = Number(v);
-  if(n > 0){
-    state.sleepTimer = setTimeout(() => audio.pause(), n * 60000);
-    showToast(`Таймер: ${n} мин`);
-  } else showToast('Таймер выключен');
+  openModal(`<h3>Таймер сна</h3><p style="color:var(--muted);font-size:13px">Введите время в минутах (0 — выключить)</p><input class="field" id="sleepInput" type="number" min="0" value="30"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="sleepSave">Установить</button></div>`);
+  $('sleepSave').onclick = () => {
+    const v = $('sleepInput').value;
+    closeModal();
+    clearTimeout(state.sleepTimer);
+    const n = Number(v);
+    if(n > 0){
+      state.sleepTimer = setTimeout(() => audio.pause(), n * 60000);
+      showToast(`Таймер: ${n} мин`);
+    } else showToast('Таймер выключен');
+  };
 }
 
 export async function addBookmark(){
@@ -264,25 +267,25 @@ export async function addBookmark(){
   showToast('Закладка добавлена');
 }
 
-export async function saveProgress(){
+export async function saveProgress(force = false){
   const b = state.current;
   if(!b) return;
   const t = Number(audio.currentTime) || Number(state.currentPos) || 0;
   b.pos = {i: state.currentIndex, t: Math.max(0, t)};
   state.currentPos = t;
   writeLastPlayback();
-  try { await set?.('books', state.books); } catch {}
-}
 
-export function scheduleProgressSave(force=false){
-  if(!state.current) return;
-  const t = Number(audio.currentTime) || 0;
-  state.currentPos = t;
-  state.current.pos = {i: state.currentIndex, t};
-  writeLastPlayback();
-  if(force){ clearTimeout(progressSaveTimer); progressSaveTimer = null; saveProgress(); return; }
+  if(force){
+    clearTimeout(progressSaveTimer);
+    progressSaveTimer = null;
+    try { await set?.('books', state.books); } catch {}
+    return;
+  }
   if(progressSaveTimer) return;
-  progressSaveTimer = setTimeout(() => { progressSaveTimer = null; saveProgress(); }, 1200);
+  progressSaveTimer = setTimeout(async () => {
+    progressSaveTimer = null;
+    try { await set?.('books', state.books); } catch {}
+  }, 1200);
 }
 
 export function updatePlayerUI(){
@@ -335,13 +338,13 @@ export function closeQueuePanel(){
 
 export function closePlayer(){
   closeVisualizer();
-  scheduleProgressSave(true);
+  saveProgress(true);
   state.screen = 'shelf';
   render();
 }
 
-audio.addEventListener('play', async () => { state.playing = true; updatePlayerUI(); await saveProgress(); setMediaSession(); });
-audio.addEventListener('pause', async () => { state.playing = false; updatePlayerUI(); await saveProgress(); setMediaSession(); });
+audio.addEventListener('play', async () => { state.playing = true; updatePlayerUI(); await saveProgress(true); setMediaSession(); });
+audio.addEventListener('pause', async () => { state.playing = false; updatePlayerUI(); await saveProgress(true); setMediaSession(); });
 
 audio.addEventListener('timeupdate', () => {
   if(!state.current) return;
@@ -350,15 +353,15 @@ audio.addEventListener('timeupdate', () => {
   updatePlayerUI();
   updateHeaderNowPlaying();
   const sec = Math.floor(audio.currentTime);
-  if(sec !== lastSavedSecond && sec % 5 === 0){ lastSavedSecond = sec; scheduleProgressSave(); }
+  if(sec !== lastSavedSecond && sec % 5 === 0){ lastSavedSecond = sec; saveProgress(); }
 });
-audio.addEventListener('seeking', () => scheduleProgressSave());
-audio.addEventListener('seeked', () => scheduleProgressSave(true));
-document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') scheduleProgressSave(true); });
+audio.addEventListener('seeking', () => saveProgress());
+audio.addEventListener('seeked', () => saveProgress(true));
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') saveProgress(true); });
 
 export function stopNativePlayer(){ const P = plugin('Player'); if(P) P.stop().catch(()=>{}); }
-window.addEventListener('pagehide', () => { stopNativePlayer(); scheduleProgressSave(true); });
-window.addEventListener('beforeunload', () => { stopNativePlayer(); scheduleProgressSave(true); });
+window.addEventListener('pagehide', () => { stopNativePlayer(); saveProgress(true); });
+window.addEventListener('beforeunload', () => { stopNativePlayer(); saveProgress(true); });
 audio.addEventListener('error', e => { console.error('Audio element error:', e); showToast('Ошибка воспроизведения файла'); });
 
 export function setMediaSession(){
