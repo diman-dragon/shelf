@@ -47,7 +47,7 @@ public class FilesPlugin extends Plugin {
     }
 
     @ActivityCallback
-    private void folderPickerResult(PluginCall call, ActivityResult result) {
+    public void folderPickerResult(PluginCall call, ActivityResult result) {
         if (call == null) return;
         if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
             call.reject("Выбор папки отменён"); return;
@@ -82,6 +82,41 @@ public class FilesPlugin extends Plugin {
 
     @PluginMethod
     public void listFiles(PluginCall call) { scanFolder(call); }
+
+    @PluginMethod
+    public void readFile(PluginCall call) {
+        String uriString = call.getString("uri");
+        if (uriString == null) {
+            call.reject("Не передан URI файла");
+            return;
+        }
+        Uri uri = Uri.parse(uriString);
+        try {
+            java.io.InputStream inputStream = getContext().getContentResolver().openInputStream(uri);
+            if (inputStream == null) {
+                call.reject("Не удалось открыть поток файла");
+                return;
+            }
+            byte[] bytes = readAllBytes(inputStream);
+            inputStream.close();
+            String base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
+            JSObject ret = new JSObject();
+            ret.put("base64", base64);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Ошибка чтения файла: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+        }
+    }
+
+    private byte[] readAllBytes(java.io.InputStream inputStream) throws java.io.IOException {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        int nRead;
+        byte[] data = new byte[16384];
+        while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, nRead);
+        }
+        return buffer.toByteArray();
+    }
 
     private void runScan(Uri treeUri, String folderId, String folderName) {
         try {

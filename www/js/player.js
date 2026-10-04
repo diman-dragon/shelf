@@ -321,9 +321,13 @@ export function setMediaSession(){
 export function bindPlayerSwipe(){
   const player = $('playerScreen');
   if(!player) return;
-  let sx = 0, sy = 0;
-  player.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; }, {passive:true});
+  let sx = 0, sy = 0, targetInteractive = false;
+  player.addEventListener('pointerdown', e => {
+    sx = e.clientX; sy = e.clientY;
+    targetInteractive = !!e.target.closest('button, input, a, .tool, .controls, .chapter-row, .modal');
+  }, {passive:true});
   player.addEventListener('pointerup', e => {
+    if(targetInteractive) return;
     const dx = e.clientX - sx, dy = e.clientY - sy;
     if(Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
     if(dx > 0 && !visualizerOpen) openVisualizer();
