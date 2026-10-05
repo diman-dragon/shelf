@@ -4,6 +4,7 @@ import { persist, getSavedPosition } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
 import { openPlayer, renderPlayer, ensureChapterLoaded, bookElapsed, bookTotal } from './player.js';
 import { renderShelf, openLibraryFilter, openSort } from './library.js';
+import { closeVisualizer } from './visualizer.js';
 import { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt } from './ui-utils.js';
 
 export { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt };
@@ -138,6 +139,7 @@ function syncNavActive(){
 }
 
 export function render(){
+  if(state.screen !== 'player') closeVisualizer();   // don't leak the visualizer loop / native FFT stream
   syncNavActive();
   if(state.screen === 'shelf') renderShelf();
   if(state.screen === 'player') renderCurrentPlayer();

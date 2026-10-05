@@ -215,7 +215,7 @@
   position: absolute;
   inset: 0;
   z-index: 60;
-  background: radial-gradient(circle at 50% 50%, #25170e 0%, #0b0908 45%, #030303 100%);
+  background: radial-gradient(circle at 50% 50%, #120d24 0%, #070812 50%, #020205 100%);
   overflow: hidden;
   touch-action: pan-y;
 }
@@ -252,8 +252,9 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: rgba(242, 238, 231, 0.12);
+  color: rgba(255, 255, 255, 0.55);
+  mix-blend-mode: screen;
   pointer-events: none;
 }
-.visualizer-center .icon { width: 68px; height: 68px; }
+.visualizer-center .icon { width: 44px; height: 44px; }
 .visualizer-center b { font: 700 10px/1 Inter, system-ui; letter-spacing: 0.24em; }
