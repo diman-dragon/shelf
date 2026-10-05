@@ -37,7 +37,7 @@ export const ICONS = {
 export let state = {
   screen:'shelf', books:[], folders:[], playlists:[],
   settings:{theme:'dark',autoscan:false},
-  scan:{active:false,total:0,processed:0,books:0,name:''},
+  scan:{active:false,total:0,processed:0,books:0,skipped:0,errors:0,timeouts:0,firstError:'',counting:false,name:''},
   query:'', librarySort:'recent', selectedFolderIds:[],
   current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null
 };

@@ -9,16 +9,24 @@ import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.util.Base64;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import androidx.activity.result.ActivityResult;
 
@@ -35,14 +43,30 @@ public class FilesPlugin extends Plugin {
     private static final String PICK_FOLDER_CALLBACK = "folderPickerResult";
     private static final int COVER_MAX_PX = 360;
     private static final int COVER_FILE_LIMIT = 8 * 1024 * 1024;
+    /** Reading metadata of one file must never block the scan forever (cloud / SD providers can hang) */
+    private static final long META_TIMEOUT_MS = 12000;
+    private static final long COVER_READ_TIMEOUT_MS = 8000;
+    /** After this many timeouts in a row inside one book the rest of its files are not probed (JS fills durations lazily) */
+    private static final int MAX_CONSECUTIVE_TIMEOUTS = 3;
+    private static final long PROGRESS_THROTTLE_MS = 150;
+
     private final ExecutorService scanExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService metaExecutor = Executors.newSingleThreadExecutor();
+    /** Worker threads for the timed reads: a hung read only burns its own daemon thread, not the scan thread */
+    private final ExecutorService ioPool = Executors.newCachedThreadPool(new ThreadFactory() {
+        @Override public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "shelf-io");
+            t.setDaemon(true);
+            return t;
+        }
+    });
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
     protected void handleOnDestroy() {
         scanExecutor.shutdownNow();
         metaExecutor.shutdownNow();
+        ioPool.shutdownNow();
         super.handleOnDestroy();
     }
 
@@ -56,7 +80,7 @@ public class FilesPlugin extends Plugin {
         }
         final boolean wantCover = Boolean.TRUE.equals(call.getBoolean("cover", false));
         metaExecutor.execute(() -> {
-            Meta m = readMeta(Uri.parse(u), wantCover);
+            Meta m = readMetaTimed(Uri.parse(u), wantCover);
             JSObject r = new JSObject();
             r.put("duration", m.duration);
             r.put("cover", m.cover);
@@ -110,22 +134,96 @@ public class FilesPlugin extends Plugin {
         JSObject started = new JSObject();
         started.put("started", true);
         call.resolve(started);
-        scanExecutor.execute(() -> runScan(treeUri, folderId, folderName));
+        ScanService.begin(getContext());     // foreground service: the scan survives a minimised app / screen off
+        try {
+            scanExecutor.execute(() -> {
+                try { runScan(treeUri, folderId, folderName); }
+                finally { ScanService.end(getContext()); }
+            });
+        } catch (Exception e) {
+            ScanService.end(getContext());
+        }
     }
 
     private void runScan(Uri treeUri, String folderId, String folderName) {
+        ScanState state = new ScanState(folderId, folderName);
         try {
             String rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
             Uri rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocId);
 
             emit("scanStarted", new JSObject().put("folderId", folderId).put("folderName", folderName).put("totalFiles", 0));
-            ScanState state = new ScanState(folderId, folderName);
+            // 1) fast pass: only names / mime types, no metadata — gives the real total for an honest progress bar
+            state.total = countAudio(treeUri, rootDocId, state);
+            emit("scanProgress", new JSObject().put("folderId", folderId).put("folderName", folderName)
+                .put("totalFiles", state.total).put("processedFiles", 0).put("books", 0));
+            // 2) real scan: durations, covers, one event per book and one progress event per file
             scanDirectory(treeUri, rootDocUri, "", state);
+            emitProgress(state, true);
             emit("scanComplete", new JSObject().put("folderId", folderId).put("folderName", folderName)
-                .put("totalFiles", state.processed).put("processedFiles", state.processed).put("books", state.books));
+                .put("totalFiles", Math.max(state.total, state.processed)).put("processedFiles", state.processed)
+                .put("books", state.books).put("errors", state.errors).put("timeouts", state.timeouts)
+                .put("firstError", state.firstError));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            emit("scanError", new JSObject().put("folderId", folderId).put("message", "Сканирование прервано"));
         } catch (Exception e) {
             emit("scanError", new JSObject().put("folderId", folderId).put("message", e.getMessage() == null ? "Ошибка сканирования" : e.getMessage()));
         }
+    }
+
+    private static final String[] LIST_COLS = new String[]{
+        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+        DocumentsContract.Document.COLUMN_MIME_TYPE,
+        DocumentsContract.Document.COLUMN_SIZE,
+        DocumentsContract.Document.COLUMN_LAST_MODIFIED
+    };
+
+    /** Lists the children of a directory; throws when the provider gives nothing (lost access, provider down) */
+    private Cursor listChildren(Uri treeUri, String docId) throws Exception {
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
+        Cursor c = getContext().getContentResolver().query(children, LIST_COLS, null, null,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC");
+        if (c == null) throw new IllegalStateException("Провайдер файлов не вернул список папки");
+        return c;
+    }
+
+    /** Fast recursive count of audio files (no metadata reads). Unreadable sub-folders are reported, not hidden. */
+    private int countAudio(Uri treeUri, String rootDocId, ScanState state) throws Exception {
+        int total = 0;
+        ArrayDeque<String> queue = new ArrayDeque<>();
+        ArrayDeque<String> names = new ArrayDeque<>();
+        queue.add(rootDocId);
+        names.add("");
+        while (!queue.isEmpty()) {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            String docId = queue.poll();
+            String dirName = names.poll();
+            Cursor c = null;
+            try {
+                c = listChildren(treeUri, docId);
+                int idCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+                int nameCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+                int mimeCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
+                while (c.moveToNext()) {
+                    String id = idCol >= 0 ? c.getString(idCol) : "";
+                    String name = nameCol >= 0 ? c.getString(nameCol) : "";
+                    String mime = mimeCol >= 0 ? c.getString(mimeCol) : "";
+                    if (id == null || id.isEmpty() || name == null || name.isEmpty()) continue;
+                    if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                        if (!name.equals(".") && !name.equals("..")) { queue.add(id); names.add(dirName.isEmpty() ? name : dirName + "/" + name); }
+                    } else if (!isImage(name, mime) && isAudio(name, mime)) {
+                        total++;
+                    }
+                }
+            } catch (Exception e) {
+                if (dirName.isEmpty()) throw e;                 // the root itself is unreadable: report as an error
+                state.fail(dirName, e);
+            } finally {
+                if (c != null) c.close();
+            }
+        }
+        return total;
     }
 
     private static class DirEntry {
@@ -134,7 +232,8 @@ public class FilesPlugin extends Plugin {
         DirEntry(Uri u, String p) { uri = u; relPath = p; }
     }
 
-    private void scanDirectory(Uri treeUri, Uri documentUri, String relativeDir, ScanState state) {
+    private void scanDirectory(Uri treeUri, Uri documentUri, String relativeDir, ScanState state) throws Exception {
+        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
         Cursor cursor = null;
         List<JSObject> audioHere = new ArrayList<>();
         List<DirEntry> subDirs = new ArrayList<>();
@@ -143,71 +242,77 @@ public class FilesPlugin extends Plugin {
 
         try {
             String docId = DocumentsContract.getDocumentId(documentUri);
-            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
-            cursor = getContext().getContentResolver().query(children,
-                new String[]{
-                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                    DocumentsContract.Document.COLUMN_MIME_TYPE,
-                    DocumentsContract.Document.COLUMN_SIZE,
-                    DocumentsContract.Document.COLUMN_LAST_MODIFIED
-                },
-                null, null, DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC");
+            cursor = listChildren(treeUri, docId);
 
-            if (cursor != null) {
-                int idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
-                int nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
-                int mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
-                int sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE);
-                int modCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
+            int idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            int mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
+            int sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE);
+            int modCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED);
 
-                while (cursor.moveToNext()) {
-                    String id = idCol >= 0 ? cursor.getString(idCol) : "";
-                    String name = nameCol >= 0 ? cursor.getString(nameCol) : "";
-                    String mime = mimeCol >= 0 ? cursor.getString(mimeCol) : "";
-                    if (id == null || id.isEmpty() || name == null || name.isEmpty()) continue;
+            while (cursor.moveToNext()) {
+                String id = idCol >= 0 ? cursor.getString(idCol) : "";
+                String name = nameCol >= 0 ? cursor.getString(nameCol) : "";
+                String mime = mimeCol >= 0 ? cursor.getString(mimeCol) : "";
+                if (id == null || id.isEmpty() || name == null || name.isEmpty()) continue;
 
-                    Uri child = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
-                    if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                        if (!name.equals(".") && !name.equals("..")) {
-                            subDirs.add(new DirEntry(child, relativeDir.isEmpty() ? name : relativeDir + "/" + name));
-                        }
-                    } else if (isImage(name, mime)) {
-                        int score = coverScore(name);
-                        if (score > folderCoverScore) { folderCoverScore = score; folderCover = child; }
-                    } else if (isAudio(name, mime)) {
-                        JSObject f = new JSObject();
-                        f.put("uri", child.toString());
-                        f.put("name", name);
-                        f.put("fileName", name);
-                        f.put("path", relativeDir.isEmpty() ? name : relativeDir + "/" + name);
-                        f.put("mimeType", mime);
-                        if (sizeCol >= 0 && !cursor.isNull(sizeCol)) f.put("size", cursor.getLong(sizeCol));
-                        if (modCol >= 0 && !cursor.isNull(modCol)) f.put("lastModified", cursor.getLong(modCol));
-                        f.put("duration", 0.0);
-                        audioHere.add(f);
+                Uri child = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    if (!name.equals(".") && !name.equals("..")) {
+                        subDirs.add(new DirEntry(child, relativeDir.isEmpty() ? name : relativeDir + "/" + name));
                     }
+                } else if (isImage(name, mime)) {
+                    int score = coverScore(name);
+                    if (score > folderCoverScore) { folderCoverScore = score; folderCover = child; }
+                } else if (isAudio(name, mime)) {
+                    JSObject f = new JSObject();
+                    f.put("uri", child.toString());
+                    f.put("name", name);
+                    f.put("fileName", name);
+                    f.put("path", relativeDir.isEmpty() ? name : relativeDir + "/" + name);
+                    f.put("mimeType", mime);
+                    if (sizeCol >= 0 && !cursor.isNull(sizeCol)) f.put("size", cursor.getLong(sizeCol));
+                    if (modCol >= 0 && !cursor.isNull(modCol)) f.put("lastModified", cursor.getLong(modCol));
+                    f.put("duration", 0.0);
+                    audioHere.add(f);
                 }
             }
-        } catch (Exception ignored) { }
-        finally {
+        } catch (Exception e) {
+            if (relativeDir.isEmpty()) throw e;                  // root: surfaces as scanError instead of "nothing found"
+            state.fail(relativeDir, e);                          // sub-folder: counted and reported at the end
+        } finally {
             if (cursor != null) cursor.close();
         }
 
         if (!audioHere.isEmpty()) {
             // cover: image file in the book folder first, otherwise the art embedded in the first audio file
             String cover = "";
-            if (folderCover != null) cover = encodeCover(readBytes(folderCover, COVER_FILE_LIMIT));
+            if (folderCover != null) {
+                final Uri coverUri = folderCover;
+                cover = encodeCover(callWithTimeout(new Callable<byte[]>() {
+                    @Override public byte[] call() { return readBytes(coverUri, COVER_FILE_LIMIT); }
+                }, COVER_READ_TIMEOUT_MS));
+            }
 
+            state.consecutiveTimeouts = 0;
             JSArray arr = new JSArray();
             for (int idx = 0; idx < audioHere.size(); idx++) {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
                 JSObject f = audioHere.get(idx);
                 boolean needCover = idx == 0 && cover.isEmpty();
-                Meta m = readMeta(Uri.parse(f.optString("uri", "")), needCover);
+                Meta m;
+                if (state.consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+                    m = new Meta();                              // provider is stuck: do not wait again, durations are filled in later
+                } else {
+                    m = readMetaTimed(Uri.parse(f.optString("uri", "")), needCover);
+                    if (m.timedOut) { state.timeouts++; state.consecutiveTimeouts++; }
+                    else state.consecutiveTimeouts = 0;
+                }
                 f.put("duration", m.duration);
                 if (needCover && !m.cover.isEmpty()) cover = m.cover;
                 arr.put(f);
                 state.processed++;
+                emitProgress(state, false);                      // after EVERY file, not once per folder
             }
 
             String title;
@@ -238,7 +343,7 @@ public class FilesPlugin extends Plugin {
             book.put("srcPath", state.folderId + ":" + relativeDir);
             state.books++;
             emit("scanBook", book);
-            emitProgress(state);
+            emitProgress(state, true);
         }
 
         for (DirEntry dir : subDirs) {
@@ -249,11 +354,58 @@ public class FilesPlugin extends Plugin {
     private static class Meta {
         double duration = 0.0;
         String cover = "";
+        boolean timedOut = false;
     }
 
-    private Meta readMeta(Uri fileUri, boolean wantCover) {
+    /** readMeta() on a worker thread with a deadline. On timeout the retriever is released to unblock the worker. */
+    private Meta readMetaTimed(final Uri fileUri, final boolean wantCover) {
+        final AtomicReference<MediaMetadataRetriever> ref = new AtomicReference<>();
+        Future<Meta> fut;
+        try {
+            fut = ioPool.submit(new Callable<Meta>() {
+                @Override public Meta call() { return readMeta(fileUri, wantCover, ref); }
+            });
+        } catch (Exception e) {
+            return new Meta();
+        }
+        try {
+            return fut.get(META_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            fut.cancel(true);
+            MediaMetadataRetriever r = ref.get();
+            if (r != null) { try { r.release(); } catch (Exception ignored) { } }
+            Meta m = new Meta();
+            m.timedOut = true;
+            return m;
+        } catch (InterruptedException e) {
+            fut.cancel(true);
+            Thread.currentThread().interrupt();
+            return new Meta();
+        } catch (Exception e) {
+            return new Meta();
+        }
+    }
+
+    /** Runs a short blocking read with a deadline; returns null on timeout or failure */
+    private <T> T callWithTimeout(Callable<T> job, long timeoutMs) {
+        Future<T> fut;
+        try { fut = ioPool.submit(job); } catch (Exception e) { return null; }
+        try {
+            return fut.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            fut.cancel(true);
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception e) {
+            fut.cancel(true);
+            return null;
+        }
+    }
+
+    private Meta readMeta(Uri fileUri, boolean wantCover, AtomicReference<MediaMetadataRetriever> ref) {
         Meta meta = new Meta();
         MediaMetadataRetriever r = new MediaMetadataRetriever();
+        if (ref != null) ref.set(r);
         try {
             r.setDataSource(getContext(), fileUri);
             String d = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
@@ -327,9 +479,14 @@ public class FilesPlugin extends Plugin {
         return 1;
     }
 
-    private void emitProgress(ScanState s) {
+    /** Throttled (≈ every 150 ms) so thousands of files do not flood the WebView bridge */
+    private void emitProgress(ScanState s, boolean force) {
+        long now = SystemClock.elapsedRealtime();
+        if (!force && now - s.lastEmit < PROGRESS_THROTTLE_MS) return;
+        s.lastEmit = now;
         emit("scanProgress", new JSObject().put("folderId", s.folderId).put("folderName", s.folderName)
-            .put("totalFiles", s.processed).put("processedFiles", s.processed).put("books", s.books));
+            .put("totalFiles", Math.max(s.total, s.processed)).put("processedFiles", s.processed).put("books", s.books));
+        ScanService.progress(getContext(), s.processed, Math.max(s.total, s.processed));
     }
 
     private void emit(String event, JSObject data) {
@@ -337,9 +494,19 @@ public class FilesPlugin extends Plugin {
     }
 
     private static class ScanState {
-        int processed = 0, books = 0;
+        int total = 0, processed = 0, books = 0;
+        int errors = 0, timeouts = 0, consecutiveTimeouts = 0;
+        String firstError = "";
+        long lastEmit = 0;
         String folderId, folderName;
         ScanState(String id, String n) { folderId = id; folderName = n; }
+        void fail(String where, Exception e) {
+            errors++;
+            if (firstError.isEmpty()) {
+                String why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                firstError = where + ": " + why;
+            }
+        }
     }
 
     private boolean isAudio(String name, String mime) {

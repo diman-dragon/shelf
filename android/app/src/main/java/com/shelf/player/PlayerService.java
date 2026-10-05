@@ -1,6 +1,8 @@
 package com.shelf.player;
 
+import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -125,10 +127,29 @@ public class PlayerService extends MediaSessionService {
         .build();
   }
 
-  /** Same as swiping the app away: remember the position, stop playback, remove the notification, stop the service. */
+  /**
+   * The X in the notification shade / lock screen: remember the position, fully stop playback, remove the
+   * notification and shut the service down.
+   * NOTE: pauseAllPlayersAndStopSelf() alone was not enough — the app's own MediaController (PlayerPlugin) stays
+   * bound to this service, and a bound service survives stopSelf(), so the notification just stayed there.
+   * Therefore the player is stopped explicitly, the notification is removed by hand and the bound controller is released.
+   */
   private void closePlayback() {
     persistPosition();
-    if (player != null) player.pause();
+    MAIN.removeCallbacks(SLEEP_TICK);
+    sleepEndsAt = 0;
+    ExoPlayer p = player;
+    if (p != null) {
+      try { p.setVolume(1f); p.pause(); p.stop(); p.clearMediaItems(); } catch (Exception ignored) { }
+    }
+    PlayerWidget.playing = false;
+    try { PlayerWidget.push(getApplicationContext()); } catch (Exception ignored) { }
+    try { stopForeground(Service.STOP_FOREGROUND_REMOVE); } catch (Exception ignored) { }
+    try {
+      NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+      if (nm != null) nm.cancel(1001);               // default Media3 notification id
+    } catch (Exception ignored) { }
+    PlayerPlugin.emitClosed();                       // tells JS and releases the controller bound to this service
     pauseAllPlayersAndStopSelf();
   }
 

@@ -35,8 +35,7 @@
   border-radius: 12px;
   overflow: hidden;
   position: relative;
-  background: var(--panel2);
-  box-shadow: 0 20px 45px rgba(0,0,0,0.35);
+  background: transparent;      /* same as the app background: no visible strip next to the cover */
   contain: paint;
   isolation: isolate;
 }

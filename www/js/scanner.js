@@ -1,5 +1,5 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
-import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot } from './state.js';
+import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot, durationOfBook } from './state.js';
 import { persist } from './storage.js';
 import { openModal, closeModal, showToast, render } from './ui.js';
 import { renderShelf } from './library.js';
@@ -10,6 +10,8 @@ let nativeScanListenersReady = false;
 let scanPersistTimer = null;
 let scanRenderTimer = null;
 const SCAN_BATCH_MS = 280;
+// folderId -> {total, processed, done, started}: several folders scan one after another, the dock shows the sum
+const scanJobs = new Map();
 
 export function openAddSheet(){ openFolderSheet(); }
 
@@ -86,23 +88,102 @@ export async function pickFolder(){
     await set?.('foldersSelected', state.selectedFolderIds);
     closeModal();
     state.screen = 'shelf';
-    state.scan = {active:true, total:0, processed:0, books:0, name:old.name};
+    beginScan([old], old.name);
     render();
     await startFolderScan(old);
   } catch(e) { showToast(e?.message || e?.errorMessage || 'Не удалось выбрать папку'); }
 }
 
+/* ---------------- scan progress model ---------------- */
+
+/** Starts (or joins, if a scan is already running) a scan session for the given folders */
+function beginScan(folders, name){
+  const running = !!state.scan?.active && [...scanJobs.values()].some(j => !j.done);
+  if(!running){
+    scanJobs.clear();
+    state.scan = {active:true, total:0, processed:0, books:0, skipped:0, errors:0, timeouts:0, firstError:'', counting:true, name};
+  }
+  folders.forEach(f => {
+    const j = scanJobs.get(f.id);
+    if(!j || j.done) scanJobs.set(f.id, {total:0, processed:0, done:false, started:false});
+  });
+  state.scan.name = scanJobs.size > 1 ? 'Сканирование папок' : name;
+  syncScan();
+}
+
+function jobFor(id){
+  let j = scanJobs.get(id);
+  if(!j){ j = {total:0, processed:0, done:false, started:true}; scanJobs.set(id, j); }
+  return j;
+}
+
+/** Totals over all folders of the session */
+function syncScan(){
+  let total = 0, processed = 0, counting = false;
+  scanJobs.forEach(j => {
+    total += j.total; processed += j.processed;
+    if(!j.done && !(j.total > 0)) counting = true;   // total of this folder is not known yet
+  });
+  state.scan.total = total;
+  state.scan.processed = processed;
+  state.scan.counting = counting;
+}
+
+/** The dock goes away only when EVERY folder of the session is finished */
+async function finishIfAllDone(){
+  if(![...scanJobs.values()].every(j => j.done)) return;
+  const s = state.scan;
+  if(!s.active) return;
+  clearTimeout(scanPersistTimer);
+  clearTimeout(scanRenderTimer);
+  await set?.('books', state.books);
+  syncScan();
+  updateScanDock();
+  setTimeout(() => {
+    s.active = false;
+    render();
+    const parts = [`Добавлено книг: ${s.books}`];
+    if(s.skipped) parts.push(`дубликатов пропущено: ${s.skipped}`);
+    showToast(parts.join(' · '));
+    // errors are never swallowed: the person sees them after the summary
+    if(s.errors) setTimeout(() => showToast(`Ошибки чтения: ${s.errors}${s.firstError ? ' — ' + s.firstError : ''}`), 2600);
+    else if(s.timeouts) setTimeout(() => showToast(`Не удалось сразу прочитать длительность у файлов: ${s.timeouts}. Догрузим позже`), 2600);
+  }, 400);
+}
+
+function scanView(p){
+  const known = p.total > 0;
+  const pct = known ? Math.min(100, p.processed / p.total * 100) : 0;
+  return {
+    known, pct,
+    label: known ? `${Math.round(pct)}%` : '…',
+    foot: known ? `${p.processed} из ${p.total} аудиофайлов` : (p.counting ? 'Подсчёт файлов…' : `${p.processed} аудиофайлов`)
+  };
+}
+
 export function scanDock(){
   const p = state.scan || {};
-  const pct = p.total ? Math.min(100, p.processed/p.total*100) : 8;
-  return `<div class="scan-dock" id="scanDock"><div class="scan-dock-top"><span class="scan-spinner"></span><div><b>Добавляем книги</b><small>${escapeHtml(p.name||'Сканирование')} · ${p.books} книг</small></div><strong>${Math.round(pct)}%</strong></div><div class="scan-dock-bar"><i id="scanDockBar" style="width:${pct}%"></i></div><div class="scan-dock-foot">${p.processed} из ${p.total||'…'} аудиофайлов</div></div>`;
+  const v = scanView(p);
+  const bar = v.known ? `style="width:${v.pct}%"` : '';
+  return `<div class="scan-dock" id="scanDock"><div class="scan-dock-top"><span class="scan-spinner"></span><div><b>Добавляем книги</b><small>${escapeHtml(p.name||'Сканирование')} · ${p.books||0} книг</small></div><strong>${v.label}</strong></div><div class="scan-dock-bar"><i id="scanDockBar" class="${v.known?'':'indeterminate'}" ${bar}></i></div><div class="scan-dock-foot">${v.foot}</div></div>`;
 }
 
 export async function startFolderScan(folder){
   const P = plugin('ShelfFiles');
   if(!P) return;
+  let job = scanJobs.get(folder.id);
+  if(!job){ beginScan([folder], folder.name); job = scanJobs.get(folder.id); }
+  if(job.started && !job.done) return;               // this folder is already being scanned
+  job.started = true;
   try { await P.scanFolder({uri:folder.uri, folderId:folder.id, folderName:folder.name}); }
-  catch(e) { state.scan.active = false; render(); showToast(e?.message || 'Не удалось начать сканирование'); }
+  catch(e) {
+    job.done = true;
+    state.scan.errors++;
+    state.scan.firstError = state.scan.firstError || (e?.message || 'Не удалось начать сканирование');
+    syncScan();
+    showToast(e?.message || 'Не удалось начать сканирование');
+    await finishIfAllDone();
+  }
 }
 
 export async function scanAllFolders(silent=false, returnToShelf=false){
@@ -110,10 +191,39 @@ export async function scanAllFolders(silent=false, returnToShelf=false){
   if(!folders.length){ showToast('Сначала выберите папку'); openFolderSheet(); return; }
   closeModal();
   state.screen = 'shelf';
-  state.scan = {active:true, total:0, processed:0, books:0, name:folders.length===1?folders[0].name:'Сканирование папок'};
+  beginScan(folders, folders.length===1?folders[0].name:'Сканирование папок');
   render();
   for(const f of folders) await startFolderScan(f);
 }
+
+/* ---------------- duplicates ---------------- */
+
+function normTitle(s=''){ return String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
+function normName(s=''){ return stripExt(String(s)).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
+
+/**
+ * Is `cand` (just scanned) the same book as `book` (already in the library)? The folder does not matter —
+ * a copy of a book in another folder is a duplicate.
+ *  - file sizes known for both:  same chapter count and the same sorted list of sizes (byte-exact content)
+ *  - sizes unavailable (some cloud providers): same chapter count + same title, and the same total duration
+ *    (or the same chapter names when durations are unknown)
+ */
+function isSameBook(book, cand){
+  const a = book.files || [], b = cand.files || [];
+  if(!a.length || a.length !== b.length) return false;
+  if(a.every(f => f.size > 0) && b.every(f => f.size > 0)){
+    const sa = a.map(f => f.size).sort((x, y) => x - y), sb = b.map(f => f.size).sort((x, y) => x - y);
+    return sa.every((v, i) => v === sb[i]);
+  }
+  if(normTitle(book.title) !== normTitle(cand.title)) return false;
+  const da = durationOfBook(book), db = durationOfBook(cand);
+  if(da > 0 && db > 0) return Math.abs(da - db) <= 2;
+  const na = a.map(f => normName(f.fileName || f.name)).sort().join('|');
+  const nb = b.map(f => normName(f.fileName || f.name)).sort().join('|');
+  return na === nb;
+}
+
+/* ---------------- native events ---------------- */
 
 export function initNativeScanListeners(){
   if(nativeScanListenersReady || !isNative()) return;
@@ -122,11 +232,13 @@ export function initNativeScanListeners(){
   nativeScanListenersReady = true;
 
   P.addListener('scanStarted', e => {
+    const j = jobFor(e.folderId);
+    j.started = true; j.done = false;
+    j.total = Number(e.totalFiles) || 0;
+    j.processed = 0;
     state.scan.active = true;
-    state.scan.total = Number(e.totalFiles) || 0;
-    state.scan.processed = 0;
-    state.scan.books = 0;
-    state.scan.name = e.folderName || 'Сканирование';
+    if(scanJobs.size === 1) state.scan.name = e.folderName || state.scan.name || 'Сканирование';
+    syncScan();
     updateScanDock();
   });
 
@@ -142,8 +254,9 @@ export function initNativeScanListeners(){
     const srcPath = e.srcPath || `${folder.id}:${path}`;
     const titleFinal = stripExt(e.title || title);
     const authorFinal = (e.author || '').trim();
-    // Dedup by parent-folder key — rescan updates files instead of duplicating books
-    let book = state.books.find(b => b.srcPath === srcPath || (b.sourceFolderId === folder.id && b.srcPath === srcPath));
+
+    // 1) same place as before — a rescan updates the book instead of duplicating it
+    let book = state.books.find(b => b.srcPath === srcPath);
     if(book){
       book.title = titleFinal || book.title;
       if(authorFinal) book.author = authorFinal;
@@ -155,6 +268,13 @@ export function initNativeScanListeners(){
       if(e.cover) book.cover = e.cover;
       book.coverChecked = true;
     } else {
+      // 2) the same book from ANOTHER folder / path is a duplicate: not added
+      const cand = {title: titleFinal, files};
+      if(state.books.some(b => isSameBook(b, cand))){
+        state.scan.skipped++;
+        updateScanDock();
+        return;
+      }
       book = {id:uid(), title:titleFinal, author:authorFinal, cover:e.cover || '', coverChecked:true, files, srcPath, sourceFolderId:folder.id, added:Date.now(), pos:{i:0,t:0}, marks:[]};
       state.books.unshift(book);
       state.scan.books++;
@@ -171,38 +291,49 @@ export function initNativeScanListeners(){
   });
 
   P.addListener('scanProgress', e => {
-    state.scan.total = Number(e.totalFiles) || state.scan.total;
-    state.scan.processed = Number(e.processedFiles) || 0;
-    state.scan.books = Number(e.books) || state.scan.books;
+    const j = jobFor(e.folderId);
+    j.total = Number(e.totalFiles) || j.total;
+    j.processed = Number(e.processedFiles) || 0;
+    syncScan();
     updateScanDock();
   });
 
   P.addListener('scanComplete', async e => {
-    state.scan.total = Number(e.totalFiles) || state.scan.total;
-    state.scan.processed = Number(e.processedFiles) || state.scan.total;
-    state.scan.books = Number(e.books) || state.scan.books;
-    clearTimeout(scanPersistTimer);
-    clearTimeout(scanRenderTimer);
-    await set?.('books', state.books);
+    const j = jobFor(e.folderId);
+    j.processed = Number(e.processedFiles) || j.processed;
+    j.total = Math.max(Number(e.totalFiles) || 0, j.processed);
+    j.done = true;
+    state.scan.errors += Number(e.errors) || 0;
+    state.scan.timeouts += Number(e.timeouts) || 0;
+    if(!state.scan.firstError && e.firstError) state.scan.firstError = String(e.firstError);
+    syncScan();
     updateScanDock();
-    setTimeout(() => { state.scan.active = false; render(); showToast(`Добавлено книг: ${state.scan.books}`); }, 400);
+    await finishIfAllDone();
   });
 
-  P.addListener('scanError', e => {
-    state.scan.active = false;
-    render();
-    showToast(e?.message || 'Ошибка фонового сканирования');
+  P.addListener('scanError', async e => {
+    const j = jobFor(e.folderId);
+    j.done = true;
+    state.scan.errors++;
+    if(!state.scan.firstError) state.scan.firstError = e?.message || 'Ошибка сканирования';
+    syncScan();
+    updateScanDock();
+    await finishIfAllDone();
   });
 }
 
 export function updateScanDock(){
   const el = $('scanDock');
   if(!el){ if(state.scan.active && state.screen === 'shelf') renderShelf(); return; }
-  const p = state.scan, pct = p.total ? Math.min(100, p.processed/p.total*100) : 8;
-  const bar = $('scanDockBar'); if(bar) bar.style.width = pct+'%';
-  const foot = el.querySelector('.scan-dock-foot'); if(foot) foot.textContent = `${p.processed} из ${p.total||'…'} аудиофайлов`;
-  const small = el.querySelector('small'); if(small) small.textContent = `${p.name||'Сканирование'} · ${p.books} книг`;
-  const strong = el.querySelector('.scan-dock-top>strong'); if(strong) strong.textContent = Math.round(pct)+'%';
+  const p = state.scan, v = scanView(p);
+  const bar = $('scanDockBar');
+  if(bar){
+    bar.classList.toggle('indeterminate', !v.known);
+    bar.style.width = v.known ? v.pct + '%' : '';
+  }
+  const foot = el.querySelector('.scan-dock-foot'); if(foot) foot.textContent = v.foot;
+  const small = el.querySelector('small'); if(small) small.textContent = `${p.name||'Сканирование'} · ${p.books||0} книг`;
+  const strong = el.querySelector('.scan-dock-top>strong'); if(strong) strong.textContent = v.label;
 }
 
 export function toNativeFile(f){

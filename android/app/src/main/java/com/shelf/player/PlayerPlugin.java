@@ -71,7 +71,12 @@ public class PlayerPlugin extends Plugin {
     final PlayerPlugin p = inst;
     if (p == null) return;
     p.main.post(new Runnable() { @Override public void run() {
-      p.controller = null;
+      // release (not just forget) the controller: while it is bound the service cannot be destroyed
+      p.main.removeCallbacks(p.tick);
+      if (p.controller != null) {
+        try { p.controller.release(); } catch (Exception ignored) { }
+        p.controller = null;
+      }
       p.notifyListeners("closed", new JSObject());
     }});
   }
