@@ -216,8 +216,9 @@ input { outline: 0; }
   height: 100% !important;
   max-width: 100%;
   max-height: 100%;
-  object-fit: cover;
+  object-fit: contain;          /* whole cover is visible, never cropped (covers are often square) */
   object-position: center;
+  background: var(--panel2);
   user-select: none;
   -webkit-user-drag: none;
 }

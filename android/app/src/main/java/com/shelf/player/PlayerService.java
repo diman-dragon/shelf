@@ -4,6 +4,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -20,8 +21,13 @@ import androidx.media3.exoplayer.audio.AudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.session.CommandButton;
 import androidx.media3.session.MediaSession;
 import androidx.media3.session.MediaSessionService;
+import androidx.media3.session.SessionCommand;
+import androidx.media3.session.SessionCommands;
+import androidx.media3.session.SessionResult;
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import java.util.ArrayList;
@@ -107,6 +113,25 @@ public class PlayerService extends MediaSessionService {
     });
   }
 
+  // ---------------- close (X) button in the notification shade / lock screen ----------------
+  private static final String ACTION_CLOSE = "com.shelf.player.CLOSE";
+  private static final SessionCommand CLOSE_COMMAND = new SessionCommand(ACTION_CLOSE, Bundle.EMPTY);
+
+  private CommandButton closeButton() {
+    return new CommandButton.Builder()
+        .setDisplayName("Закрыть")
+        .setIconResId(R.drawable.ic_notif_close)
+        .setSessionCommand(CLOSE_COMMAND)
+        .build();
+  }
+
+  /** Same as swiping the app away: remember the position, stop playback, remove the notification, stop the service. */
+  private void closePlayback() {
+    persistPosition();
+    if (player != null) player.pause();
+    pauseAllPlayersAndStopSelf();
+  }
+
   // ---------------- lifecycle ----------------
   @Override public void onCreate() {
     super.onCreate();
@@ -159,7 +184,24 @@ public class PlayerService extends MediaSessionService {
       open = PendingIntent.getActivity(this, 100, launch,
           PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
+    final ImmutableList<CommandButton> layout = ImmutableList.of(closeButton());
     MediaSession.Builder b = new MediaSession.Builder(this, player).setCallback(new MediaSession.Callback() {
+      // every controller (incl. the system notification) may use the custom CLOSE command and gets the X button
+      @Override public MediaSession.ConnectionResult onConnect(MediaSession s, MediaSession.ControllerInfo c) {
+        SessionCommands cmds = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon().add(CLOSE_COMMAND).build();
+        return new MediaSession.ConnectionResult.AcceptedResultBuilder(s)
+            .setAvailableSessionCommands(cmds)
+            .setCustomLayout(layout)
+            .build();
+      }
+      @Override public ListenableFuture<SessionResult> onCustomCommand(MediaSession s, MediaSession.ControllerInfo c,
+                                                                       SessionCommand command, Bundle args) {
+        if (ACTION_CLOSE.equals(command.customAction)) {
+          closePlayback();
+          return Futures.immediateFuture(new SessionResult(SessionResult.RESULT_SUCCESS));
+        }
+        return Futures.immediateFuture(new SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED));
+      }
       // Controllers send items by value; make sure the playable URI survives the trip
       @Override public ListenableFuture<List<MediaItem>> onAddMediaItems(MediaSession s,
           MediaSession.ControllerInfo c, List<MediaItem> items) {
@@ -173,6 +215,7 @@ public class PlayerService extends MediaSessionService {
     });
     if (open != null) b.setSessionActivity(open);
     session = b.build();
+    session.setCustomLayout(layout);
   }
 
   @Nullable @Override public MediaSession onGetSession(MediaSession.ControllerInfo controllerInfo) {

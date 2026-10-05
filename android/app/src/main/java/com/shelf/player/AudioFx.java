@@ -43,6 +43,7 @@ public final class AudioFx {
   private double[][] z1 = new double[8][NB], z2 = new double[8][NB];
   private float preCur = 1f, preTarget = 1f, preCoef = 0.999f;
   private float limGain = 1f, relCoef = 0.9999f;
+  private boolean flat = true;                                  // no active filter, unity gain -> bit-perfect bypass
 
   // ---- spectrum tap ----
   private volatile boolean spectrumOn;
@@ -82,9 +83,25 @@ public final class AudioFx {
   public void process(float[] x, int frames) {
     if (params != applied || appliedRate != sampleRate) update();
     final int ch = channels;
-    final float ceil = CEILING;
+    // flat: the limiter no longer reacts to new peaks, it only lets a previous gain reduction release (then: bypass)
+    final float ceil = flat ? Float.MAX_VALUE : CEILING;
     final boolean tap = spectrumOn;
     int idx = 0;
+    // Flat sound = untouched signal (no filters, no pre-gain, no limiter). Only the spectrum tap keeps running.
+    if (flat && Math.abs(preCur - 1f) < 1e-4f && limGain >= 1f) {
+      preCur = 1f;
+      if (tap) {
+        for (int f = 0; f < frames; f++) {
+          float m = 0;
+          for (int c = 0; c < ch; c++) m += x[idx + c];
+          int p = ringPos;
+          ring[p] = m / ch;
+          ringPos = (p + 1) % FFT_N;
+          idx += ch;
+        }
+      }
+      return;
+    }
     for (int f = 0; f < frames; f++) {
       preCur = preTarget + (preCur - preTarget) * preCoef;
       double peak = 0;
@@ -107,7 +124,11 @@ public final class AudioFx {
       // peak limiter: instant attack, 250 ms release
       float need = peak > ceil ? (float) (ceil / peak) : 1f;
       if (need < limGain) limGain = need;
-      else limGain = 1f - (1f - limGain) * relCoef;
+      else {
+        limGain = 1f - (1f - limGain) * relCoef;
+        // float rounding makes the release stall just below 1.0 (~-0.003 dB); snap it so the flat bypass can engage
+        if (limGain > 0.9995f) limGain = 1f;
+      }
       if (limGain < 0.9999f || peak > ceil) {
         float g = Math.min(limGain, need);
         for (int c = 0; c < ch; c++) {
@@ -166,6 +187,9 @@ public final class AudioFx {
     double peak = peakBoost(p, rate);
     double preDb = -HEADROOM_FACTOR * Math.max(0, peak) + p.gainDb;
     preTarget = (float) (Math.pow(10, preDb / 20) * p.volume);
+    boolean anyOn = false;
+    for (int k = 0; k < NB; k++) if (on[k]) { anyOn = true; break; }
+    flat = !anyOn && Math.abs(preTarget - 1f) < 1e-6f;
     applied = p;
     appliedRate = rate;
   }

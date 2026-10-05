@@ -1,5 +1,5 @@
 /* app.js — Main Application Entry Point */
-import { state, ICONS, DEFAULT_PLAYLISTS, isNative } from './js/state.js';
+import { state, ICONS, DEFAULT_PLAYLISTS, isNative, modalRoot } from './js/state.js';
 import { readLastPlayback, getSavedPosition, resumePosition } from './js/storage.js';
 import { render, bindNav, showToast, setScreen } from './js/ui.js';
 import { closeModal } from './js/ui-utils.js';
@@ -25,11 +25,11 @@ if(isNative()){
   const App = window.Capacitor?.Plugins?.App;
   if(App){
     App.addListener('backButton', () => {
-      const modalBack = document.getElementById('modalBack');
       const queuePanel = document.getElementById('queuePanel');
       const visualizer = document.getElementById('visualizer');
 
-      if(modalBack || (window.modalRoot && window.modalRoot.innerHTML !== '')){
+      // any open modal (generic one, sound modal, ...) lives inside #modalRoot
+      if(modalRoot && modalRoot.innerHTML.trim() !== ''){
         closeModal();
         return;
       }

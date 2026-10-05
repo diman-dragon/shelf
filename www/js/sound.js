@@ -27,18 +27,13 @@ export const SOUND_PRESETS = {
 
 export function ensureBookSound(b){
   if(!b) return null;
-  b.sound = {
-    preset:'flat',
-    volume:1,
-    gain:0,
-    eq:[0,0,0,0,0,0,0,0,0,0],
-    bass:0,
-    treble:0,
-    skipSilence:false,
-    ...(b.sound||{})
-  };
-  if(!Array.isArray(b.sound.eq) || b.sound.eq.length!==10) b.sound.eq=[0,0,0,0,0,0,0,0,0,0];
-  return b.sound;
+  // IMPORTANT: update b.sound IN PLACE. Replacing the object (b.sound = {...}) left the handlers of the
+  // sound modal holding a stale copy, so presets / reset / volume were written to an object the engine never read.
+  if(!b.sound || typeof b.sound !== 'object') b.sound = {};
+  const s = b.sound, d = {preset:'flat', volume:1, gain:0, bass:0, treble:0, skipSilence:false};
+  for(const k in d) if(s[k] === undefined) s[k] = d[k];
+  if(!Array.isArray(s.eq) || s.eq.length !== 10) s.eq = [0,0,0,0,0,0,0,0,0,0];
+  return s;
 }
 
 /* =====================================================================================
@@ -382,12 +377,14 @@ export function openCurrentSound(){
   });
   $('fileVol').oninput = e => {
     s.preset = 'custom'; s.volume = Number(e.target.value)/100;
+    document.querySelectorAll('.sound-preset.active').forEach(x => x.classList.remove('active'));
     $('fileVolValue').textContent = Math.round(s.volume*100)+'%';
     applyCurrentFileSound(); persistSoon();
   };
   document.querySelectorAll('[data-eq]').forEach(inp => inp.oninput = e => {
     const i = Number(inp.dataset.eq);
     s.preset = 'custom'; s.eq[i] = Number(e.target.value); s.gain = 0;
+    document.querySelectorAll('.sound-preset.active').forEach(x => x.classList.remove('active'));
     const v = $('eqv'+i); if(v) v.textContent = (s.eq[i]>0?'+':'')+s.eq[i]+' dB';
     applyCurrentFileSound(); persistSoon();
   });
