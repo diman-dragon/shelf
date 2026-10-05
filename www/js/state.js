@@ -46,6 +46,12 @@ export function icon(name, cls='icon'){return `<span class="${cls}"><svg viewBox
 export function escapeHtml(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 export function fmt(sec){sec=Number(sec)||0;if(sec<0)sec=0;const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=Math.floor(sec%60);return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`}
 export function durationOfBook(b){return (b.files||[]).reduce((a,f)=>a+(Number(f.duration)||0),0)}
+/** Removes a leading track/volume number from a book title: "01. Name", "01) Name", "01 - Name", "01_Name" -> "Name" */
+export function cleanTitle(s=''){
+  const raw = String(s).trim();
+  const out = raw.replace(/^\d{1,3}\s*(?:[.)_](?!\d)\s*|[-–—:]\s+)/, '').trim();
+  return out || raw;
+}
 export function uid(){return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 export function plural(n,a,b,c){const x=n%10,y=n%100;return x===1&&y!==11?a:x>=2&&x<=4&&(y<10||y>=20)?b:c}
 export function isNative(){return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())}

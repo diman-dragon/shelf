@@ -29,7 +29,8 @@
   height: clamp(110px, 31dvh, 270px);
   width: auto;
   max-width: 62vw;
-  flex: none;
+  flex: 0 1 auto;               /* shrinks when a long title needs more lines */
+  min-height: 72px;
   aspect-ratio: 0.69;
   margin: 4px auto 8px;
   border-radius: 12px;
@@ -44,9 +45,9 @@
   text-align: center;
   font: 700 20px/1.15 Georgia, serif;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: none;
+  white-space: normal;          /* full title, wrapped to as many lines as needed */
+  overflow-wrap: anywhere;
   margin: 0 8px;
   color: var(--text);
 }

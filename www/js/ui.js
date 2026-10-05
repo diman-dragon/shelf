@@ -2,7 +2,7 @@
 import { state, icon, escapeHtml, durationOfBook, uid, plural, $, modalRoot, main } from './state.js';
 import { persist, getSavedPosition } from './storage.js';
 import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
-import { openPlayer, renderPlayer, ensureChapterLoaded } from './player.js';
+import { openPlayer, renderPlayer, ensureChapterLoaded, bookElapsed, bookTotal } from './player.js';
 import { renderShelf, openLibraryFilter, openSort } from './library.js';
 import { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt } from './ui-utils.js';
 
@@ -16,15 +16,22 @@ export function header(title, subtitle, actions=''){
     const pct = nowPlayingPct();
     subHtml = `<div class="now-playing" id="headerNowPlaying" data-book-id="${escapeHtml(b.id)}">
       <span class="now-playing-cover" data-cover-sig="${coverSig(b)}">${bookCover(b)}</span>
-      <div class="now-playing-track" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100">
-        <i style="width:${pct}%"></i>
+      <div class="now-playing-body">
+        <div class="now-playing-title">${escapeHtml(b.title||'')}</div>
+        <div class="now-playing-track" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100">
+          <i style="width:${pct}%"></i>
+        </div>
+        <div class="now-playing-time">${nowPlayingTimeHtml()}</div>
       </div>
-      <span class="now-playing-title">${escapeHtml(b.title||'')}</span>
     </div>`;
   } else if(subtitle){
     subHtml = `<p>${subtitle}</p>`;
   }
   return `<div class="topbar"><div class="topbar-main"><h2>${title}</h2>${subHtml}</div><div class="top-actions">${actions}</div></div>`;
+}
+
+function nowPlayingTimeHtml(){
+  return `<span class="np-cur">${fmt(bookElapsed(state.current))}</span> из <span class="np-total">${fmt(bookTotal(state.current))}</span>`;
 }
 
 function coverSig(b){ return `${b.id}:${b.cover ? b.cover.length : 0}`; }
@@ -44,6 +51,8 @@ export function updateHeaderNowPlaying(){
     if(bar) bar.style.width = pct + '%';
     const track = el.querySelector('.now-playing-track');
     if(track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
+    const tm = el.querySelector('.now-playing-time');
+    if(tm) tm.innerHTML = nowPlayingTimeHtml();
     const cov = el.querySelector('.now-playing-cover');
     if(cov && cov.dataset.coverSig !== coverSig(state.current)){
       cov.dataset.coverSig = coverSig(state.current);

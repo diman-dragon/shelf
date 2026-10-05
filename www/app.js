@@ -1,6 +1,6 @@
 /* app.js — Main Application Entry Point */
-import { state, ICONS, DEFAULT_PLAYLISTS, isNative, modalRoot } from './js/state.js';
-import { readLastPlayback, getSavedPosition, resumePosition } from './js/storage.js';
+import { state, ICONS, DEFAULT_PLAYLISTS, isNative, modalRoot, cleanTitle } from './js/state.js';
+import { persist, readLastPlayback, getSavedPosition, resumePosition } from './js/storage.js';
 import { render, bindNav, showToast, setScreen } from './js/ui.js';
 import { closeModal } from './js/ui-utils.js';
 import { closeQueuePanel, syncNativeResume } from './js/player.js';
@@ -70,6 +70,10 @@ if(isNative()){
 async function loadState(){
   try {
     state.books = (await get?.('books')) || [];
+    // one-time cleanup of leading numbers ("01. ") in titles of already imported books
+    let titlesFixed = false;
+    state.books.forEach(b => { const t = cleanTitle(b.title); if(t !== b.title){ b.title = t; titlesFixed = true; } });
+    if(titlesFixed) persist().catch(() => {});
     state.folders = (await get?.('folders')) || [];
     state.playlists = (await get?.('playlists')) || [];
     const settings = await get?.('settings');

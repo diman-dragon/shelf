@@ -1,5 +1,5 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
-import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot, durationOfBook } from './state.js';
+import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot, durationOfBook, cleanTitle } from './state.js';
 import { persist } from './storage.js';
 import { openModal, closeModal, showToast, render } from './ui.js';
 import { renderShelf } from './library.js';
@@ -252,7 +252,8 @@ export function initNativeScanListeners(){
     const path = String(e.path || '');
     const title = path ? path.split('/').pop() : stripExt(first?.name || e.title || folder.name);
     const srcPath = e.srcPath || `${folder.id}:${path}`;
-    const titleFinal = stripExt(e.title || title);
+    // folder names are NOT passed through stripExt (it cut "Name. Author" down to "Name"); the native side already strips file extensions
+    const titleFinal = cleanTitle(e.title || title);
     const authorFinal = (e.author || '').trim();
 
     // 1) same place as before — a rescan updates the book instead of duplicating it
