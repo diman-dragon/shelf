@@ -1,8 +1,8 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
 import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative, main } from './state.js';
-import { persist, writeLastPlayback, getSavedPosition, resumePosition } from './storage.js';
+import { persist, writeLastPlayback, getSavedPosition, resumePosition, readLastPlayback, setLastPlayback } from './storage.js';
 import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying, progress } from './ui.js';
-import { audio, ensureAudioGraph, audioContext, analyser, applyCurrentFileSound, openCurrentSound, ensureAudible } from './sound.js';
+import { audio, NATIVE, ensureAudioGraph, applyCurrentFileSound, openCurrentSound, ensureAudible } from './sound.js';
 import { openBookMenu } from './library.js';
 import { openVisualizer, closeVisualizer } from './visualizer.js';
 import { hydrateBookMeta } from './meta.js';
@@ -80,7 +80,20 @@ export async function seekBook(sec){
 export async function ensureChapterLoaded(){
   const b = state.current;
   if(!b) return;
-  if(loadedKey === curKey() && audio.src){ syncPlaying(); return; }
+  if(loadedKey === curKey() && (NATIVE ? audio.hasQueue(b) : audio.src)){ syncPlaying(); return; }
+  if(NATIVE){
+    // the service may still be playing this very book (app was restarted, music kept going): take over, don't reload
+    const st = await audio.adopt(b);
+    if(st){
+      applyCurrentFileSound();
+      state.currentIndex = st.index;
+      state.currentPos = Number(st.pos) || 0;
+      if(st.speed) state.speed = st.speed;
+      loadedKey = curKey();
+      syncPlaying(); updatePlayerUI();
+      return;
+    }
+  }
   await loadChapter(state.currentIndex, state.currentPos, false);
 }
 
@@ -238,6 +251,27 @@ export async function loadChapter(i, t=0, autoplay=true){
   restoring = true;            // until metadata is ready, audio.currentTime (0) must not overwrite the position
   loadedKey = `${b.id}:${i}`;
 
+  if(NATIVE){
+    // Whole book goes to the native playlist; chapter changes then happen natively (screen off is fine)
+    if(!f.uri){ restoring = false; loadedKey = ''; showToast('Файл недоступен'); return; }
+    const startAt = f.duration > 0 ? Math.min(state.currentPos, Math.max(0, f.duration - 0.5)) : state.currentPos;
+    try {
+      applyCurrentFileSound();
+      audio.playbackRate = state.speed;
+      await audio.loadNative(b, i, startAt);
+    } catch(e) {
+      console.error('Native load error:', e);
+      if(token === loadToken){ restoring = false; loadedKey = ''; }
+      showToast('Не удалось открыть аудиофайл');
+      return;
+    }
+    if(token !== loadToken) return;
+    restoring = false; pendingSeek = 0;
+    snapshotPosition(); syncPlaying(); updatePlayerUI();
+    if(autoplay) await togglePlay(true);
+    return;
+  }
+
   let src = '';
   let newBlobUrl = '';
   try {
@@ -357,9 +391,14 @@ export function setSleep(){
     clearTimeout(state.sleepTimer);
     const n = Number(v);
     if(n > 0){
-      state.sleepTimer = setTimeout(() => audio.pause(), n * 60000);
+      // native: timer lives in the service (JS timers are throttled with the screen off) and fades out the last 15 s
+      if(NATIVE) audio.setSleep(n);
+      else state.sleepTimer = setTimeout(() => audio.pause(), n * 60000);
       showToast(`Таймер: ${n} мин`);
-    } else showToast('Таймер выключен');
+    } else {
+      if(NATIVE) audio.setSleep(0);
+      showToast('Таймер выключен');
+    }
   };
 }
 
@@ -401,10 +440,12 @@ export async function saveProgress(force = false){
     return;
   }
   if(progressSaveTimer) return;
+  // the position itself is already in localStorage (writeLastPlayback above); the heavy IDB write of the
+  // whole library is coalesced to once per 20 s instead of every few seconds
   progressSaveTimer = setTimeout(async () => {
     progressSaveTimer = null;
     try { await set?.('books', state.books); } catch {}
-  }, 1200);
+  }, 20000);
 }
 
 export function updatePlayerUI(){
@@ -484,16 +525,21 @@ audio.addEventListener('timeupdate', () => {
 audio.addEventListener('seeked', () => { if(!restoring) saveProgress(true); });
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState === 'hidden') saveProgress(true);
-  else { syncPlaying(); if(state.playing) ensureAudible(); updatePlayerUI(); }
+  else {
+    if(NATIVE) audio.resync();          // events may have been missed while the WebView was in the background
+    syncPlaying(); if(state.playing) ensureAudible(); updatePlayerUI();
+  }
 });
 
 export function stopNativePlayer(){ const P = plugin('Player'); if(P) P.stop().catch(()=>{}); }
-window.addEventListener('pagehide', () => { stopNativePlayer(); saveProgress(true); });
-window.addEventListener('beforeunload', () => { stopNativePlayer(); saveProgress(true); });
+// NOTE: the native player must NOT be stopped here — the WebView going away (screen off, app in background)
+// must not interrupt playback. The service stops itself when the app is swiped from recents.
+window.addEventListener('pagehide', () => { saveProgress(true); });
+window.addEventListener('beforeunload', () => { saveProgress(true); });
 audio.addEventListener('error', e => { console.error('Audio element error:', e); showToast('Ошибка воспроизведения файла'); });
 
 export function setMediaSession(){
-  if(!('mediaSession' in navigator) || !state.current) return;
+  if(NATIVE || !('mediaSession' in navigator) || !state.current) return;   // native: Media3 session owns notification/lock screen
   const b = state.current, f = b.files[state.currentIndex];
   try {
     navigator.mediaSession.metadata = new MediaMetadata({title: f?.name || b.title, artist: b.author || b.title, album: b.title, artwork: b.cover?[{src: b.cover, sizes:'512x512'}]:[]});
@@ -509,43 +555,58 @@ export function setMediaSession(){
   } catch {}
 }
 
-(function nativeBridge(){
-  const P = plugin('Player');
-  if(!P) return;
-  // After the user closes the notification (X) the service is gone: don't resurrect it
-  // with the next update() until playback is started again.
-  let suppressed = false;
-  let lastPushSec = -1;
-  const push = () => {
-    if(suppressed || !state.current) return;
-    const b = state.current, f = b.files[state.currentIndex];
-    P.update({
-      title: f?.name || b.title,
-      artist: b.author || b.title,
-      playing: state.playing,
-      pos: Number(state.currentPos) || 0,
-      dur: (Number.isFinite(audio.duration) && audio.duration) || f?.duration || 0,
-      cover: b.cover && b.cover.length < 400000 ? b.cover : ''
-    }).catch(()=>{});
-  };
-  audio.addEventListener('play', () => { suppressed = false; push(); });
-  ['pause','loadedmetadata','seeked'].forEach(ev => audio.addEventListener(ev, push));
-  audio.addEventListener('timeupdate', () => {
-    const sec = Math.floor(audio.currentTime);
-    if(sec % 5 === 0 && sec !== lastPushSec){ lastPushSec = sec; push(); }
+// --- Native engine events (chapter changes, end of book, service closed) ---------------------
+if(NATIVE){
+  // ExoPlayer moved to another chapter on its own (auto-advance, notification/headset next/prev)
+  audio.addEventListener('trackchange', e => {
+    if(!state.current) return;
+    const idx = e.detail.index;
+    if(idx === state.currentIndex && loadedKey === curKey()) return;
+    state.currentIndex = idx; state.currentPos = 0; pendingSeek = 0; restoring = false;
+    loadedKey = curKey();
+    snapshotPosition(); saveProgress(true);
+    const list = $('chapterList');
+    if(list){ list.innerHTML = chapterRows(state.current); bindChapterRows(); }
+    updatePlayerUI();
   });
-  P.addListener('action', e => {
-    const a = e?.a;
-    if(a === 'toggle'){ suppressed = false; togglePlay(); }
-    else if(a === 'play'){ suppressed = false; togglePlay(true); }
-    else if(a === 'pause') audio.pause();
-    else if(a === 'stop'){ suppressed = true; audio.pause(); saveProgress(true); }
-    else if(a === 'prev') prevTrack();
-    else if(a === 'back10') seekBy(-10);
-    else if(a === 'next') nextTrack();
-    else if(a === 'forward') seekBy(30);
+  // real chapter duration is known only to the decoder
+  audio.addEventListener('durationchange', () => {
+    const f = state.current?.files?.[state.currentIndex], d = audio.duration;
+    if(!f || !(d > 0) || loadedKey !== curKey()) return;
+    if(Math.abs((Number(f.duration) || 0) - d) > 0.5){
+      f.duration = d;
+      clearTimeout(progressSaveTimer);
+      progressSaveTimer = setTimeout(() => { progressSaveTimer = null; set?.('books', state.books); }, 1500);
+    }
   });
-})();
+  // end of the LAST chapter (chapter-to-chapter transitions are gapless inside the native playlist)
+  audio.addEventListener('ended', () => {
+    if(!state.current) return;
+    audio.pause();
+    state.playing = false;
+    loadChapter(0, 0, false).then(() => saveProgress(true));
+  });
+  // service is gone (notification dismissed / task removed): remember the position, force a re-load on next play
+  audio.addEventListener('closed', () => {
+    saveProgress(true);
+    loadedKey = '';
+    syncPlaying(); updatePlayerUI();
+  });
+}
+
+/** Take the newer of (JS last save, native service last save) before the app decides what to resume. */
+export async function syncNativeResume(){
+  if(!NATIVE) return;
+  try {
+    const st = await audio.P.getState();
+    const s = st?.saved;
+    if(!s?.bookId) return;
+    const last = readLastPlayback();
+    if(!last || (Number(s.ts) || 0) > (Number(last.ts) || 0)){
+      setLastPlayback({bookId: s.bookId, index: Number(s.index) || 0, pos: Number(s.pos) || 0, ts: Number(s.ts) || Date.now()});
+    }
+  } catch {}
+}
 
 // --- Swipes on the player: thresholds + direction lock, vertical scroll is never blocked ---
 function bindPlayerSwipe(){

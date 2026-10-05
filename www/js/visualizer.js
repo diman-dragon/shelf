@@ -1,6 +1,6 @@
 /* visualizer.js — Audio Visualizer Canvas Rendering and Overlay */
 import { state, icon, $ } from './state.js';
-import { ensureAudioGraph, analyser } from './sound.js';
+import { ensureAudioGraph, hasSpectrum, spectrumSize, fillSpectrum, setSpectrumActive } from './sound.js';
 import { showToast } from './ui-utils.js';
 
 let visualizerFrame = 0;
@@ -12,11 +12,12 @@ export function openVisualizer(){
   visualizerOpen = true;
   el.classList.remove('hidden');
   el.setAttribute('aria-hidden', 'false');
-  ensureAudioGraph().then(() => startVisualizer()).catch(() => showToast('Визуализатор недоступен'));
+  ensureAudioGraph().then(() => { setSpectrumActive(true); startVisualizer(); }).catch(() => showToast('Визуализатор недоступен'));
 }
 
 export function closeVisualizer(){
   visualizerOpen = false;
+  setSpectrumActive(false);
   const el = $('visualizer');
   if(el){ el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); }
   stopVisualizer();
@@ -24,17 +25,17 @@ export function closeVisualizer(){
 
 export function startVisualizer(){
   const canvas = $('visualizerCanvas');
-  if(!canvas || !analyser) return;
+  if(!canvas || !hasSpectrum()) return;
   stopVisualizer();
   const ctx = canvas.getContext('2d');
-  const data = new Uint8Array(analyser.frequencyBinCount);
+  const data = new Uint8Array(spectrumSize());
   const draw = () => {
     if(!visualizerOpen){ visualizerFrame = 0; return; }
     const dpr = Math.min(window.devicePixelRatio||1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
     if(canvas.width !== Math.floor(w*dpr) || canvas.height !== Math.floor(h*dpr)){
       canvas.width = Math.floor(w*dpr); canvas.height = Math.floor(h*dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    analyser.getByteFrequencyData(data); ctx.clearRect(0,0,w,h);
+    fillSpectrum(data); ctx.clearRect(0,0,w,h);
     const cx = w/2, cy = h*.55;
     const bg = ctx.createRadialGradient(cx,cy,20,cx,cy,Math.max(w,h)*.7);
     bg.addColorStop(0,'rgba(225,169,91,.16)'); bg.addColorStop(.35,'rgba(110,67,35,.08)'); bg.addColorStop(1,'rgba(0,0,0,0)');

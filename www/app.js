@@ -3,7 +3,7 @@ import { state, ICONS, DEFAULT_PLAYLISTS, isNative } from './js/state.js';
 import { readLastPlayback, getSavedPosition, resumePosition } from './js/storage.js';
 import { render, bindNav, showToast, setScreen } from './js/ui.js';
 import { closeModal } from './js/ui-utils.js';
-import { closeQueuePanel } from './js/player.js';
+import { closeQueuePanel, syncNativeResume } from './js/player.js';
 import { closeVisualizer } from './js/visualizer.js';
 import { initNativeScanListeners, scanAllFolders } from './js/scanner.js';
 
@@ -68,6 +68,7 @@ async function loadState(){
     state.playlists = DEFAULT_PLAYLISTS.map(([id,name,emoji])=>({id,name,emoji,bookIds:[]}));
   }
 
+  await syncNativeResume();   // native player may hold a newer position than the last JS save
   const last = readLastPlayback();
   if(last?.bookId){
     const b = state.books.find(x => x.id === last.bookId);

@@ -27,5 +27,10 @@ public class PlayerWidget extends AppWidgetProvider {
     AppWidgetManager.getInstance(c).updateAppWidget(new ComponentName(c,PlayerWidget.class),v);
   }
   @Override public void onUpdate(Context c,AppWidgetManager m,int[] ids){push(c);}
-  @Override public void onReceive(Context c,Intent i){super.onReceive(c,i);String a=i.getAction();if("prev".equals(a)||"next".equals(a)||"toggle".equals(a)||"back10".equals(a))PlayerPlugin.emit(a);}
+  @Override public void onReceive(Context c,Intent i){
+    super.onReceive(c,i);
+    String a=i.getAction();
+    // The player now lives in PlayerService, so the widget controls it directly (no WebView needed)
+    if("prev".equals(a)||"next".equals(a)||"toggle".equals(a)||"back10".equals(a)||"forward".equals(a))PlayerService.handleAction(a);
+  }
 }

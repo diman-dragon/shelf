@@ -18,6 +18,11 @@ export function readLastPlayback(){
   catch { return null; }
 }
 
+/** Store a ready-made record (used when the native player reports a newer position than JS knows) */
+export function setLastPlayback(rec){
+  try { localStorage.setItem(LAST_PLAYBACK_KEY, JSON.stringify(rec)); } catch {}
+}
+
 export function writeLastPlayback(){
   if (!state.current) return;
   try {

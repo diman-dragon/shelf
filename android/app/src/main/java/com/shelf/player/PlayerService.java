@@ -1,146 +1,238 @@
 package com.shelf.player;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ServiceInfo;
-import android.graphics.Bitmap;
-import android.media.MediaMetadata;
-import android.media.session.MediaSession;
-import android.media.session.PlaybackState;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.IBinder;
+import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import androidx.annotation.Nullable;
+import androidx.media3.common.AudioAttributes;
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.Player;
+import androidx.media3.common.audio.AudioProcessor;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.DefaultAudioSink;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.session.MediaSession;
+import androidx.media3.session.MediaSessionService;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import java.util.ArrayList;
+import java.util.List;
 
-public class PlayerService extends Service {
-  static volatile Bitmap cover;
-  static volatile int coverHash;
-  private static final int NOTIFICATION_ID = 1;
-  private static final String CHANNEL_ID = "player";
-  private static final String ACTION_STOP_SERVICE = "STOP_SERVICE";
+/**
+ * Native audiobook playback. ExoPlayer lives here (not in the WebView), so sound does not depend on the
+ * screen state, WebView throttling or the JS timers. MediaSessionService posts the media notification,
+ * handles audio focus, headset buttons, Bluetooth, lock-screen controls.
+ */
+@UnstableApi
+public class PlayerService extends MediaSessionService {
+  static final String PREFS = "shelf_native";
+  private static final Handler MAIN = new Handler(Looper.getMainLooper());
+
+  /** The running player (main thread only). Used by the plugin, the widget and the sleep timer. */
+  static volatile ExoPlayer live;
+  static volatile boolean skipSilence;
+
   private MediaSession session;
-  private String title = "Полка";
-  private String artist = "";
-  private boolean playing;
-  private long position;
-  private long duration;
+  private ExoPlayer player;
 
-  @Override public IBinder onBind(Intent intent) { return null; }
-
-  @Override public void onCreate() {
-    super.onCreate();
-    if (Build.VERSION.SDK_INT >= 26) {
-      NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Воспроизведение", NotificationManager.IMPORTANCE_LOW);
-      ch.setDescription("Управление воспроизведением Полки");
-      ch.setShowBadge(false);
-      ((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+  // ---------------- sleep timer (native: JS timers are throttled when the screen is off) ----------------
+  private static long sleepEndsAt;                       // SystemClock.elapsedRealtime(); 0 = off
+  private static final long FADE_MS = 15000;
+  private static final Runnable SLEEP_TICK = new Runnable() {
+    @Override public void run() {
+      if (sleepEndsAt == 0) return;
+      ExoPlayer p = live;
+      long left = sleepEndsAt - SystemClock.elapsedRealtime();
+      if (left <= 0) {
+        sleepEndsAt = 0;
+        if (p != null) { p.pause(); p.setVolume(1f); }
+        return;
+      }
+      if (p != null && left < FADE_MS) p.setVolume(Math.max(0.05f, left / (float) FADE_MS));
+      MAIN.postDelayed(this, 500);
     }
-    session = new MediaSession(this, "Shelf");
-    session.setCallback(new MediaSession.Callback() {
-      @Override public void onPlay() { PlayerPlugin.emit("play"); }
-      @Override public void onPause() { PlayerPlugin.emit("pause"); }
-      @Override public void onSkipToNext() { PlayerPlugin.emit("next"); }
-      @Override public void onSkipToPrevious() { PlayerPlugin.emit("prev"); }
-      @Override public void onRewind() { PlayerPlugin.emit("back10"); }
-      @Override public void onFastForward() { PlayerPlugin.emit("forward"); }
-      // Close (X): pause the WebView audio, remove the notification, stop the service
-      @Override public void onStop() { closePlayer(); }
-      @Override public void onCustomAction(String action, Bundle extras) {
-        if (ACTION_STOP_SERVICE.equals(action)) closePlayer();
+  };
+
+  static void setSleep(final int minutes) {
+    MAIN.post(new Runnable() {
+      @Override public void run() {
+        MAIN.removeCallbacks(SLEEP_TICK);
+        ExoPlayer p = live;
+        if (p != null) p.setVolume(1f);
+        if (minutes > 0) {
+          sleepEndsAt = SystemClock.elapsedRealtime() + minutes * 60000L;
+          MAIN.postDelayed(SLEEP_TICK, 500);
+        } else {
+          sleepEndsAt = 0;
+        }
       }
     });
-    session.setActive(true);
   }
 
-  @Override public int onStartCommand(Intent intent, int flags, int startId) {
-    if (intent != null) {
-      if (ACTION_STOP_SERVICE.equals(intent.getAction())) {
-        closePlayer();
-        return START_NOT_STICKY;
+  static long sleepLeftMs() {
+    return sleepEndsAt == 0 ? 0 : Math.max(0, sleepEndsAt - SystemClock.elapsedRealtime());
+  }
+
+  static void setSkipSilence(final boolean on) {
+    skipSilence = on;
+    MAIN.post(new Runnable() {
+      @Override public void run() {
+        ExoPlayer p = live;
+        if (p != null) p.setSkipSilenceEnabled(on);
       }
-      String t=intent.getStringExtra("title"), a=intent.getStringExtra("artist");
-      if (t != null && !t.isEmpty()) title=t;
-      if (a != null) artist=a;
-      playing=intent.getBooleanExtra("playing",false);
-      position=Math.max(0L,intent.getLongExtra("pos",0));
-      duration=Math.max(0L,intent.getLongExtra("dur",0));
+    });
+  }
+
+  /** Widget buttons. Works while the service is alive (even if the Activity/WebView is gone). */
+  static void handleAction(final String a) {
+    MAIN.post(new Runnable() {
+      @Override public void run() {
+        ExoPlayer p = live;
+        if (p == null) return;
+        if ("toggle".equals(a)) { if (p.getPlayWhenReady()) p.pause(); else p.play(); }
+        else if ("prev".equals(a)) { if (p.getCurrentPosition() > 6000) p.seekTo(0); else p.seekToPreviousMediaItem(); }
+        else if ("next".equals(a)) p.seekToNextMediaItem();
+        else if ("back10".equals(a)) p.seekBack();
+        else if ("forward".equals(a)) p.seekForward();
+      }
+    });
+  }
+
+  // ---------------- lifecycle ----------------
+  @Override public void onCreate() {
+    super.onCreate();
+
+    DefaultRenderersFactory renderers = new DefaultRenderersFactory(this) {
+      @Override protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
+                                                   boolean enableAudioTrackPlaybackParams) {
+        // EQ / headroom / limiter run inside the native pipeline, before the speed (Sonic) stage
+        return new DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setAudioProcessors(new AudioProcessor[] { new FxAudioProcessor() })
+            .build();
+      }
+    };
+    // VBR mp3 without a seek table: constant-bitrate seeking keeps the position accurate for long books
+    DefaultMediaSourceFactory sources = new DefaultMediaSourceFactory(this,
+        new DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true));
+
+    player = new ExoPlayer.Builder(this, renderers, sources)
+        .setAudioAttributes(new AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
+        .setHandleAudioBecomingNoisy(true)
+        .setWakeMode(C.WAKE_MODE_LOCAL)          // CPU stays awake while playing with the screen off
+        .setSeekBackIncrementMs(10000)
+        .setSeekForwardIncrementMs(30000)
+        .build();
+    player.setSkipSilenceEnabled(skipSilence);
+    player.addListener(new Player.Listener() {
+      @Override public void onIsPlayingChanged(boolean isPlaying) {
+        MAIN.removeCallbacks(persistTick);
+        if (isPlaying) MAIN.postDelayed(persistTick, 5000);
+        persistPosition();
+        pushWidget();
+      }
+      @Override public void onMediaItemTransition(@Nullable MediaItem item, int reason) {
+        persistPosition();
+        pushWidget();
+      }
+      @Override public void onPositionDiscontinuity(Player.PositionInfo o, Player.PositionInfo n, int reason) {
+        persistPosition();
+      }
+    });
+    live = player;
+
+    PendingIntent open = null;
+    Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+    if (launch != null) {
+      launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+      open = PendingIntent.getActivity(this, 100, launch,
+          PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
-    refresh();
-    return START_NOT_STICKY;
+    MediaSession.Builder b = new MediaSession.Builder(this, player).setCallback(new MediaSession.Callback() {
+      // Controllers send items by value; make sure the playable URI survives the trip
+      @Override public ListenableFuture<List<MediaItem>> onAddMediaItems(MediaSession s,
+          MediaSession.ControllerInfo c, List<MediaItem> items) {
+        List<MediaItem> out = new ArrayList<>(items.size());
+        for (MediaItem it : items) {
+          android.net.Uri uri = it.localConfiguration != null ? it.localConfiguration.uri : it.requestMetadata.mediaUri;
+          out.add(uri != null ? it.buildUpon().setUri(uri).build() : it);
+        }
+        return Futures.immediateFuture(out);
+      }
+    });
+    if (open != null) b.setSessionActivity(open);
+    session = b.build();
   }
 
-  private PendingIntent openApp() {
-    Intent launch=getPackageManager().getLaunchIntentForPackage(getPackageName());
-    if(launch==null)return null;
-    launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);
-    return PendingIntent.getActivity(this,100,launch,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+  @Nullable @Override public MediaSession onGetSession(MediaSession.ControllerInfo controllerInfo) {
+    return session;
   }
 
-  private PendingIntent action(String a){
-    if("stop".equals(a)) {
-      Intent intent = new Intent(this, PlayerService.class).setAction(ACTION_STOP_SERVICE);
-      return PendingIntent.getService(this, 999, intent, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
+  /** App swiped from recents: stop playback and remove the notification (same behaviour as before). */
+  @Override public void onTaskRemoved(@Nullable Intent rootIntent) {
+    persistPosition();
+    pauseAllPlayersAndStopSelf();
+  }
+
+  @Override public void onDestroy() {
+    MAIN.removeCallbacks(persistTick);
+    MAIN.removeCallbacks(SLEEP_TICK);
+    sleepEndsAt = 0;
+    persistPosition();
+    live = null;
+    if (session != null) {
+      session.getPlayer().release();
+      session.release();
+      session = null;
     }
-    return PlayerWidget.pi(this,a);
-  }
-
-  private void refresh() {
-    if(session==null)return;
-    MediaMetadata.Builder md=new MediaMetadata.Builder()
-      .putString(MediaMetadata.METADATA_KEY_TITLE,title)
-      .putString(MediaMetadata.METADATA_KEY_ARTIST,artist)
-      .putLong(MediaMetadata.METADATA_KEY_DURATION,duration);
-    if(cover!=null&&!cover.isRecycled())md.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART,cover);
-    session.setMetadata(md.build());
-
-    long actions=PlaybackState.ACTION_PLAY|PlaybackState.ACTION_PAUSE|PlaybackState.ACTION_PLAY_PAUSE|
-      PlaybackState.ACTION_SKIP_TO_NEXT|PlaybackState.ACTION_SKIP_TO_PREVIOUS|PlaybackState.ACTION_REWIND|
-      PlaybackState.ACTION_STOP;
-    // Android 13+ builds the media controls from the session state, so the close button is also a custom action
-    session.setPlaybackState(new PlaybackState.Builder().setActions(actions)
-      .addCustomAction(ACTION_STOP_SERVICE,"Закрыть",android.R.drawable.ic_menu_close_clear_cancel)
-      .setState(playing?PlaybackState.STATE_PLAYING:PlaybackState.STATE_PAUSED,position,1f).build());
-
-    Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL_ID):new Notification.Builder(this);
-    b.setSmallIcon(android.R.drawable.ic_media_play)
-      .setContentTitle(title).setContentText(artist)
-      .setLargeIcon(cover!=null&&!cover.isRecycled()?cover:null)
-      .setVisibility(Notification.VISIBILITY_PUBLIC).setOngoing(playing)
-      .setDeleteIntent(action("stop"));
-    PendingIntent open=openApp();if(open!=null)b.setContentIntent(open);
-    b.addAction(android.R.drawable.ic_media_previous,"Назад",action("prev"))
-      .addAction(android.R.drawable.ic_media_rew,"-10 с",action("back10"))
-      .addAction(playing?android.R.drawable.ic_media_pause:android.R.drawable.ic_media_play,playing?"Пауза":"Пуск",action("toggle"))
-      .addAction(android.R.drawable.ic_media_next,"Далее",action("next"))
-      .addAction(android.R.drawable.ic_menu_close_clear_cancel,"Закрыть",action("stop"))
-      .setStyle(new Notification.MediaStyle().setMediaSession(session.getSessionToken()).setShowActionsInCompactView(0,2,3));
-    Notification n=b.build();
-    if(Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,n,ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-    else startForeground(NOTIFICATION_ID,n);
-    PlayerWidget.title=title;PlayerWidget.artist=artist;PlayerWidget.playing=playing;PlayerWidget.push(this);
-  }
-
-  /** Real stop: tell JS to pause <audio>, drop foreground state + notification, stop the service */
-  private void closePlayer() {
-    PlayerPlugin.emit("stop");
-    try { if (session != null) session.setActive(false); } catch (Exception ignored) { }
-    if (Build.VERSION.SDK_INT >= 24) stopForeground(Service.STOP_FOREGROUND_REMOVE);
-    else stopForeground(true);
-    NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-    if (nm != null) nm.cancel(NOTIFICATION_ID);
     PlayerWidget.playing = false;
-    PlayerWidget.push(this);
-    stopSelf();
+    PlayerWidget.push(getApplicationContext());
+    PlayerPlugin.emitClosed();
+    super.onDestroy();
   }
 
-  // App swiped away from recents: nothing can keep playing, so remove the notification too
-  @Override public void onTaskRemoved(Intent rootIntent) {
-    closePlayer();
-    super.onTaskRemoved(rootIntent);
+  // ---------------- helpers ----------------
+  private final Runnable persistTick = new Runnable() {
+    @Override public void run() {
+      persistPosition();
+      if (player != null && player.isPlaying()) MAIN.postDelayed(this, 5000);
+    }
+  };
+
+  /** Survives the death of the WebView/app: JS reads it on start (Player.getState().saved). */
+  private void persistPosition() {
+    ExoPlayer p = player;
+    if (p == null) return;
+    MediaItem it = p.getCurrentMediaItem();
+    if (it == null || it.mediaId == null) return;
+    int colon = it.mediaId.lastIndexOf(':');
+    if (colon <= 0) return;
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+        .putString("bookId", it.mediaId.substring(0, colon))
+        .putInt("index", p.getCurrentMediaItemIndex())
+        .putFloat("pos", p.getCurrentPosition() / 1000f)
+        .putLong("ts", System.currentTimeMillis())
+        .apply();
   }
 
-  @Override public void onDestroy(){if(session!=null){session.setActive(false);session.release();session=null;}super.onDestroy();}
+  private void pushWidget() {
+    ExoPlayer p = player;
+    if (p == null) return;
+    androidx.media3.common.MediaMetadata md = p.getMediaMetadata();
+    if (md.title != null) PlayerWidget.title = md.title.toString();
+    if (md.artist != null) PlayerWidget.artist = md.artist.toString();
+    PlayerWidget.playing = p.getPlayWhenReady() && p.getPlaybackState() != Player.STATE_ENDED;
+    PlayerWidget.push(getApplicationContext());
+  }
 }
