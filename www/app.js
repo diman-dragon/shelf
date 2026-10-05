@@ -9,15 +9,32 @@ import { initNativeScanListeners, scanAllFolders } from './js/scanner.js';
 
 const { get, set } = window.idbKeyval || {};
 
-// Global error handling & crash protection for Android WebView
+// Global error handling & crash protection for Android WebView.
+// Order matters: the error is ALWAYS written to the console first; the UI notification (toast, or the fallback
+// banner when #toast is not in the DOM yet) can only add information, never replace it.
+function reportError(tag, err, fallbackText){
+  console.error(`[${tag}]`, err);
+  const text = (err && err.message) || (typeof err === 'string' ? err : '') || fallbackText;
+  try { showToast(`Ошибка: ${text}`); }
+  catch (e2) {
+    // even showToast failed (e.g. the module graph is broken): plain DOM banner, no imports needed
+    try {
+      const d = document.createElement('div');
+      d.textContent = `Ошибка: ${text}`;
+      d.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:9999;padding:10px 14px;border-radius:12px;background:#7a1f18;color:#fff;font:13px system-ui,sans-serif';
+      (document.body || document.documentElement).appendChild(d);
+    } catch {}
+  }
+}
+
 window.addEventListener('error', (event) => {
-  console.error('[Global Error]', event.error || event.message);
-  try { showToast(`Ошибка: ${event.message || 'Неизвестная ошибка'}`); } catch {}
+  // benign browser notification, not an app failure
+  if(/ResizeObserver loop/i.test(event.message || '')) return;
+  reportError('Global Error', event.error || event.message, 'Неизвестная ошибка');
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('[Unhandled Rejection]', event.reason);
-  try { showToast(`Ошибка: ${event.reason?.message || 'Сбой операции'}`); } catch {}
+  reportError('Unhandled Rejection', event.reason, 'Сбой операции');
 });
 
 // Native Android Back Button handling via window.Capacitor.Plugins

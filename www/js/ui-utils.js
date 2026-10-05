@@ -10,10 +10,31 @@ export function fmt(sec){
   return h ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
 }
 
+/** Last-resort banner: used when #toast does not exist (error before/while the DOM is mounted) so a message is never lost */
+function showFallbackBanner(msg){
+  try {
+    let el = document.getElementById('fatalBanner');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'fatalBanner';
+      el.setAttribute('role', 'alert');
+      el.style.cssText = 'position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top,0px));z-index:9999;' +
+        'padding:10px 14px;border-radius:12px;background:#7a1f18;color:#fff;font:13px/1.35 system-ui,sans-serif;' +
+        'box-shadow:0 6px 24px rgba(0,0,0,.45);word-break:break-word';
+      el.onclick = () => el.remove();
+      (document.body || document.documentElement).appendChild(el);
+    }
+    el.textContent = String(msg);
+    clearTimeout(showFallbackBanner.t);
+    showFallbackBanner.t = setTimeout(() => el.remove(), 8000);
+  } catch {}
+}
+
 export function showToast(msg){
+  console.warn('[toast]', msg);
   clearTimeout(toastTimer);
   const t = document.getElementById('toast');
-  if(!t) return;
+  if(!t){ showFallbackBanner(msg); return; }
   t.textContent = msg;
   t.classList.add('show');
   toastTimer = setTimeout(()=>t.classList.remove('show'), 2300);

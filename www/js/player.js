@@ -1,11 +1,15 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
-import { state, icon, escapeHtml, fmt, uid, plural, plugin, $, isNative, main } from './state.js';
+import { state, icon, escapeHtml, fmt, uid, plural, $, isNative, main } from './state.js';
 import { persist, writeLastPlayback, getSavedPosition, resumePosition, readLastPlayback, setLastPlayback } from './storage.js';
 import { showToast, closeModal, openModal, bookCover, render, updateHeaderNowPlaying, progress } from './ui.js';
 import { audio, NATIVE, ensureAudioGraph, applyCurrentFileSound, openCurrentSound, ensureAudible } from './sound.js';
 import { openBookMenu } from './library.js';
 import { openVisualizer, closeVisualizer } from './visualizer.js';
 import { hydrateBookMeta } from './meta.js';
+import { bindSwipe } from './player-swipe.js';
+import { bindNativeEvents, stopNativePlayer, syncNativeResume } from './native-bridge.js';
+
+export { stopNativePlayer, syncNativeResume };   // public API kept for app.js and other modules
 
 const { get, set } = window.idbKeyval || {};
 let progressSaveTimer = null;
@@ -531,7 +535,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-export function stopNativePlayer(){ const P = plugin('Player'); if(P) P.stop().catch(()=>{}); }
 // NOTE: the native player must NOT be stopped here — the WebView going away (screen off, app in background)
 // must not interrupt playback. The service stops itself when the app is swiped from recents.
 window.addEventListener('pagehide', () => { saveProgress(true); });
@@ -555,12 +558,10 @@ export function setMediaSession(){
   } catch {}
 }
 
-// --- Native engine events (chapter changes, end of book, service closed) ---------------------
-if(NATIVE){
-  // ExoPlayer moved to another chapter on its own (auto-advance, notification/headset next/prev)
-  audio.addEventListener('trackchange', e => {
+// --- Native engine events (wiring lives in native-bridge.js; the state it touches lives here) ---------------
+bindNativeEvents({
+  trackChange(idx){
     if(!state.current) return;
-    const idx = e.detail.index;
     if(idx === state.currentIndex && loadedKey === curKey()) return;
     state.currentIndex = idx; state.currentPos = 0; pendingSeek = 0; restoring = false;
     loadedKey = curKey();
@@ -568,95 +569,31 @@ if(NATIVE){
     const list = $('chapterList');
     if(list){ list.innerHTML = chapterRows(state.current); bindChapterRows(); }
     updatePlayerUI();
-  });
-  // real chapter duration is known only to the decoder
-  audio.addEventListener('durationchange', () => {
-    const f = state.current?.files?.[state.currentIndex], d = audio.duration;
+  },
+  durationChange(d){
+    const f = state.current?.files?.[state.currentIndex];
     if(!f || !(d > 0) || loadedKey !== curKey()) return;
     if(Math.abs((Number(f.duration) || 0) - d) > 0.5){
       f.duration = d;
       clearTimeout(progressSaveTimer);
       progressSaveTimer = setTimeout(() => { progressSaveTimer = null; set?.('books', state.books); }, 1500);
     }
-  });
-  // end of the LAST chapter (chapter-to-chapter transitions are gapless inside the native playlist)
-  audio.addEventListener('ended', () => {
+  },
+  ended(){
     if(!state.current) return;
     audio.pause();
     state.playing = false;
     loadChapter(0, 0, false).then(() => saveProgress(true));
-  });
-  // service is gone (notification dismissed / task removed): remember the position, force a re-load on next play
-  audio.addEventListener('closed', () => {
+  },
+  closed(){
     saveProgress(true);
     loadedKey = '';
     syncPlaying(); updatePlayerUI();
-  });
-}
+  }
+});
 
-/** Take the newer of (JS last save, native service last save) before the app decides what to resume. */
-export async function syncNativeResume(){
-  if(!NATIVE) return;
-  try {
-    const st = await audio.P.getState();
-    const s = st?.saved;
-    if(!s?.bookId) return;
-    const last = readLastPlayback();
-    if(!last || (Number(s.ts) || 0) > (Number(last.ts) || 0)){
-      setLastPlayback({bookId: s.bookId, index: Number(s.index) || 0, pos: Number(s.pos) || 0, ts: Number(s.ts) || Date.now()});
-    }
-  } catch {}
-}
-
-// --- Swipes on the player: thresholds + direction lock, vertical scroll is never blocked ---
-function bindPlayerSwipe(){
-  const root = $('playerScreen');
-  if(!root || root.dataset.swipeBound) return;
-  root.dataset.swipeBound = '1';
-
-  const MIN_DX = 70;      // px the finger must travel horizontally
-  const LOCK_PX = 12;     // movement needed before the gesture direction is decided
-  const RATIO = 1.8;      // |dx| must dominate |dy| by this factor
-  const MAX_MS = 900;     // slower drags are not swipes
-  const EDGE = 22;        // keep Android system back-gesture zones free
-
-  let x0 = 0, y0 = 0, t0 = 0, active = false, mode = '';
-
-  root.addEventListener('touchstart', e => {
-    active = false; mode = '';
-    if(e.touches.length !== 1) return;
-    const t = e.touches[0];
-    if(t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return;
-    if(e.target.closest('input[type="range"]')) return;   // sliders handle their own drag
-    x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); active = true;
-  }, {passive:true});
-
-  root.addEventListener('touchmove', e => {
-    if(!active) return;
-    const t = e.touches[0];
-    if(!t) return;
-    const dx = t.clientX - x0, dy = t.clientY - y0;
-    if(!mode){
-      if(Math.abs(dx) < LOCK_PX && Math.abs(dy) < LOCK_PX) return;
-      mode = Math.abs(dx) > Math.abs(dy) * RATIO ? 'h' : 'v';
-    }
-    if(mode === 'h' && e.cancelable) e.preventDefault();   // only a locked horizontal gesture is captured
-  }, {passive:false});
-
-  root.addEventListener('touchend', e => {
-    const wasH = active && mode === 'h';
-    active = false;
-    if(!wasH) return;                                      // vertical / undecided → plain scroll or tap
-    const t = e.changedTouches[0];
-    if(!t) return;
-    const dx = t.clientX - x0, dy = t.clientY - y0;
-    if(Math.abs(dx) < MIN_DX || Math.abs(dx) < Math.abs(dy) * RATIO) return;
-    if(Date.now() - t0 > MAX_MS) return;
-    handleSwipe(dx > 0 ? 'right' : 'left');
-  }, {passive:true});
-
-  root.addEventListener('touchcancel', () => { active = false; mode = ''; }, {passive:true});
-}
+// --- Swipes on the player (gesture logic: player-swipe.js) ---
+function bindPlayerSwipe(){ bindSwipe($('playerScreen'), handleSwipe); }
 
 function handleSwipe(dir){
   const vis = $('visualizer'), queue = $('queuePanel');
