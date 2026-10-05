@@ -2,7 +2,9 @@ package com.shelf.player;
 
 /**
  * Pure-Java DSP chain (no Android dependencies, unit-testable):
- *   low shelf + high shelf + 10 peaking bands  ->  auto pre-gain  ->  peak limiter.
+ *   10 peaking bands  ->  auto pre-gain  ->  peak limiter.
+ * Constants (bands, Q, headroom, ceiling) come from DspConfig, which Gradle generates from www/dsp.json —
+ * the web player (sound.js) reads the very same file, so there is a single place to change them.
  *
  * Why it exists: the old Web Audio graph boosted bands without any headroom and without a limiter,
  * so presets like "Bass"/"Voice" clipped (the "хрип"). Here the pre-gain is derived from the REAL
@@ -10,29 +12,25 @@ package com.shelf.player;
  * the ceiling, whatever the user drags.
  */
 public final class AudioFx {
-  public static final int[] BANDS = {60, 120, 250, 500, 1000, 2000, 4000, 8000, 12000, 16000};
-  private static final double Q_PEAK = 1.4;
-  private static final double Q_SHELF = 0.7071;
-  private static final double BASS_HZ = 180, TREBLE_HZ = 4200;
-  private static final int NB = BANDS.length + 2;          // 0 = bass shelf, 1 = treble shelf, 2.. = peaking
-  private static final float CEILING = 0.97f;               // about -0.26 dBFS
-  private static final double HEADROOM_FACTOR = 0.85;       // compensate 85% of the peak boost, limiter handles the rest
+  public static final int[] BANDS = DspConfig.BANDS;
+  private static final double Q_PEAK = DspConfig.Q_PEAK;
+  private static final int NB = BANDS.length;               // one peaking filter per band
+  private static final float CEILING = (float) DspConfig.CEILING;   // about -0.26 dBFS
+  private static final double HEADROOM_FACTOR = DspConfig.HEADROOM;  // compensate this share of the peak boost, limiter handles the rest
   private static final int FFT_N = 256;
 
   private static final class Params {
     final float[] gains = new float[NB];                     // dB per filter
     final float gainDb;
     final float volume;
-    Params(float[] eq, float bass, float treble, float gainDb, float volume) {
-      gains[0] = clamp(bass, -15, 15);
-      gains[1] = clamp(treble, -15, 15);
-      for (int i = 0; i < BANDS.length; i++) gains[2 + i] = i < eq.length ? clamp(eq[i], -15, 15) : 0;
+    Params(float[] eq, float gainDb, float volume) {
+      for (int i = 0; i < BANDS.length; i++) gains[i] = i < eq.length ? clamp(eq[i], -15, 15) : 0;
       this.gainDb = clamp(gainDb, -24, 12);
       this.volume = clamp(volume, 0, 1);
     }
   }
 
-  private volatile Params params = new Params(new float[BANDS.length], 0, 0, 0, 1);
+  private volatile Params params = new Params(new float[BANDS.length], 0, 1);
 
   // ---- per-stream state (audio thread only) ----
   private int sampleRate = 44100, channels = 2;
@@ -58,9 +56,9 @@ public final class AudioFx {
 
   // ======================= public API =======================
 
-  /** Called from any thread. eq = 10 values in dB, bass/treble shelves in dB, gainDb = user pre-gain, volume 0..1 */
-  public void set(float[] eq, float bass, float treble, float gainDb, float volume) {
-    params = new Params(eq == null ? new float[BANDS.length] : eq, bass, treble, gainDb, volume);
+  /** Called from any thread. eq = one value in dB per band, gainDb = user pre-gain, volume 0..1 */
+  public void set(float[] eq, float gainDb, float volume) {
+    params = new Params(eq == null ? new float[BANDS.length] : eq, gainDb, volume);
   }
 
   public void setSpectrum(boolean enabled) { spectrumOn = enabled; }
@@ -178,7 +176,7 @@ public final class AudioFx {
     final int rate = sampleRate;
     for (int k = 0; k < NB; k++) {
       boolean active = Math.abs(p.gains[k]) >= 0.05f;
-      double hz = k == 0 ? BASS_HZ : (k == 1 ? TREBLE_HZ : BANDS[k - 2]);
+      double hz = BANDS[k];
       if (hz >= rate * 0.45) active = false;
       if (active && !on[k]) for (int c = 0; c < 8; c++) { z1[c][k] = 0; z2[c][k] = 0; }
       on[k] = active;
@@ -196,29 +194,10 @@ public final class AudioFx {
 
   private void design(int k, double f0, double dB, int rate) {
     double A = Math.pow(10, dB / 40), w0 = 2 * Math.PI * f0 / rate, cs = Math.cos(w0), sn = Math.sin(w0);
-    double B0, B1, B2, A0, A1, A2;
-    if (k >= 2) {                                            // peaking
-      double al = sn / (2 * Q_PEAK);
-      B0 = 1 + al * A; B1 = -2 * cs; B2 = 1 - al * A;
-      A0 = 1 + al / A; A1 = -2 * cs; A2 = 1 - al / A;
-    } else {
-      double al = sn / (2 * Q_SHELF), sa = 2 * Math.sqrt(A) * al;
-      if (k == 0) {                                          // low shelf
-        B0 = A * ((A + 1) - (A - 1) * cs + sa);
-        B1 = 2 * A * ((A - 1) - (A + 1) * cs);
-        B2 = A * ((A + 1) - (A - 1) * cs - sa);
-        A0 = (A + 1) + (A - 1) * cs + sa;
-        A1 = -2 * ((A - 1) + (A + 1) * cs);
-        A2 = (A + 1) + (A - 1) * cs - sa;
-      } else {                                               // high shelf
-        B0 = A * ((A + 1) + (A - 1) * cs + sa);
-        B1 = -2 * A * ((A - 1) + (A + 1) * cs);
-        B2 = A * ((A + 1) + (A - 1) * cs - sa);
-        A0 = (A + 1) - (A - 1) * cs + sa;
-        A1 = 2 * ((A - 1) - (A + 1) * cs);
-        A2 = (A + 1) - (A - 1) * cs - sa;
-      }
-    }
+    // peaking EQ (RBJ cookbook) — same maths as the browser's BiquadFilterNode type "peaking"
+    double al = sn / (2 * Q_PEAK);
+    double B0 = 1 + al * A, B1 = -2 * cs, B2 = 1 - al * A;
+    double A0 = 1 + al / A, A1 = -2 * cs, A2 = 1 - al / A;
     b0[k] = B0 / A0; b1[k] = B1 / A0; b2[k] = B2 / A0; a1[k] = A1 / A0; a2[k] = A2 / A0;
   }
 
@@ -227,7 +206,7 @@ public final class AudioFx {
     double[] c = new double[5 * NB];
     boolean[] act = new boolean[NB];
     for (int k = 0; k < NB; k++) {
-      double hz = k == 0 ? BASS_HZ : (k == 1 ? TREBLE_HZ : BANDS[k - 2]);
+      double hz = BANDS[k];
       act[k] = Math.abs(p.gains[k]) >= 0.05f && hz < rate * 0.45;
       if (!act[k]) continue;
       AudioFx t = TMP.get();

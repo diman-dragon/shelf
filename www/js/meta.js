@@ -1,9 +1,9 @@
 /* meta.js — lazy durations & covers for books (native MediaMetadataRetriever, <audio> fallback) */
 import { state, plugin, isNative } from './state.js';
-import { persist } from './storage.js';
+import { saveBooksSoon } from './storage.js';
+import { dbGet } from './db.js';
 import { bookCover } from './ui-utils.js';
 
-const { get } = window.idbKeyval || {};
 const busy = new Set();
 let coverJobRunning = false;
 
@@ -18,7 +18,7 @@ async function probeWithAudio(f){
   let src = '', blobUrl = '';
   try {
     if(f.key){
-      const blob = await get?.(f.key);
+      const blob = await dbGet(f.key);
       if(!blob) return 0;
       src = blobUrl = URL.createObjectURL(blob);
     } else if(f.uri){
@@ -45,7 +45,7 @@ async function probeWithAudio(f){
   });
 }
 
-export async function probeDuration(f){
+async function probeDuration(f){
   if(f.uri && isNative()){
     const m = await nativeMeta(f.uri, false);
     if(m && Number(m.duration) > 0) return Number(m.duration);
@@ -80,7 +80,7 @@ export async function hydrateBookMeta(b, onChange){
   } finally {
     busy.delete(b.id);
   }
-  if(changed){ try { await persist(); } catch {} }
+  if(changed) saveBooksSoon();     // covers go to their own keys, see storage.js
 }
 
 /** Library: quietly load covers for books scanned by an older version (native only) */
@@ -105,5 +105,5 @@ export async function hydrateLibraryCovers(books){
   } finally {
     coverJobRunning = false;
   }
-  if(changed){ try { await persist(); } catch {} }
+  if(changed) saveBooksSoon();
 }

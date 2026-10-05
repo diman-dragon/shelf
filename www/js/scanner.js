@@ -1,19 +1,15 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
-import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot, durationOfBook, cleanTitle } from './state.js';
-import { persist } from './storage.js';
-import { openModal, closeModal, showToast, render } from './ui.js';
-import { renderShelf } from './library.js';
-import { audio } from './sound.js';
+import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot, durationOfBook, cleanTitle, cleanFolderName } from './state.js';
+import { persist, saveBooksSoon, flushBooks } from './storage.js';
+import { dbSet } from './db.js';
+import { openModal, closeModal, showToast } from './ui-utils.js';
+import { render, act } from './router.js';
 
-const { get, set } = window.idbKeyval || {};
 let nativeScanListenersReady = false;
-let scanPersistTimer = null;
 let scanRenderTimer = null;
-const SCAN_BATCH_MS = 280;
+const SCAN_BATCH_MS = 400;     // UI refresh interval during a scan (rows are appended incrementally, see library.updateShelfList)
 // folderId -> {total, processed, done, started}: several folders scan one after another, the dock shows the sum
 const scanJobs = new Map();
-
-export function openAddSheet(){ openFolderSheet(); }
 
 export function openFolderSheet(){
   const folders = state.folders;
@@ -31,7 +27,7 @@ export function openFolderSheet(){
   $('folderClose').onclick = closeModal;
   $('folderBack').onclick = e => { if(e.target.id === 'folderBack') closeModal(); };
   $('addFolderNow').onclick = pickFolder;
-  $('scanNow').onclick = () => scanAllFolders(false, true);
+  $('scanNow').onclick = () => scanAllFolders({silent: false, returnToShelf: true});
 
   document.querySelectorAll('[data-folder]').forEach(el => el.onclick = e => {
     if(e.target.closest('[data-folder-delete]')) return;
@@ -43,18 +39,18 @@ export function openFolderSheet(){
   });
 }
 
-export function folderRow(f){
+function folderRow(f){
   const on = state.selectedFolderIds.includes(f.id);
-  return `<div class="folder-card ${on?'selected':''}" data-folder="${escapeHtml(f.id)}"><div class="check"></div><div class="folder-info"><div class="folder-name">${escapeHtml(f.name)}</div><div class="folder-path">${escapeHtml(f.uri)}</div></div><button class="folder-delete" data-folder-delete="${escapeHtml(f.id)}" aria-label="Удалить папку">${icon('trash')}</button></div>`;
+  return `<div class="folder-card ${on?'selected':''}" data-folder="${escapeHtml(f.id)}"><div class="check"></div><div class="folder-info"><div class="folder-name">${escapeHtml(cleanFolderName(f.name))}</div><div class="folder-path">${escapeHtml(f.uri)}</div></div><button class="folder-delete" data-folder-delete="${escapeHtml(f.id)}" aria-label="Удалить папку">${icon('trash')}</button></div>`;
 }
 
-export async function toggleFolder(id){
+async function toggleFolder(id){
   state.selectedFolderIds.includes(id) ? state.selectedFolderIds = state.selectedFolderIds.filter(x => x !== id) : state.selectedFolderIds.push(id);
-  await set?.('foldersSelected', state.selectedFolderIds);
+  await dbSet('foldersSelected', state.selectedFolderIds);
   openFolderSheet();
 }
 
-export async function deleteFolder(id){
+async function deleteFolder(id){
   const f = state.folders.find(x => x.id === id);
   if(!f) return;
   openModal(`<h3>Удалить папку?</h3><p style="color:var(--muted);font-size:13px">Папка «${escapeHtml(f.name)}» перестанет сканироваться. Файлы на телефоне не удаляются.</p><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="folderDeleteConfirm" style="background:var(--danger);color:#fff">Удалить</button></div>`);
@@ -64,13 +60,13 @@ export async function deleteFolder(id){
     state.books = state.books.filter(b => b.sourceFolderId !== id);
     state.playlists.forEach(p => p.bookIds = (p.bookIds || []).filter(bid => state.books.some(b => b.id === bid)));
     if(state.current?.sourceFolderId === id){
-      audio.pause();
-      if(state.blobUrl){ URL.revokeObjectURL(state.blobUrl); state.blobUrl = ''; }
-      state.current = null; state.playing = false;
+      act('unloadCurrent');                                  // stops <audio> + the native service + its notification
+      if(state.screen === 'player') state.screen = 'shelf';
     }
     await persist();
-    await set?.('foldersSelected', state.selectedFolderIds);
+    await dbSet('foldersSelected', state.selectedFolderIds);
     closeModal();
+    render();
     openFolderSheet();
   };
 }
@@ -82,10 +78,10 @@ export async function pickFolder(){
     const f = await P.pickFolder();
     if(!f?.uri) return;
     let old = state.folders.find(x => x.uri === f.uri);
-    if(!old){ old = {id:uid(), name:f.name||'Аудиокниги', uri:f.uri}; state.folders.push(old); }
+    if(!old){ old = {id:uid(), name:cleanFolderName(f.name), uri:f.uri}; state.folders.push(old); }
     if(!state.selectedFolderIds.includes(old.id)) state.selectedFolderIds.push(old.id);
     await persist();
-    await set?.('foldersSelected', state.selectedFolderIds);
+    await dbSet('foldersSelected', state.selectedFolderIds);
     closeModal();
     state.screen = 'shelf';
     beginScan([old], old.name);
@@ -97,11 +93,12 @@ export async function pickFolder(){
 /* ---------------- scan progress model ---------------- */
 
 /** Starts (or joins, if a scan is already running) a scan session for the given folders */
-function beginScan(folders, name){
+function beginScan(folders, name, silent = false){
   const running = !!state.scan?.active && [...scanJobs.values()].some(j => !j.done);
   if(!running){
     scanJobs.clear();
-    state.scan = {active:true, total:0, processed:0, books:0, skipped:0, errors:0, timeouts:0, firstError:'', counting:true, name};
+    state.scan = {active:true, total:0, processed:0, books:0, skipped:0, errors:0, timeouts:0, firstError:'', counting:true, name, silent};
+    dupIndex = null;
   }
   folders.forEach(f => {
     const j = scanJobs.get(f.id);
@@ -134,14 +131,16 @@ async function finishIfAllDone(){
   if(![...scanJobs.values()].every(j => j.done)) return;
   const s = state.scan;
   if(!s.active) return;
-  clearTimeout(scanPersistTimer);
   clearTimeout(scanRenderTimer);
-  await set?.('books', state.books);
+  try { await flushBooks(); } catch(e) { showToast('Не удалось сохранить библиотеку: ' + (e?.message || e)); }
+  dupIndex = null;
   syncScan();
   updateScanDock();
   setTimeout(() => {
     s.active = false;
-    render();
+    if(state.screen === 'shelf') act('renderShelf');
+    // a silent (automatic) scan only speaks up when it actually found something or failed
+    if(s.silent && !s.books && !s.errors) return;
     const parts = [`Добавлено книг: ${s.books}`];
     if(s.skipped) parts.push(`дубликатов пропущено: ${s.skipped}`);
     showToast(parts.join(' · '));
@@ -168,11 +167,11 @@ export function scanDock(){
   return `<div class="scan-dock" id="scanDock"><div class="scan-dock-top"><span class="scan-spinner"></span><div><b>Добавляем книги</b><small>${escapeHtml(p.name||'Сканирование')} · ${p.books||0} книг</small></div><strong>${v.label}</strong></div><div class="scan-dock-bar"><i id="scanDockBar" class="${v.known?'':'indeterminate'}" ${bar}></i></div><div class="scan-dock-foot">${v.foot}</div></div>`;
 }
 
-export async function startFolderScan(folder){
+async function startFolderScan(folder, silent = false){
   const P = plugin('ShelfFiles');
   if(!P) return;
   let job = scanJobs.get(folder.id);
-  if(!job){ beginScan([folder], folder.name); job = scanJobs.get(folder.id); }
+  if(!job){ beginScan([folder], folder.name, silent); job = scanJobs.get(folder.id); }
   if(job.started && !job.done) return;               // this folder is already being scanned
   job.started = true;
   try { await P.scanFolder({uri:folder.uri, folderId:folder.id, folderName:folder.name}); }
@@ -186,14 +185,25 @@ export async function startFolderScan(folder){
   }
 }
 
-export async function scanAllFolders(silent=false, returnToShelf=false){
+/**
+ * silent       automatic scan on start: no toast, no folder sheet, the screen the person is on is NOT changed
+ * returnToShelf  explicit scan from the folder sheet: close the sheet and show the library with the progress dock
+ */
+export async function scanAllFolders({silent = false, returnToShelf = false} = {}){
   const ids = [...state.selectedFolderIds], folders = state.folders.filter(f => ids.includes(f.id));
-  if(!folders.length){ showToast('Сначала выберите папку'); openFolderSheet(); return; }
-  closeModal();
-  state.screen = 'shelf';
-  beginScan(folders, folders.length===1?folders[0].name:'Сканирование папок');
-  render();
-  for(const f of folders) await startFolderScan(f);
+  if(!folders.length){
+    if(silent) return;                                        // nothing selected: an automatic scan just does nothing
+    showToast('Сначала выберите папку');
+    openFolderSheet();
+    return;
+  }
+  if(!silent){
+    closeModal();
+    if(returnToShelf) state.screen = 'shelf';
+  }
+  beginScan(folders, folders.length===1?folders[0].name:'Сканирование папок', silent);
+  if(!silent) render();
+  for(const f of folders) await startFolderScan(f, silent);
 }
 
 /* ---------------- duplicates ---------------- */
@@ -201,26 +211,53 @@ export async function scanAllFolders(silent=false, returnToShelf=false){
 function normTitle(s=''){ return String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
 function normName(s=''){ return stripExt(String(s)).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
 
+const hasSizes = files => files.length > 0 && files.every(f => f.size > 0);
+const sizeKey = files => `${files.length}:${files.map(f => f.size).sort((x, y) => x - y).join(',')}`;
+const titleKey = (title, files) => `${files.length}:${normTitle(title)}`;
+
+// Duplicate lookup index, built once per scan session: sizes -> books, title -> books.
+// Used to be an O(n) isSameBook() pass (with sorting inside) for EVERY scanned book.
+let dupIndex = null;
+
+function indexBook(book){
+  if(!dupIndex) return;
+  const files = book.files || [];
+  if(!files.length) return;
+  if(hasSizes(files)){
+    const k = sizeKey(files);
+    (dupIndex.bySize.get(k) || dupIndex.bySize.set(k, []).get(k)).push(book);
+  }
+  const t = titleKey(book.title, files);
+  (dupIndex.byTitle.get(t) || dupIndex.byTitle.set(t, []).get(t)).push(book);
+}
+
+function ensureDupIndex(){
+  if(dupIndex) return;
+  dupIndex = {bySize: new Map(), byTitle: new Map()};
+  state.books.forEach(indexBook);
+}
+
 /**
- * Is `cand` (just scanned) the same book as `book` (already in the library)? The folder does not matter —
+ * Is `cand` (just scanned) the same book as one already in the library? The folder does not matter —
  * a copy of a book in another folder is a duplicate.
  *  - file sizes known for both:  same chapter count and the same sorted list of sizes (byte-exact content)
  *  - sizes unavailable (some cloud providers): same chapter count + same title, and the same total duration
  *    (or the same chapter names when durations are unknown)
  */
-function isSameBook(book, cand){
-  const a = book.files || [], b = cand.files || [];
-  if(!a.length || a.length !== b.length) return false;
-  if(a.every(f => f.size > 0) && b.every(f => f.size > 0)){
-    const sa = a.map(f => f.size).sort((x, y) => x - y), sb = b.map(f => f.size).sort((x, y) => x - y);
-    return sa.every((v, i) => v === sb[i]);
-  }
-  if(normTitle(book.title) !== normTitle(cand.title)) return false;
-  const da = durationOfBook(book), db = durationOfBook(cand);
-  if(da > 0 && db > 0) return Math.abs(da - db) <= 2;
-  const na = a.map(f => normName(f.fileName || f.name)).sort().join('|');
-  const nb = b.map(f => normName(f.fileName || f.name)).sort().join('|');
-  return na === nb;
+function isDuplicate(cand){
+  ensureDupIndex();
+  const files = cand.files;
+  if(!files.length) return false;
+  if(hasSizes(files) && dupIndex.bySize.has(sizeKey(files))) return true;
+  const sameTitle = dupIndex.byTitle.get(titleKey(cand.title, files)) || [];
+  return sameTitle.some(book => {
+    if(hasSizes(files) && hasSizes(book.files)) return false;     // both have sizes: only the byte-exact rule above applies
+    const da = durationOfBook(book), db = durationOfBook(cand);
+    if(da > 0 && db > 0) return Math.abs(da - db) <= 2;
+    const na = book.files.map(f => normName(f.fileName || f.name)).sort().join('|');
+    const nb = files.map(f => normName(f.fileName || f.name)).sort().join('|');
+    return na === nb;
+  });
 }
 
 /* ---------------- native events ---------------- */
@@ -271,23 +308,25 @@ export function initNativeScanListeners(){
     } else {
       // 2) the same book from ANOTHER folder / path is a duplicate: not added
       const cand = {title: titleFinal, files};
-      if(state.books.some(b => isSameBook(b, cand))){
+      if(isDuplicate(cand)){
         state.scan.skipped++;
         updateScanDock();
         return;
       }
       book = {id:uid(), title:titleFinal, author:authorFinal, cover:e.cover || '', coverChecked:true, files, srcPath, sourceFolderId:folder.id, added:Date.now(), pos:{i:0,t:0}, marks:[]};
       state.books.unshift(book);
+      indexBook(book);
       state.scan.books++;
     }
-    // Batch IDB writes and UI updates — only links are stored, no need to persist/render every book
-    clearTimeout(scanPersistTimer);
-    scanPersistTimer = setTimeout(() => { set?.('books', state.books); }, SCAN_BATCH_MS);
-    clearTimeout(scanRenderTimer);
-    scanRenderTimer = setTimeout(() => {
-      if(state.screen === 'shelf') renderShelf();
-      updateScanDock();
-    }, SCAN_BATCH_MS);
+    // Batch IDB writes (covers are stored under their own keys, only changed ones) and UI updates
+    saveBooksSoon(1500, 8000);
+    if(!scanRenderTimer){
+      scanRenderTimer = setTimeout(() => {
+        scanRenderTimer = null;
+        if(state.screen === 'shelf') act('updateShelf');       // appends/changes rows, keeps scroll, no full re-render
+        updateScanDock();
+      }, SCAN_BATCH_MS);
+    }
     updateScanDock();
   });
 
@@ -323,9 +362,9 @@ export function initNativeScanListeners(){
   });
 }
 
-export function updateScanDock(){
+function updateScanDock(){
   const el = $('scanDock');
-  if(!el){ if(state.scan.active && state.screen === 'shelf') renderShelf(); return; }
+  if(!el){ if(state.scan.active && state.screen === 'shelf') act('renderShelf'); return; }
   const p = state.scan, v = scanView(p);
   const bar = $('scanDockBar');
   if(bar){
@@ -337,7 +376,7 @@ export function updateScanDock(){
   const strong = el.querySelector('.scan-dock-top>strong'); if(strong) strong.textContent = v.label;
 }
 
-export function toNativeFile(f){
+function toNativeFile(f){
   return {
     uri: f.uri,
     name: stripExt(f.name),
@@ -349,8 +388,10 @@ export function toNativeFile(f){
   };
 }
 
-export function naturalFile(a, b){
+function naturalFile(a, b){
   return a.name.localeCompare(b.name, 'ru', {numeric:true, sensitivity:'base'});
 }
 
-export function stripExt(s=''){ return s.replace(/\.[^.]+$/, ''); }
+/** Removes only a KNOWN audio extension: "Vol. 1 Foundation" or "Мастер и Маргарита. Булгаков" must stay intact */
+const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
+function stripExt(s=''){ return String(s).replace(AUDIO_EXT, ''); }

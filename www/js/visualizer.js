@@ -1,5 +1,5 @@
 /* visualizer.js — Audio Visualizer Canvas Rendering and Overlay */
-import { state, icon, $ } from './state.js';
+import { $ } from './state.js';
 import { ensureAudioGraph, hasSpectrum, spectrumSize, fillSpectrum, setSpectrumActive } from './sound.js';
 import { showToast } from './ui-utils.js';
 
@@ -28,7 +28,7 @@ const BARS = 72;            // total bars around the circle (mirrored left/right
 const HALF = BARS / 2;
 const MAX_PARTICLES = 90;
 
-export function startVisualizer(){
+function startVisualizer(){
   const canvas = $('visualizerCanvas');
   if(!canvas || !hasSpectrum()) return;
   stopVisualizer();
@@ -184,6 +184,6 @@ export function startVisualizer(){
   visualizerFrame = requestAnimationFrame(draw);
 }
 
-export function stopVisualizer(){
+function stopVisualizer(){
   if(visualizerFrame){ cancelAnimationFrame(visualizerFrame); visualizerFrame = 0; }
 }

@@ -1,5 +1,5 @@
 /* ui-utils.js — UI Utilities: Time formatting, DOM element templates, Toasts, Modals */
-import { state, icon, escapeHtml, modalRoot } from './state.js';
+import { icon, escapeHtml, modalRoot } from './state.js';
 
 let toastTimer;
 
@@ -69,7 +69,7 @@ function coverInitials(title=''){
 }
 
 /** Nicely styled SVG placeholder (used when there is no cover file or it failed to load) */
-export function coverPlaceholder(b, hidden=false){
+function coverPlaceholder(b, hidden=false){
   const title = b?.title || '';
   const hue = hashStr(title + (b?.author || '')) % 360;
   const letters = escapeHtml(coverInitials(title));
@@ -85,18 +85,28 @@ export function coverPlaceholder(b, hidden=false){
 }
 
 export function bookCover(b, extra=''){
+  // no inline onerror: the CSP forbids inline handlers (see the capture listener below)
   const body = b.cover
-    ? `<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" loading="lazy" draggable="false" ` +
-      `onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='block'">` +
+    ? `<img class="cover-image ${extra}" src="${escapeHtml(b.cover)}" alt="" loading="lazy" draggable="false">` +
       coverPlaceholder(b, true)
     : coverPlaceholder(b, false);
   return `<div class="cover-frame">${body}</div>`;
+}
+
+// <img> "error" events do not bubble, but they can be caught in the capture phase: broken cover -> show the placeholder
+if(typeof document !== 'undefined'){
+  document.addEventListener('error', e => {
+    const img = e.target;
+    if(!(img instanceof HTMLImageElement) || !img.classList.contains('cover-image')) return;
+    img.style.display = 'none';
+    if(img.nextElementSibling) img.nextElementSibling.style.display = 'block';
+  }, true);
 }
 
 export function iconBtn(ic, label, action){
   return `<button type="button" class="icon-btn" aria-label="${label}" data-action="${action}">${icon(ic)}</button>`;
 }
 
-export function settingToggle(k, name, desc, on){
-  return `<div class="setting" data-setting-toggle="${k}"><div class="setting-icon">${icon(k==='autoscan'?'refresh':'eye')}</div><div class="setting-main"><div class="setting-name">${name}</div><div class="setting-desc">${desc}</div></div><div class="switch ${on?'on':''}"><i></i></div></div>`;
+export function settingToggle(k, name, desc, on, ic='refresh'){
+  return `<div class="setting" data-setting-toggle="${k}"><div class="setting-icon">${icon(ic)}</div><div class="setting-main"><div class="setting-name">${name}</div><div class="setting-desc">${desc}</div></div><div class="switch ${on?'on':''}"><i></i></div></div>`;
 }

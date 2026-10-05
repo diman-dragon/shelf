@@ -6,7 +6,13 @@ import { plugin } from './state.js';
 import { audio, NATIVE } from './sound.js';
 import { readLastPlayback, setLastPlayback } from './storage.js';
 
-export function stopNativePlayer(){ const P = plugin('Player'); if(P) P.stop().catch(() => {}); }
+/** Fully stops the native service-side playback (book deleted / closed): clears its queue and drops the notification */
+export function stopNativePlayer(){
+  if(!NATIVE) return;
+  audio.reset();                                           // the JS facade must not believe the old queue is still loaded
+  const P = plugin('Player');
+  if(P) P.stop().catch(() => {});
+}
 
 /**
  * h.trackChange(index)   ExoPlayer moved to another chapter on its own (auto-advance, notification/headset next/prev)

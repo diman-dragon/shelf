@@ -245,24 +245,6 @@ input { outline: 0; }
   background: linear-gradient(150deg, hsl(var(--h, 30), 42%, 34%), hsl(var(--h, 30), 48%, 14%));
 }
 .cover-ph svg { display: block; width: 100%; height: 100%; }
-.fallback-cover {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  padding: 8px;
-  font-family: Georgia, serif;
-  background: radial-gradient(circle at 50% 25%, #8d4f20, #2c180d 68%);
-  color: #f8e6c6;
-  box-sizing: border-box;
-}
-.fallback-cover .cover-title { font-size: 11px; line-height: 1.1; font-weight: 700; }
-.fallback-cover .cover-author { font-size: 8px; margin-top: 4px; color: #d9bd93; }
 
 .lib-info { min-width: 0; flex: 1; }
 .lib-title { font-size: 15px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
@@ -588,3 +570,7 @@ button, .icon-btn, .tool, .control, .play-main, .nav-item, [data-action], [data-
   .eq-band span { font-size: 7px; }
   .eq-band b { font-size: 6px; }
 }
+
+.bookmark-row { align-items: center; }
+.mark-del { background: none; border: 0; color: var(--muted); font-size: 15px; padding: 6px 10px; margin: -6px -8px -6px 0; cursor: pointer; }
+.lib-done { color: var(--gold2); }

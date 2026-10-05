@@ -40,7 +40,6 @@
   contain: paint;
   isolation: isolate;
 }
-.player-cover .fallback-cover .cover-title { font-size: 20px; }
 .player-title {
   text-align: center;
   font: 700 20px/1.15 Georgia, serif;

@@ -5,7 +5,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -100,7 +99,7 @@ public class PlayerService extends MediaSessionService {
     });
   }
 
-  /** Widget buttons. Works while the service is alive (even if the Activity/WebView is gone). */
+  /** Widget buttons. Only wired while a book is loaded in the service (see PlayerWidget.push), even if the Activity/WebView is gone. */
   static void handleAction(final String a) {
     MAIN.post(new Runnable() {
       @Override public void run() {
@@ -109,7 +108,7 @@ public class PlayerService extends MediaSessionService {
         if ("toggle".equals(a)) { if (p.getPlayWhenReady()) p.pause(); else p.play(); }
         else if ("prev".equals(a)) { if (p.getCurrentPosition() > 6000) p.seekTo(0); else p.seekToPreviousMediaItem(); }
         else if ("next".equals(a)) p.seekToNextMediaItem();
-        else if ("back10".equals(a)) p.seekBack();
+        else if ("back".equals(a)) p.seekBack();
         else if ("forward".equals(a)) p.seekForward();
       }
     });
@@ -177,7 +176,7 @@ public class PlayerService extends MediaSessionService {
             .setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
         .setHandleAudioBecomingNoisy(true)
         .setWakeMode(C.WAKE_MODE_LOCAL)          // CPU stays awake while playing with the screen off
-        .setSeekBackIncrementMs(10000)
+        .setSeekBackIncrementMs(15000)        // same steps as the JS buttons (SEEK_BACK_SEC / SEEK_FWD_SEC in state.js)
         .setSeekForwardIncrementMs(30000)
         .build();
     player.setSkipSilenceEnabled(skipSilence);
@@ -197,6 +196,7 @@ public class PlayerService extends MediaSessionService {
       }
     });
     live = player;
+    pushWidget();                                // widget buttons switch from "open the app" to "control the player"
 
     PendingIntent open = null;
     Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());

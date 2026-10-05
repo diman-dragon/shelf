@@ -1,18 +1,18 @@
 /* state.js — Application State, Constants & Helpers */
-const { get, set } = window.idbKeyval || {};
 export const $ = id => document.getElementById(id);
 export const main = $('main');
 export const modalRoot = $('modalRoot');
 
-export const NAV = ['shelf','player','playlists','settings'];
+/** Seek step of the player buttons, the notification, the lock screen and the widget: one place for all of them */
+export const SEEK_BACK_SEC = 15;
+export const SEEK_FWD_SEC = 30;
+
 export const DEFAULT_PLAYLISTS = [
   ['fav','Избранное','♥'],['road','Для дороги','▣'],['fantasy','Фантастика','◉'],
   ['classic','Классика','▤'],['psychology','Психология','◌'],['nonfiction','Нон-фикшн','▧']
 ];
 
 export const ICONS = {
-  search:'<path d="m20 20-4.3-4.3"/><circle cx="11" cy="11" r="6.5"/>',
-  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
   filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
   sort:'<path d="M7 5v14M4 8l3-3 3 3M17 19V5m-3 11 3 3 3-3"/>',
   shelf:'<path d="M4 18h16M5 18V7h14v11M7 7V5h10v2M8 10h8M8 13h8"/>',
@@ -25,32 +25,38 @@ export const ICONS = {
   prev:'<path d="m18 6-8 6 8 6V6ZM6 6v12"/>', next:'<path d="m6 6 8 6-8 6V6Zm12 0v12"/>',
   rewind:'<path d="M7 7v10l-5-5 5-5Z"/><path d="M13 7v10l-5-5 5-5Z"/><path d="M17 7h3v10h-3"/>',
   forward:'<path d="M17 7v10l5-5-5-5Z"/><path d="M11 7v10l5-5-5-5Z"/><path d="M7 7H4v10h3"/>',
-  bookmark:'<path d="M7 4h10v17l-5-3-5 3V4Z"/>', heart:'<path d="M20 8.5c0 5-8 10-8 10s-8-5-8-10a4 4 0 0 1 7-2.5A4 4 0 0 1 20 8.5Z"/>',
-  folder:'<path d="M3 7h7l2 2h9v10H3V7Z"/>', check:'<path d="m5 12 4 4L19 6"/>', trash:'<path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5M14 11v5"/>',
+  bookmark:'<path d="M7 4h10v17l-5-3-5 3V4Z"/>',
+  folder:'<path d="M3 7h7l2 2h9v10H3V7Z"/>',  trash:'<path d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5M14 11v5"/>',
   moon:'<path d="M20 15.5A8 8 0 0 1 8.5 4 8 8 0 1 0 20 15.5Z"/>', sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-  info:'<circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/>', download:'<path d="M12 3v11m0 0 4-4m-4 4-4-4M4 20h16"/>', headset:'<path d="M4 14v-2a8 8 0 0 1 16 0v2M4 14v4h3v-6H4m16 2v4h-3v-6h3"/>',
-  music:'<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>', sliders:'<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="17" r="2"/>',
-  eye:'<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="2" r="2.5"/>', folderPlus:'<path d="M3 7h7l2 2h9v10H3V7Z"/><path d="M12 12v5m-2.5-2.5h5"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/>',
+  music:'<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',  folderPlus:'<path d="M3 7h7l2 2h9v10H3V7Z"/><path d="M12 12v5m-2.5-2.5h5"/>',
   refresh:'<path d="M20 11a8 8 0 0 0-14-4L4 9m0-5v5h5M4 13a8 8 0 0 0 14 4l2-2m0 5v-5h-5"/>', chevron:'<path d="m9 18 6-6-6-6"/>'
 };
 
 export let state = {
   screen:'shelf', books:[], folders:[], playlists:[],
-  settings:{theme:'dark',autoscan:false},
+  settings:{theme:'dark',autoscan:false,speed:1},
   scan:{active:false,total:0,processed:0,books:0,skipped:0,errors:0,timeouts:0,firstError:'',counting:false,name:''},
   query:'', librarySort:'recent', selectedFolderIds:[],
-  current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null
+  current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null, sleepEndsAt:0, appVersion:'', resumeRewind:false
 };
 
 export function icon(name, cls='icon'){return `<span class="${cls}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]||ICONS.info}</svg></span>`}
 export function escapeHtml(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-export function fmt(sec){sec=Number(sec)||0;if(sec<0)sec=0;const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=Math.floor(sec%60);return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`}
 export function durationOfBook(b){return (b.files||[]).reduce((a,f)=>a+(Number(f.duration)||0),0)}
 /** Removes a leading track/volume number from a book title: "01. Name", "01) Name", "01 - Name", "01_Name" -> "Name" */
 export function cleanTitle(s=''){
   const raw = String(s).trim();
   const out = raw.replace(/^\d{1,3}\s*(?:[.)_](?!\d)\s*|[-–—:]\s+)/, '').trim();
   return out || raw;
+}
+/** SAF tree names come as "primary:Audiobooks/Sub": drop the volume prefix and keep the last path segment */
+export function cleanFolderName(s=''){
+  let n = String(s);
+  const colon = n.indexOf(':');
+  if(colon >= 0 && !n.slice(0, colon).includes('/')) n = n.slice(colon + 1);
+  n = n.split('/').filter(Boolean).pop() || '';
+  return n.trim() || 'Аудиокниги';
 }
 export function uid(){return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 export function plural(n,a,b,c){const x=n%10,y=n%100;return x===1&&y!==11?a:x>=2&&x<=4&&(y<10||y>=20)?b:c}

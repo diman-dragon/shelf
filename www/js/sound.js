@@ -6,16 +6,22 @@
  *   - WEB (browser / fallback): <audio> + Web Audio graph, with headroom compensation and a limiter.
  */
 import { state, icon, escapeHtml, $, isNative, plugin } from './state.js';
-import { persist } from './storage.js';
+import { saveBooksSoon } from './storage.js';
 import { closeModal } from './ui-utils.js';
 
 const NativePlayer = isNative() ? plugin('Player') : null;
 export const NATIVE = !!NativePlayer;
 
-export const EQ_BANDS = [60,120,250,500,1000,2000,4000,8000,12000,16000];
-export const SPECTRUM_BINS = 128;
+// DSP constants live in www/dsp.json. The SAME file generates DspConfig.java (android/app/build.gradle),
+// so the web graph and the native AudioFx can never drift apart.
+const DSP = await fetch(new URL('../dsp.json', import.meta.url)).then(r => {
+  if(!r.ok) throw new Error('dsp.json: HTTP ' + r.status);
+  return r.json();
+});
+const EQ_BANDS = DSP.bands;
+const SPECTRUM_BINS = 128;
 
-export const SOUND_PRESETS = {
+const SOUND_PRESETS = {
   flat:{name:'Плоский',gain:0,eq:[0,0,0,0,0,0,0,0,0,0]},
   voice:{name:'Голос',gain:0,eq:[-3,-2,-1,2,3,4,3,2,1,0]},
   bass:{name:'Бас',gain:0,eq:[4,3,2,1,0,-1,-1,-1,0,0]},
@@ -25,21 +31,28 @@ export const SOUND_PRESETS = {
   night:{name:'Ночь',gain:-2,eq:[-2,-1,0,1,2,1,0,-2,-3,-4]}
 };
 
-export function ensureBookSound(b){
+function ensureBookSound(b){
   if(!b) return null;
   // IMPORTANT: update b.sound IN PLACE. Replacing the object (b.sound = {...}) left the handlers of the
   // sound modal holding a stale copy, so presets / reset / volume were written to an object the engine never read.
   if(!b.sound || typeof b.sound !== 'object') b.sound = {};
-  const s = b.sound, d = {preset:'flat', volume:1, gain:0, bass:0, treble:0, skipSilence:false};
+  const s = b.sound, d = {preset:'flat', volume:1, gain:0, skipSilence:false};
   for(const k in d) if(s[k] === undefined) s[k] = d[k];
-  if(!Array.isArray(s.eq) || s.eq.length !== 10) s.eq = [0,0,0,0,0,0,0,0,0,0];
+  if(!Array.isArray(s.eq) || s.eq.length !== EQ_BANDS.length) s.eq = EQ_BANDS.map(() => 0);
   return s;
 }
 
 /* =====================================================================================
  *  NATIVE backend facade
  * ===================================================================================== */
-const sigOf = b => `${b.id}|${b.files.length}|${b.files.reduce((a,f)=>a+(f.uri||'').length,0)}`;
+// signature of the queue loaded in the native player: a hash of ALL uris (the old "sum of uri lengths" collided
+// for different books with equally long paths)
+function hashStr(str){
+  let h = 0x811c9dc5;
+  for(let i = 0; i < str.length; i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(36);
+}
+const sigOf = b => `${b.id}|${b.files.length}|${hashStr(b.files.map(f => f.uri || '').join('\n'))}`;
 
 class NativeAudio extends EventTarget {
   constructor(P){
@@ -52,12 +65,14 @@ class NativeAudio extends EventTarget {
     this._paused = true; this._ended = false; this._playing = false;
     this._pos = 0; this._ts = 0; this._dur = 0; this._rate = 1; this._index = -1; this._bookId = '';
     this._loading = 0;
+    this._sleepGuard = 0;        // ignore native sleepLeft right after JS set a new timer (the service applies it asynchronously)
     P.addListener('state', s => this._apply(s));
     P.addListener('error', e => {
       const ev = new Event('error'); ev.detail = e; this.dispatchEvent(ev);
     });
     P.addListener('closed', () => {
-      this.queueSig = ''; this._index = -1; this._bookId = '';
+      this._pos = this.currentTime; this._ts = performance.now();   // freeze the REAL last position before anything is reset
+      this.queueSig = ''; this._index = -1; this._bookId = ''; state.sleepEndsAt = 0;
       const was = !this._paused;
       this._paused = true; this._playing = false;
       this.dispatchEvent(new Event('closed'));
@@ -104,6 +119,13 @@ class NativeAudio extends EventTarget {
   // --- native specifics ---
   hasQueue(b){ return !!b && this.queueSig === sigOf(b); }
 
+  /** The book was removed / the native player was stopped: forget everything about the loaded queue */
+  reset(){
+    this.queueSig = ''; this._index = -1; this._bookId = '';
+    this._paused = true; this._playing = false; this._ended = false;
+    this._pos = 0; this._dur = 0; this.fft = null;
+  }
+
   /** Load the whole book as a native playlist (or just seek, if it is already loaded) */
   async loadNative(b, index, pos){
     const sig = sigOf(b);
@@ -121,7 +143,10 @@ class NativeAudio extends EventTarget {
         this.queueSig = sig;
       }
       this._bookId = b.id; this._index = index; this._pos = pos; this._ts = performance.now(); this._ended = false;
-      this._applyNow(await this.P.getState());
+      const st = await this.P.getState();
+      this._applyNow(st);
+      // the controller may not have caught up with setMediaItems() yet and still report position 0: trust what we just asked for
+      if(!this._playing && st && st.index === index && this._pos < pos - 0.5) this._pos = pos;
     } finally { this._loading--; }
   }
 
@@ -140,12 +165,18 @@ class NativeAudio extends EventTarget {
     try { this._apply(await this.P.getState()); } catch {}
   }
 
-  setSleep(minutes){ return this.P.setSleepTimer({minutes}).catch(() => {}); }
+  setSleep(minutes){
+    this._sleepGuard = performance.now() + 1500;
+    return this.P.setSleepTimer({minutes}).catch(() => {});
+  }
   setSkipSilence(on){ return this.P.setSkipSilence({on: !!on}).catch(() => {}); }
 
   _apply(s){
     if(this._loading || !this.queueSig || !s) return;
-    if(s.bookId && this._bookId && s.bookId !== this._bookId) return;   // late event of a previous book
+    // The service reports an EMPTY queue (position 0, no book) while it shuts down — notification "X", stop(), deleted book.
+    // Applying that state used to fire "pause" + "trackchange" and overwrite the saved position with 0.
+    if(!s.bookId || !(s.count > 0)) return;
+    if(this._bookId && s.bookId !== this._bookId) return;   // late event of a previous book
     this._applyNow(s);
   }
 
@@ -158,6 +189,9 @@ class NativeAudio extends EventTarget {
     this._ended = s.state === 4;
     this._paused = !s.playWhenReady;
     this._playing = !!s.playing;
+    if(typeof s.sleepLeft === 'number' && performance.now() > this._sleepGuard){
+      state.sleepEndsAt = s.sleepLeft > 0 ? Date.now() + s.sleepLeft * 1000 : 0;   // remaining time shown on the timer button
+    }
     if(typeof s.index === 'number' && s.index !== this._index){
       this._index = s.index;
       const ev = new Event('trackchange'); ev.detail = {index: s.index}; this.dispatchEvent(ev);
@@ -174,48 +208,34 @@ class NativeAudio extends EventTarget {
 /* =====================================================================================
  *  Shared helpers (same constants as AudioFx.java)
  * ===================================================================================== */
-const Q_PEAK = 1.4, Q_SHELF = 0.7071, BASS_HZ = 180, TREBLE_HZ = 4200, HEADROOM = 0.85;
-const isFlat = s => !s.eq.some(v => Number(v)) && !Number(s.bass) && !Number(s.treble) && !Number(s.gain) && Number(s.volume ?? 1) === 1;
+const Q_PEAK = DSP.qPeak, HEADROOM = DSP.headroom;
+const isFlat = s => !s.eq.some(v => Number(v)) && !Number(s.gain) && Number(s.volume ?? 1) === 1;
 
-/** Worst-case boost (dB) of the cascade — used to lower the pre-gain so boosts never reach 0 dBFS */
+/**
+ * Worst-case boost (dB) of the EQ cascade — used to lower the pre-gain so boosts never reach 0 dBFS.
+ * The response is read from the browser's own BiquadFilterNodes (getFrequencyResponse) on a throw-away offline context,
+ * so there is no second implementation of the filter maths here (the native side has its own, see AudioFx.java).
+ */
+let probeCtx = null;
 function peakBoostDb(s, rate = 48000){
-  const filters = [];
-  const add = (type, f0, dB) => { if(Math.abs(dB) >= 0.05 && f0 < rate * 0.45) filters.push(coeffs(type, f0, dB, rate)); };
-  add('low', BASS_HZ, Number(s.bass) || 0);
-  add('high', TREBLE_HZ, Number(s.treble) || 0);
-  EQ_BANDS.forEach((hz, i) => add('peak', hz, Number(s.eq[i]) || 0));
-  let best = 0;
-  for(let i = 0; i < 160; i++){
-    const fr = 25 * Math.pow(18000 / 25, i / 159);
-    if(fr > rate * 0.45) break;
-    const w = 2 * Math.PI * fr / rate;
-    let db = 0;
-    for(const c of filters){
-      const nr = c.b0 + c.b1 * Math.cos(w) + c.b2 * Math.cos(2*w), ni = -(c.b1 * Math.sin(w) + c.b2 * Math.sin(2*w));
-      const dr = 1 + c.a1 * Math.cos(w) + c.a2 * Math.cos(2*w), di = -(c.a1 * Math.sin(w) + c.a2 * Math.sin(2*w));
-      db += 10 * Math.log10((nr*nr + ni*ni) / (dr*dr + di*di));
-    }
-    if(db > best) best = db;
-  }
-  return best;
-}
-function coeffs(type, f0, dB, rate){
-  const A = Math.pow(10, dB / 40), w0 = 2 * Math.PI * f0 / rate, cs = Math.cos(w0), sn = Math.sin(w0);
-  let B0, B1, B2, A0, A1, A2;
-  if(type === 'peak'){
-    const al = sn / (2 * Q_PEAK);
-    B0 = 1 + al*A; B1 = -2*cs; B2 = 1 - al*A; A0 = 1 + al/A; A1 = -2*cs; A2 = 1 - al/A;
-  } else {
-    const al = sn / (2 * Q_SHELF), sa = 2 * Math.sqrt(A) * al;
-    if(type === 'low'){
-      B0 = A*((A+1) - (A-1)*cs + sa); B1 = 2*A*((A-1) - (A+1)*cs); B2 = A*((A+1) - (A-1)*cs - sa);
-      A0 = (A+1) + (A-1)*cs + sa; A1 = -2*((A-1) + (A+1)*cs); A2 = (A+1) + (A-1)*cs - sa;
-    } else {
-      B0 = A*((A+1) + (A-1)*cs + sa); B1 = -2*A*((A-1) + (A+1)*cs); B2 = A*((A+1) + (A-1)*cs - sa);
-      A0 = (A+1) - (A-1)*cs + sa; A1 = 2*((A-1) - (A+1)*cs); A2 = (A+1) - (A-1)*cs - sa;
-    }
-  }
-  return {b0: B0/A0, b1: B1/A0, b2: B2/A0, a1: A1/A0, a2: A2/A0};
+  try {
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if(!OAC) return 0;
+    probeCtx = probeCtx || new OAC(1, 1, rate);
+    const N = 160, freqs = new Float32Array(N), mag = new Float32Array(N), phase = new Float32Array(N), total = new Float32Array(N).fill(1);
+    for(let i = 0; i < N; i++) freqs[i] = 25 * Math.pow(18000 / 25, i / (N - 1));
+    EQ_BANDS.forEach((hz, i) => {
+      const g = Number(s.eq[i]) || 0;
+      if(Math.abs(g) < 0.05 || hz >= rate * 0.45) return;
+      const f = probeCtx.createBiquadFilter();
+      f.type = 'peaking'; f.frequency.value = hz; f.Q.value = Q_PEAK; f.gain.value = g;
+      f.getFrequencyResponse(freqs, mag, phase);
+      for(let k = 0; k < N; k++) total[k] *= mag[k];
+    });
+    let best = 0;
+    for(let k = 0; k < N; k++) best = Math.max(best, 20 * Math.log10(total[k] || 1));
+    return best;
+  } catch { return 0; }
 }
 
 /* =====================================================================================
@@ -231,14 +251,12 @@ function makeWebAudio(){
 
 export const audio = NATIVE ? new NativeAudio(NativePlayer) : makeWebAudio();
 
-export let audioContext = null;
+let audioContext = null;
 let audioSource = null;
-export let analyser = null;
-export let gainNode = null;
-export let bassFilter = null;
-export let trebleFilter = null;
-export let limiter = null;
-export let eqFilters = [];
+let analyser = null;
+let gainNode = null;
+let limiter = null;
+let eqFilters = [];
 let webFlat = null;
 
 export async function ensureAudioGraph(){
@@ -250,8 +268,6 @@ export async function ensureAudioGraph(){
     try { audioContext = new AC({latencyHint: 'playback'}); } catch { audioContext = new AC(); }
     audioSource = audioContext.createMediaElementSource(audio);
     gainNode = audioContext.createGain();
-    bassFilter = audioContext.createBiquadFilter(); bassFilter.type = 'lowshelf'; bassFilter.frequency.value = BASS_HZ; bassFilter.Q.value = Q_SHELF;
-    trebleFilter = audioContext.createBiquadFilter(); trebleFilter.type = 'highshelf'; trebleFilter.frequency.value = TREBLE_HZ; trebleFilter.Q.value = Q_SHELF;
     eqFilters = EQ_BANDS.map((hz)=>{
       const f = audioContext.createBiquadFilter();
       f.type = 'peaking'; f.frequency.value = hz; f.Q.value = Q_PEAK; f.gain.value = 0;
@@ -267,10 +283,9 @@ export async function ensureAudioGraph(){
       }
     };
     analyser = audioContext.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = .82;
-    // Chain: source -> bass -> treble -> EQ bands -> gain(headroom) -> limiter -> analyser -> destination
-    let node = bassFilter;
-    node.connect(trebleFilter); node = trebleFilter;
-    eqFilters.forEach(f => { node.connect(f); node = f; });
+    // Chain: source -> EQ bands -> gain(headroom) -> limiter -> analyser -> destination
+    let node = eqFilters[0];
+    eqFilters.slice(1).forEach(f => { node.connect(f); node = f; });
     node.connect(gainNode);
     gainNode.connect(limiter);
     limiter.connect(analyser);
@@ -287,7 +302,7 @@ function routeWeb(flat){
   webFlat = flat;
   try { audioSource.disconnect(); } catch {}
   // flat sound = completely clean path, no filters, no limiter
-  audioSource.connect(flat ? analyser : bassFilter);
+  audioSource.connect(flat ? analyser : eqFilters[0]);
 }
 
 export function applyCurrentFileSound(){
@@ -298,8 +313,7 @@ export function applyCurrentFileSound(){
 
   if(NATIVE){
     NativePlayer.setFx({
-      eq: s.eq.map(v => Number(v) || 0), bass: Number(s.bass) || 0, treble: Number(s.treble) || 0,
-      gain: Number(s.gain) || 0, volume: vol
+      eq: s.eq.map(v => Number(v) || 0), gain: Number(s.gain) || 0, volume: vol
     }).then(r => {
       const el = document.getElementById('fxInfo');
       if(el && r) el.textContent = `Авто-запас громкости: −${(HEADROOM * Math.max(0, r.peakBoostDb || 0)).toFixed(1)} dB · лимитер включён`;
@@ -312,11 +326,9 @@ export function applyCurrentFileSound(){
   if(!gainNode){ audio.volume = vol; return; }
   audio.volume = 1;
   const now = audioContext.currentTime;
-  if(bassFilter) bassFilter.gain.setTargetAtTime(Number(s.bass) || 0, now, .02);
-  if(trebleFilter) trebleFilter.gain.setTargetAtTime(Number(s.treble) || 0, now, .02);
   eqFilters.forEach((filter, i) => filter.gain.setTargetAtTime(Number(s.eq[i]) || 0, now, .02));
   // headroom: lower the level by (almost) the loudest boost of the cascade, so boosts don't clip
-  const preDb = -HEADROOM * Math.max(0, peakBoostDb(s, audioContext.sampleRate)) + (Number(s.gain) || 0);
+  const preDb = -HEADROOM * Math.max(0, peakBoostDb(s)) + (Number(s.gain) || 0);
   gainNode.gain.setTargetAtTime(Math.pow(10, preDb / 20) * vol, now, .02);
   routeWeb(isFlat(s));
 }
@@ -353,10 +365,9 @@ export async function ensureAudible(){
 /* =====================================================================================
  *  Sound modal
  * ===================================================================================== */
-export function eqLabel(hz){ return hz>=1000 ? (hz/1000)+'k' : String(hz); }
+function eqLabel(hz){ return hz>=1000 ? (hz/1000)+'k' : String(hz); }
 
-let persistTimer = 0;
-const persistSoon = () => { clearTimeout(persistTimer); persistTimer = setTimeout(() => persist(), 500); };
+const persistSoon = () => saveBooksSoon(500);
 
 export function openCurrentSound(){
   const b = state.current;
@@ -389,7 +400,7 @@ export function openCurrentSound(){
     applyCurrentFileSound(); persistSoon();
   });
   $('soundDefault').onclick = () => {
-    s.preset = 'flat'; s.eq = [0,0,0,0,0,0,0,0,0,0]; s.volume = 1; s.gain = 0;
+    s.preset = 'flat'; s.eq = EQ_BANDS.map(() => 0); s.volume = 1; s.gain = 0;
     applyCurrentFileSound(); persistSoon(); openCurrentSound();
   };
   if(NATIVE){

@@ -1,163 +1,16 @@
-/* ui.js — UI helpers, Modals, Settings, Playlists, Filters */
-import { state, icon, escapeHtml, durationOfBook, uid, plural, $, modalRoot, main } from './state.js';
-import { persist, getSavedPosition } from './storage.js';
-import { openFolderSheet, pickFolder, openAddSheet } from './scanner.js';
-import { openPlayer, renderPlayer, ensureChapterLoaded, bookElapsed, bookTotal } from './player.js';
-import { renderShelf, openLibraryFilter, openSort } from './library.js';
-import { closeVisualizer } from './visualizer.js';
-import { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt } from './ui-utils.js';
-
-export { showToast, openModal, closeModal, bookCover, iconBtn, settingToggle, fmt };
-
-export function header(title, subtitle, actions=''){
-  // Under title: if a book is active and we are not on player screen — show compact now-playing progress
-  let subHtml = '';
-  if(state.current && state.screen !== 'player'){
-    const b = state.current;
-    const pct = nowPlayingPct();
-    subHtml = `<div class="now-playing" id="headerNowPlaying" data-book-id="${escapeHtml(b.id)}">
-      <span class="now-playing-cover" data-cover-sig="${coverSig(b)}">${bookCover(b)}</span>
-      <div class="now-playing-body">
-        <div class="now-playing-title">${escapeHtml(b.title||'')}</div>
-        <div class="now-playing-track" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100">
-          <i style="width:${pct}%"></i>
-        </div>
-        <div class="now-playing-time">${nowPlayingTimeHtml()}</div>
-      </div>
-    </div>`;
-  } else if(subtitle){
-    subHtml = `<p>${subtitle}</p>`;
-  }
-  return `<div class="topbar"><div class="topbar-main"><h2>${title}</h2>${subHtml}</div><div class="top-actions">${actions}</div></div>`;
-}
-
-function nowPlayingTimeHtml(){
-  return `<span class="np-cur">${fmt(bookElapsed(state.current))}</span> из <span class="np-total">${fmt(bookTotal(state.current))}</span>`;
-}
-
-function coverSig(b){ return `${b.id}:${b.cover ? b.cover.length : 0}`; }
-
-/** Whole-book progress 0–100 for header bar */
-export function nowPlayingPct(){
-  if(!state.current) return 0;
-  return progress(state.current);
-}
-
-export function updateHeaderNowPlaying(){
-  requestAnimationFrame(() => {
-    const el = $('headerNowPlaying');
-    if(!el || !state.current) return;
-    const pct = nowPlayingPct();
-    const bar = el.querySelector('.now-playing-track i');
-    if(bar) bar.style.width = pct + '%';
-    const track = el.querySelector('.now-playing-track');
-    if(track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
-    const tm = el.querySelector('.now-playing-time');
-    if(tm) tm.innerHTML = nowPlayingTimeHtml();
-    const cov = el.querySelector('.now-playing-cover');
-    if(cov && cov.dataset.coverSig !== coverSig(state.current)){
-      cov.dataset.coverSig = coverSig(state.current);
-      cov.innerHTML = bookCover(state.current);
-    }
-    el.dataset.bookId = state.current.id;
-    const title = el.querySelector('.now-playing-title');
-    if(title && title.textContent !== (state.current.title||'')) title.textContent = state.current.title || '';
-  });
-}
-
-function bindHeaderNowPlaying(){
-  const el = $('headerNowPlaying');
-  if(!el) return;
-  el.onclick = () => {
-    if(state.current) openPlayer(state.current.id);
-  };
-}
-
-export function progress(b){
-  const files = b.files || [];
-  if(!files.length) return 0;
-  const total = files.reduce((a,f)=>a+(Number(f.duration)||0), 0);
-  const isCurrent = !!state.current && state.current.id === b.id;
-  let i, t;
-  if(isCurrent){
-    i = state.currentIndex;
-    t = Number(state.currentPos) || 0;      // canonical, restored from storage even before audio is loaded
-  } else {
-    const s = getSavedPosition(b);
-    i = s.i; t = s.t;
-  }
-  i = Math.max(0, Math.min(i, files.length-1));
-  t = Math.max(0, t);
-  if(total <= 0){
-    // durations still unknown: coarse estimate by chapter index
-    const d = Math.max(0, Number(files[i]?.duration)||0);
-    return Math.max(0, Math.min(100, ((i + (d ? t/d : 0)) / files.length) * 100));
-  }
-  const before = files.slice(0, i).reduce((a,f)=>a+(Number(f.duration)||0), 0);
-  return Math.max(0, Math.min(100, ((before + t) / total) * 100));
-}
-
-let navBound = false;
-
-export function bindNav(){
-  // Bottom nav lives outside #main — bind once with click
-  if(!navBound){
-    navBound = true;
-    const nav = document.querySelector('.bottom-nav');
-    if(nav){
-      nav.addEventListener('click', e => {
-        const btn = e.target.closest('[data-nav]');
-        if(!btn) return;
-        setScreen(btn.dataset.nav);
-      }, {passive:true});
-    }
-  }
-  // Actions inside current screen (recreated on each render)
-  document.querySelectorAll('[data-action]').forEach(b => {
-    const a = b.dataset.action;
-    const fn = {openAddSheet, openLibraryFilter, openSort, newPlaylist}[a];
-    if(fn) b.onclick = () => fn();
-  });
-  // SVG must never intercept taps (critical for Android WebView)
-  document.querySelectorAll('button .icon, button svg, .nav-ico, .nav-ico svg').forEach(el => {
-    el.style.pointerEvents = 'none';
-  });
-  bindHeaderNowPlaying();
-}
-
-export function setScreen(screen){
-  state.screen = screen;
-  state.query = '';
-  if(screen === 'player' && !state.current){ showToast('Сначала выберите книгу в библиотеке'); state.screen = 'shelf'; }
-  render();
-  // load the saved chapter/position only if <audio> doesn't already hold it (no reload → no silence / no reset)
-  if(state.screen === 'player' && state.current) ensureChapterLoaded();
-}
-
-function syncNavActive(){
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === state.screen));
-}
-
-export function render(){
-  if(state.screen !== 'player') closeVisualizer();   // don't leak the visualizer loop / native FFT stream
-  syncNavActive();
-  if(state.screen === 'shelf') renderShelf();
-  if(state.screen === 'player') renderCurrentPlayer();
-  if(state.screen === 'playlists') renderPlaylists();
-  if(state.screen === 'settings') renderSettings();
-  bindNav();
-}
-
-export function renderCurrentPlayer(){
-  if(state.current) renderPlayer(); else renderShelf();
-}
+/* ui.js — Playlists, Settings (screens + their modals) */
+import { state, icon, escapeHtml, plural, uid, $, main } from './state.js';
+import { persist } from './storage.js';
+import { showToast, openModal, closeModal, settingToggle } from './ui-utils.js';
+import { header } from './header.js';
+import { act } from './router.js';
+import { openFolderSheet, pickFolder } from './scanner.js';
 
 export function renderPlaylists(){
   const ps = state.playlists;
   main.innerHTML = `<section class="screen">${header('Плейлисты','Подборки и закладки', iconBtn('plus','Новый плейлист','newPlaylist'))}<div class="playlists">${ps.map(p=>`<div class="playlist" data-pl="${escapeHtml(p.id)}"><div class="playlist-art">${p.emoji||'♫'}</div><div class="playlist-info"><div class="playlist-name">${escapeHtml(p.name)}</div><div class="playlist-count">${(p.bookIds||[]).length} ${plural((p.bookIds||[]).length,'аудиокнига','аудиокниги','аудиокниг')}</div></div>${icon('chevron')}</div>`).join('')}</div></section>`;
   document.querySelectorAll('.playlist[data-pl]').forEach(el => el.onclick = () => openPlaylist(el.dataset.pl));
-  document.querySelectorAll('[data-action="newPlaylist"]').forEach(el => el.onclick = newPlaylist);
-}
+  }
 
 export function newPlaylist(){
   openModal(`<h3>Новый плейлист</h3><input class="field" id="newPlName" placeholder="Название"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="newPlSave">Создать</button></div>`);
@@ -180,11 +33,7 @@ export function openPlaylistChooser(bookId){
   });
 }
 
-export function playlistHas(pid, bid){
-  return !!state.playlists.find(p => p.id === pid)?.bookIds?.includes(bid);
-}
-
-export async function togglePlaylistBook(pid, bid){
+async function togglePlaylistBook(pid, bid){
   const p = state.playlists.find(x => x.id === pid);
   if(!p) return;
   p.bookIds = p.bookIds || [];
@@ -192,12 +41,12 @@ export async function togglePlaylistBook(pid, bid){
   await persist();
 }
 
-export function openPlaylist(id){
+function openPlaylist(id){
   const p = state.playlists.find(x => x.id === id);
   if(!p) return;
   const books = (p.bookIds || []).map(bid => state.books.find(b => b.id === bid)).filter(Boolean);
   openModal(`<h3>${escapeHtml(p.name)}</h3>${books.length?books.map(b=>`<div class="modal-row" data-pl-book="${b.id}"><div style="flex:1"><b>${escapeHtml(b.title)}</b><div style="font-size:11px;color:var(--muted)">${escapeHtml(b.author||'')}</div></div>${icon('chevron')}</div>`).join(''):`<div style="padding:22px 5px;color:var(--muted);text-align:center">В этом плейлисте пока ничего нет.</div>`}<div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);
-  document.querySelectorAll('[data-pl-book]').forEach(el => el.onclick = () => { closeModal(); openPlayer(el.dataset.plBook); });
+  document.querySelectorAll('[data-pl-book]').forEach(el => el.onclick = () => { closeModal(); act('openPlayer', el.dataset.plBook); });
 }
 
 export function renderSettings(){
@@ -210,12 +59,12 @@ export function renderSettings(){
     </div>
     <div class="settings-group"><p class="settings-title">Сканирование</p>
       <div class="setting" id="formats"><div class="setting-icon">${icon('music')}</div><div class="setting-main"><div class="setting-name">Форматы аудио</div><div class="setting-desc">MP3, M4A, M4B, AAC, OGG, OPUS, FLAC, WAV, WMA</div></div></div>
-      ${settingToggle('autoscan','Автосканирование','Проверять выбранные папки при запуске',!!s.autoscan)}
+      ${settingToggle('autoscan','Автосканирование','Проверять выбранные папки при запуске',!!s.autoscan,'refresh')}
     </div>
     <div class="settings-group"><p class="settings-title">Внешний вид</p>
       <div class="setting" id="themeSetting"><div class="setting-icon">${icon(s.theme==='dark'?'moon':'sun')}</div><div class="setting-main"><div class="setting-name">Тема оформления</div><div class="setting-desc">Тёмная или светлая тема</div></div><div class="setting-value">${s.theme==='dark'?'Тёмная':'Светлая'}</div></div>
     </div>
-    <div class="settings-group"><p class="settings-title">О приложении</p><div class="setting"><div class="setting-icon">${icon('info')}</div><div class="setting-main"><div class="setting-name">AudioShelf</div><div class="setting-desc">Локальная библиотека · без аккаунта</div></div><div class="setting-value">2.2.0</div></div></div>
+    <div class="settings-group"><p class="settings-title">О приложении</p><div class="setting"><div class="setting-icon">${icon('info')}</div><div class="setting-main"><div class="setting-name">AudioShelf</div><div class="setting-desc">Локальная библиотека · без аккаунта</div></div><div class="setting-value">${escapeHtml(state.appVersion || '—')}</div></div></div>
   </section>`;
   $('settingsFolders').onclick = openFolderSheet;
   $('addFolder').onclick = pickFolder;
@@ -229,7 +78,7 @@ export function renderSettings(){
   });
 }
 
-export async function toggleTheme(){
+async function toggleTheme(){
   state.settings.theme = state.settings.theme==='dark'?'light':'dark';
   document.documentElement.dataset.theme = state.settings.theme;
   await persist();

@@ -272,15 +272,13 @@ public class PlayerPlugin extends Plugin {
     withController(call, new Op() { @Override public void run(MediaController c) { c.setPlaybackSpeed(speed); call.resolve(); }});
   }
 
-  /** eq[10] dB, bass/treble dB, gain dB (preset trim), volume 0..1 — applied inside the native audio pipeline */
+  /** eq[] dB (one per band), gain dB (preset trim), volume 0..1 — applied inside the native audio pipeline */
   @PluginMethod
   public void setFx(PluginCall call) {
     JSArray a = call.getArray("eq");
     float[] eq = new float[AudioFx.BANDS.length];
     if (a != null) for (int i = 0; i < eq.length && i < a.length(); i++) eq[i] = (float) a.optDouble(i, 0);
-    AudioFx.shared.set(eq,
-        call.getFloat("bass", 0f), call.getFloat("treble", 0f),
-        call.getFloat("gain", 0f), call.getFloat("volume", 1f));
+    AudioFx.shared.set(eq, call.getFloat("gain", 0f), call.getFloat("volume", 1f));
     JSObject r = new JSObject();
     r.put("peakBoostDb", AudioFx.shared.peakBoostDb(48000));
     call.resolve(r);

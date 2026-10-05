@@ -1,13 +1,33 @@
 /* app.js — Main Application Entry Point */
-import { state, ICONS, DEFAULT_PLAYLISTS, isNative, modalRoot, cleanTitle } from './js/state.js';
-import { persist, readLastPlayback, getSavedPosition, resumePosition } from './js/storage.js';
-import { render, bindNav, showToast, setScreen } from './js/ui.js';
-import { closeModal } from './js/ui-utils.js';
-import { closeQueuePanel, syncNativeResume } from './js/player.js';
+import { state, ICONS, DEFAULT_PLAYLISTS, isNative, modalRoot, cleanTitle, cleanFolderName } from './js/state.js';
+import { loadBooks, saveBooksSoon, readLastPlayback, getSavedPosition } from './js/storage.js';
+import { dbGet } from './js/db.js';
+import { registerScreen, registerAction, render, bindNav, setScreen } from './js/router.js';
+import { showToast, closeModal } from './js/ui-utils.js';
+import { renderPlaylists, renderSettings, newPlaylist } from './js/ui.js';
+import { renderShelf, updateShelfList, openLibraryFilter, openSort } from './js/library.js';
+import { renderPlayer, ensureChapterLoaded, closeQueuePanel, openPlayer, unloadCurrent } from './js/player.js';
+import { syncNativeResume } from './js/native-bridge.js';
 import { closeVisualizer } from './js/visualizer.js';
-import { initNativeScanListeners, scanAllFolders } from './js/scanner.js';
+import { initNativeScanListeners, scanAllFolders, openFolderSheet } from './js/scanner.js';
 
-const { get, set } = window.idbKeyval || {};
+// ---- screens and actions: modules talk through the router, not through each other (no import cycles) ----
+registerScreen('shelf', renderShelf);
+registerScreen('player', () => { if(state.current) renderPlayer(); else renderShelf(); }, {
+  onEnter: () => { if(state.current) ensureChapterLoaded(); },   // load the saved chapter/position only if <audio> doesn't hold it yet
+  onLeave: () => { closeVisualizer(); closeQueuePanel(); }       // leaving the player: no visualizer loop on a detached canvas, no open panel
+});
+registerScreen('playlists', renderPlaylists);
+registerScreen('settings', renderSettings);
+registerAction('openAddSheet', openFolderSheet);
+registerAction('openLibraryFilter', openLibraryFilter);
+registerAction('openSort', openSort);
+registerAction('newPlaylist', newPlaylist);
+registerAction('openCurrent', () => { if(state.current) openPlayer(state.current.id); });
+registerAction('openPlayer', openPlayer);
+registerAction('updateShelf', updateShelfList);
+registerAction('renderShelf', renderShelf);
+registerAction('unloadCurrent', unloadCurrent);
 
 // Global error handling & crash protection for Android WebView.
 // Order matters: the error is ALWAYS written to the console first; the UI notification (toast, or the fallback
@@ -69,18 +89,20 @@ if(isNative()){
 
 async function loadState(){
   try {
-    state.books = (await get?.('books')) || [];
+    state.books = await loadBooks();
     // one-time cleanup of leading numbers ("01. ") in titles of already imported books
     let titlesFixed = false;
     state.books.forEach(b => { const t = cleanTitle(b.title); if(t !== b.title){ b.title = t; titlesFixed = true; } });
-    if(titlesFixed) persist().catch(() => {});
-    state.folders = (await get?.('folders')) || [];
-    state.playlists = (await get?.('playlists')) || [];
-    const settings = await get?.('settings');
+    if(titlesFixed) saveBooksSoon(500);
+    state.folders = (await dbGet('folders')) || [];
+    // folder names saved by older versions still carry the SAF volume prefix ("primary:Audiobooks")
+    state.folders.forEach(f => { f.name = cleanFolderName(f.name); });
+    state.playlists = (await dbGet('playlists')) || [];
+    const settings = await dbGet('settings');
     if(settings) state.settings = {...state.settings, ...settings};
   } catch (e) {
     console.error('[LoadState Error]', e);
-    showToast('Ошибка загрузки данных');
+    showToast('Ошибка загрузки данных: ' + (e?.message || e));
   }
 
   document.documentElement.dataset.theme = state.settings.theme || 'dark';
@@ -99,7 +121,9 @@ async function loadState(){
       const saved = getSavedPosition(b);
       state.current = b;
       state.currentIndex = saved.i;
-      state.currentPos = resumePosition(saved.t);
+      state.currentPos = saved.t;              // the exact saved position; the small "step back" happens when playback starts
+      state.resumeRewind = true;
+      state.speed = Number(b.speed) || Number(state.settings.speed) || 1;
     }
   }
 
@@ -118,8 +142,9 @@ async function loadState(){
     console.error('[BindNav Error]', e);
   }
 
-  if(state.settings.autoscan && state.folders.length && isNative()) {
-    setTimeout(() => scanAllFolders(true), 500);
+  // the scan works on SELECTED folders (that is what scanAllFolders reads), so that is what decides here
+  if(state.settings.autoscan && state.selectedFolderIds.some(id => state.folders.some(f => f.id === id)) && isNative()) {
+    setTimeout(() => scanAllFolders({silent: true}), 500);
   }
 }
 
@@ -128,13 +153,14 @@ async function initApp(){
   if(appInitialized) return;
   appInitialized = true;
   try {
-    state.selectedFolderIds = (await get?.('foldersSelected')) || [];
+    state.selectedFolderIds = (await dbGet('foldersSelected')) || [];
     document.querySelectorAll('.nav-ico').forEach(n => {
       n.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`;
       n.style.pointerEvents = 'none';
     });
     // Ensure navigation event listeners are bound immediately
     try { bindNav(); } catch {}
+    try { state.appVersion = (await window.Capacitor?.Plugins?.App?.getInfo?.())?.version || ''; } catch {}
     await loadState();
   } catch (e) {
     console.error('[InitApp Error]', e);

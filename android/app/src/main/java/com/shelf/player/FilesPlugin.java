@@ -91,8 +91,8 @@ public class FilesPlugin extends Plugin {
     @PluginMethod
     public void pickFolder(PluginCall call) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        // read-only: the app never writes to the person's files
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
-            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
             | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
         startActivityForResult(call, intent, PICK_FOLDER_CALLBACK);
@@ -111,8 +111,7 @@ public class FilesPlugin extends Plugin {
             return;
         }
         try {
-            int takeFlags = result.getData().getFlags() &
-                (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            int takeFlags = result.getData().getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
             getContext().getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
         } catch (Exception ignored) { }
         JSObject folder = new JSObject();
@@ -514,8 +513,9 @@ public class FilesPlugin extends Plugin {
         return (mime != null && mime.startsWith("audio/")) || n.matches(".*\\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$");
     }
 
+    /** Removes only a KNOWN audio extension, so "Vol. 1 Foundation" keeps its name */
     private String stripExt(String s) {
-        return s.replaceFirst("(?i)\\.[^.]+$", "");
+        return s.replaceFirst("(?i)\\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$", "");
     }
 
     private String getTreeName(Uri uri) {
@@ -523,7 +523,14 @@ public class FilesPlugin extends Plugin {
             String p = uri.getPath();
             if (p != null) {
                 int i = p.lastIndexOf('/');
-                if (i >= 0 && i < p.length() - 1) return Uri.decode(p.substring(i + 1));
+                String name = Uri.decode(i >= 0 ? p.substring(i + 1) : p);
+                // SAF tree ids look like "primary:Audiobooks/Sub": drop the storage-volume prefix and keep the last segment
+                int colon = name.indexOf(':');
+                if (colon >= 0) name = name.substring(colon + 1);
+                int slash = name.lastIndexOf('/');
+                if (slash >= 0) name = name.substring(slash + 1);
+                name = name.trim();
+                if (!name.isEmpty()) return name;
             }
         } catch (Exception ignored) { }
         return "Аудиокниги";
