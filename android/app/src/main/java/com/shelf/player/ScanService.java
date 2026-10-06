@@ -33,7 +33,12 @@ public class ScanService extends Service {
     ACTIVE.incrementAndGet();
     try {
       ContextCompat.startForegroundService(ctx.getApplicationContext(), new Intent(ctx.getApplicationContext(), ScanService.class));
-    } catch (Exception ignored) { }   // scanning still works without the service, just less protected
+    } catch (Exception e) {
+      // startForegroundService failed (e.g. Android 14 FGS restrictions): keep the counter in sync,
+      // otherwise a later end() would decrement garbage instead of stopping a real service,
+      // and progress() could post notifications for a service that never came up.
+      ACTIVE.decrementAndGet();
+    }
   }
 
   /** A scan finished. The service stops when the last one ends (with a short delay so start-up can finish first). */

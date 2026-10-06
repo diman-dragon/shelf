@@ -1,7 +1,7 @@
 /* ui.js — Playlists, Settings (screens + their modals) */
 import { state, icon, escapeHtml, plural, uid, $, main } from './state.js';
 import { persist } from './storage.js';
-import { showToast, openModal, closeModal, settingToggle } from './ui-utils.js';
+import { showToast, openModal, closeModal, settingToggle, iconBtn } from './ui-utils.js';
 import { header } from './header.js';
 import { act } from './router.js';
 import { openFolderSheet, pickFolder } from './scanner.js';

@@ -104,7 +104,8 @@ if(typeof document !== 'undefined'){
 }
 
 export function iconBtn(ic, label, action){
-  return `<button type="button" class="icon-btn" aria-label="${label}" data-action="${action}">${icon(ic)}</button>`;
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  return `<button type="button" class="icon-btn" aria-label="${esc(label)}" data-action="${esc(action)}">${icon(ic)}</button>`;
 }
 
 export function settingToggle(k, name, desc, on, ic='refresh'){

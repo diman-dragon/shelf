@@ -14,10 +14,18 @@ export const NATIVE = !!NativePlayer;
 
 // DSP constants live in www/dsp.json. The SAME file generates DspConfig.java (android/app/build.gradle),
 // so the web graph and the native AudioFx can never drift apart.
-const DSP = await fetch(new URL('../dsp.json', import.meta.url)).then(r => {
+// Fallback = exact copy of dsp.json values, kept in sync by test/dsp-sync.test.mjs — a failed fetch must not
+// break the whole module chain (top-level await used to reject here and leave a blank screen).
+const DSP_FALLBACK = {"bands":[60,120,250,500,1000,2000,4000,8000,12000,16000],"qPeak":1.4,"headroom":0.85,"ceiling":0.97};
+let DSP;
+try {
+  const r = await fetch(new URL('../dsp.json', import.meta.url));
   if(!r.ok) throw new Error('dsp.json: HTTP ' + r.status);
-  return r.json();
-});
+  DSP = await r.json();
+} catch(e){
+  console.warn('sound.js: dsp.json недоступен, использую встроенные константы', e);
+  DSP = DSP_FALLBACK;
+}
 const EQ_BANDS = DSP.bands;
 const SPECTRUM_BINS = 128;
 

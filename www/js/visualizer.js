@@ -15,11 +15,27 @@ export function openVisualizer(){
   ensureAudioGraph().then(() => { setSpectrumActive(true); startVisualizer(); }).catch(() => showToast('Визуализатор недоступен'));
 }
 
+/**
+ * The WebView is throttled while hidden, but the native FFT stream (PlayerPlugin.vizTick, ~15 msg/s through
+ * the Capacitor bridge) is driven by the SERVICE-side handler and keeps burning CPU/battery behind a black screen.
+ * Stop both while hidden; resume only if the overlay was still open when the app came back.
+ */
+let vizWasOpenBeforeHide = false;
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){
+    vizWasOpenBeforeHide = visualizerOpen;
+    if(visualizerOpen) closeVisualizer();
+  } else if(vizWasOpenBeforeHide){
+    vizWasOpenBeforeHide = false;
+    if($('visualizer')) openVisualizer();   // the player screen is still mounted → restore the overlay
+  }
+});
+
 export function closeVisualizer(){
   visualizerOpen = false;
   setSpectrumActive(false);
   const el = $('visualizer');
-  if(el){ el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); }
+  if(el){ el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); el.classList.remove('reopen-viz'); }
   stopVisualizer();
 }
 
