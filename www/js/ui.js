@@ -1,6 +1,6 @@
 /* ui.js — Playlists, Settings (screens + their modals) */
 import { state, icon, escapeHtml, plural, uid, $, main } from './state.js';
-import { persist } from './storage.js';
+import { savePlaylists, saveSettings } from './storage.js';
 import { showToast, openModal, closeModal, settingToggle, iconBtn } from './ui-utils.js';
 import { header } from './header.js';
 import { act } from './router.js';
@@ -18,7 +18,7 @@ export function newPlaylist(){
     const name = $('newPlName').value.trim();
     if(!name) return showToast('Введите название');
     state.playlists.push({id:uid(), name, emoji:'♫', bookIds:[]});
-    await persist();
+    await savePlaylists();
     closeModal();
     renderPlaylists();
   };
@@ -38,7 +38,7 @@ async function togglePlaylistBook(pid, bid){
   if(!p) return;
   p.bookIds = p.bookIds || [];
   p.bookIds.includes(bid) ? p.bookIds = p.bookIds.filter(x => x !== bid) : p.bookIds.push(bid);
-  await persist();
+  await savePlaylists();
 }
 
 function openPlaylist(id){
@@ -73,7 +73,7 @@ export function renderSettings(){
   document.querySelectorAll('[data-setting-toggle]').forEach(el => el.onclick = async () => {
     const k = el.dataset.settingToggle;
     state.settings[k] = !state.settings[k];
-    await persist();
+    await saveSettings();
     renderSettings();
   });
 }
@@ -81,6 +81,6 @@ export function renderSettings(){
 async function toggleTheme(){
   state.settings.theme = state.settings.theme==='dark'?'light':'dark';
   document.documentElement.dataset.theme = state.settings.theme;
-  await persist();
+  await saveSettings();
   renderSettings();
 }

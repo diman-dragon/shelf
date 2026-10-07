@@ -37,6 +37,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Web tests and lint
+        working-directory: tests
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm test
+
       - name: Sync Capacitor Android
         run: node node_modules/@capacitor/cli/bin/capacitor sync android
 
@@ -62,3 +69,7 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Java unit tests (AudioFx, AlbumFade)
+        working-directory: android
+        run: bash ./gradlew testDebugUnitTest --no-daemon --console=plain

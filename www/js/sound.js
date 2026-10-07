@@ -6,26 +6,16 @@
  *   - WEB (browser / fallback): <audio> + Web Audio graph, with headroom compensation and a limiter.
  */
 import { state, icon, escapeHtml, $, isNative, plugin } from './state.js';
-import { saveBooksSoon } from './storage.js';
+import { savePrefsSoon, loadCover } from './storage.js';
 import { closeModal } from './ui-utils.js';
+import CONFIG from '../config.js';
 
 const NativePlayer = isNative() ? plugin('Player') : null;
 export const NATIVE = !!NativePlayer;
 
-// DSP constants live in www/dsp.json. The SAME file generates DspConfig.java (android/app/build.gradle),
-// so the web graph and the native AudioFx can never drift apart.
-// Fallback = exact copy of dsp.json values, kept in sync by test/dsp-sync.test.mjs — a failed fetch must not
-// break the whole module chain (top-level await used to reject here and leave a blank screen).
-const DSP_FALLBACK = {"bands":[60,120,250,500,1000,2000,4000,8000,12000,16000],"qPeak":1.4,"headroom":0.85,"ceiling":0.97};
-let DSP;
-try {
-  const r = await fetch(new URL('../dsp.json', import.meta.url));
-  if(!r.ok) throw new Error('dsp.json: HTTP ' + r.status);
-  DSP = await r.json();
-} catch(e){
-  console.warn('sound.js: dsp.json недоступен, использую встроенные константы', e);
-  DSP = DSP_FALLBACK;
-}
+// DSP constants live in www/config.js. The SAME file generates DspConfig.java (android/app/build.gradle),
+// so the web graph and the native AudioFx can never drift apart. A plain static import: nothing is fetched at start-up.
+const DSP = CONFIG.dsp;
 const EQ_BANDS = DSP.bands;
 const SPECTRUM_BINS = 128;
 
@@ -137,6 +127,7 @@ class NativeAudio extends EventTarget {
   /** Load the whole book as a native playlist (or just seek, if it is already loaded) */
   async loadNative(b, index, pos){
     const sig = sigOf(b);
+    await loadCover(b);                          // covers are read lazily; the notification needs this one
     this._loading++;
     try {
       if(this.queueSig === sig){
@@ -151,6 +142,7 @@ class NativeAudio extends EventTarget {
         this.queueSig = sig;
       }
       this._bookId = b.id; this._index = index; this._pos = pos; this._ts = performance.now(); this._ended = false;
+      this.setAlbumMode(b.mode === 'album');     // per-book playback mode: "book" (gapless) or "album" (fade + short pause)
       const st = await this.P.getState();
       this._applyNow(st);
       // the controller may not have caught up with setMediaItems() yet and still report position 0: trust what we just asked for
@@ -165,6 +157,7 @@ class NativeAudio extends EventTarget {
     if(!st || !st.loaded || st.bookId !== b.id || st.count !== b.files.length) return null;
     this.queueSig = sigOf(b); this._bookId = b.id; this._index = st.index;
     this._applyNow(st);
+    this.setAlbumMode(b.mode === 'album');       // the service may have been restarted: tell it this book's mode again
     return st;
   }
 
@@ -172,6 +165,9 @@ class NativeAudio extends EventTarget {
     if(!this.queueSig) return;
     try { this._apply(await this.P.getState()); } catch {}
   }
+
+  /** "album": the last seconds of every track fade out, a short pause, the next one fades in. "book": gapless. */
+  setAlbumMode(on){ return this.P.setAlbumMode({on: !!on}).catch(() => {}); }
 
   setSleep(minutes){
     this._sleepGuard = performance.now() + 1500;
@@ -225,7 +221,16 @@ const isFlat = s => !s.eq.some(v => Number(v)) && !Number(s.gain) && Number(s.vo
  * so there is no second implementation of the filter maths here (the native side has its own, see AudioFx.java).
  */
 let probeCtx = null;
+const peakCache = new Map();
 function peakBoostDb(s, rate = 48000){
+  const key = s.eq.map(v => Number(v) || 0).join(',');
+  if(peakCache.has(key)) return peakCache.get(key);
+  const v = computePeakBoostDb(s, rate);
+  if(peakCache.size > 64) peakCache.clear();
+  peakCache.set(key, v);
+  return v;
+}
+function computePeakBoostDb(s, rate){
   try {
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     if(!OAC) return 0;
@@ -375,7 +380,7 @@ export async function ensureAudible(){
  * ===================================================================================== */
 function eqLabel(hz){ return hz>=1000 ? (hz/1000)+'k' : String(hz); }
 
-const persistSoon = () => saveBooksSoon(500);
+const persistSoon = () => savePrefsSoon(500);      // EQ/volume live in the tiny `bookprefs` record, not in the library
 
 export function openCurrentSound(){
   const b = state.current;

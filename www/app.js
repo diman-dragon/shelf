@@ -1,6 +1,6 @@
 /* app.js — Main Application Entry Point */
 import { state, ICONS, DEFAULT_PLAYLISTS, isNative, modalRoot, cleanTitle, cleanFolderName } from './js/state.js';
-import { loadBooks, saveBooksSoon, readLastPlayback, getSavedPosition } from './js/storage.js';
+import { loadBooks, loadCover, saveBooksSoon, saveSettings, readLastPlayback, getSavedPosition } from './js/storage.js';
 import { dbGet } from './js/db.js';
 import { registerScreen, registerAction, render, bindNav, setScreen } from './js/router.js';
 import { showToast, closeModal } from './js/ui-utils.js';
@@ -30,10 +30,8 @@ registerAction('renderShelf', renderShelf);
 registerAction('unloadCurrent', unloadCurrent);
 
 // Global error handling & crash protection for Android WebView.
-// Order matters: the error is ALWAYS written to the console first; the UI notification (toast, or the fallback
-// banner when #toast is not in the DOM yet) can only add information, never replace it.
+// The error is shown to the person (toast, or the fallback banner when #toast is not in the DOM yet).
 function reportError(tag, err, fallbackText){
-  console.error(`[${tag}]`, err);
   const text = (err && err.message) || (typeof err === 'string' ? err : '') || fallbackText;
   try { showToast(`Ошибка: ${text}`); }
   catch (e2) {
@@ -91,9 +89,13 @@ async function loadState(){
   try {
     state.books = await loadBooks();
     // one-time cleanup of leading numbers ("01. ") in titles of already imported books
-    let titlesFixed = false;
-    state.books.forEach(b => { const t = cleanTitle(b.title); if(t !== b.title){ b.title = t; titlesFixed = true; } });
-    if(titlesFixed) saveBooksSoon(500);
+    // (a flag in the settings remembers that it was done; new books are cleaned when they are scanned)
+    if(!state.settings.titlesCleaned){
+      state.books.forEach(b => { const t = cleanTitle(b.title); if(t !== b.title) b.title = t; });
+      state.settings.titlesCleaned = 1;
+      saveBooksSoon(500);
+      saveSettings().catch(() => {});
+    }
     state.folders = (await dbGet('folders')) || [];
     // folder names saved by older versions still carry the SAF volume prefix ("primary:Audiobooks")
     state.folders.forEach(f => { f.name = cleanFolderName(f.name); });
@@ -101,7 +103,6 @@ async function loadState(){
     const settings = await dbGet('settings');
     if(settings) state.settings = {...state.settings, ...settings};
   } catch (e) {
-    console.error('[LoadState Error]', e);
     showToast('Ошибка загрузки данных: ' + (e?.message || e));
   }
 
@@ -124,6 +125,7 @@ async function loadState(){
       state.currentPos = saved.t;              // the exact saved position; the small "step back" happens when playback starts
       state.resumeRewind = true;
       state.speed = Number(b.speed) || Number(state.settings.speed) || 1;
+      await loadCover(b);                      // only THIS cover is read at start-up (the header shows it)
     }
   }
 
@@ -132,14 +134,12 @@ async function loadState(){
   try {
     render();
   } catch (e) {
-    console.error('[Render Error]', e);
     showToast('Ошибка отображения интерфейса');
   }
 
   try {
     bindNav();
   } catch (e) {
-    console.error('[BindNav Error]', e);
   }
 
   // the scan works on SELECTED folders (that is what scanAllFolders reads), so that is what decides here
@@ -163,7 +163,6 @@ async function initApp(){
     try { state.appVersion = (await window.Capacitor?.Plugins?.App?.getInfo?.())?.version || ''; } catch {}
     await loadState();
   } catch (e) {
-    console.error('[InitApp Error]', e);
     showToast(`Ошибка инициализации: ${e.message || 'Сбой старта'}`);
   }
 }

@@ -6,23 +6,31 @@ def media3Version = '1.4.1'
 def pkg = new groovy.json.JsonSlurper().parse(file("$rootDir/../package.json"))
 def vParts = (pkg.version.tokenize('.') + ['0', '0', '0']).take(3).collect { (it.replaceAll(/\D.*/, '') ?: '0').toInteger() }
 
-// ---- single source of truth: www/dsp.json -> DspConfig.java (the web player reads the same file) ----
-def dspSrc = file("$rootDir/../www/dsp.json")
-def dspGenDir = layout.buildDirectory.dir("generated/dsp").get().asFile
-tasks.register('generateDspConfig') {
-    inputs.file(dspSrc)
-    outputs.dir(dspGenDir)
+// ---- single source of truth: www/config.js -> DspConfig.java + AudioFormats.java (the web player imports the same file) ----
+def sharedSrc = file("$rootDir/../www/config.js")
+def sharedGenDir = layout.buildDirectory.dir("generated/shared").get().asFile
+def generateSharedConfig = tasks.register('generateSharedConfig') {
+    inputs.file(sharedSrc)
+    outputs.dir(sharedGenDir)
     doLast {
-        def cfg = new groovy.json.JsonSlurper().parse(dspSrc)
-        def out = new File(dspGenDir, 'com/shelf/player/DspConfig.java')
-        out.parentFile.mkdirs()
-        out.text = "package com.shelf.player;\n\n" +
-            "/** GENERATED from www/dsp.json by app/build.gradle — do not edit. */\n" +
+        def txt = sharedSrc.text
+        def json = txt.substring(txt.indexOf('export default') + 'export default'.length(), txt.lastIndexOf('}') + 1)
+        def cfg = new groovy.json.JsonSlurper().parseText(json)
+        def dir = new File(sharedGenDir, 'com/shelf/player')
+        dir.mkdirs()
+        new File(dir, 'DspConfig.java').text = "package com.shelf.player;\n\n" +
+            "/** GENERATED from www/config.js by app/build.gradle - do not edit. */\n" +
             "public final class DspConfig {\n" +
-            "  public static final int[] BANDS = {" + cfg.bands.join(', ') + "};\n" +
-            "  public static final double Q_PEAK = " + cfg.qPeak + ";\n" +
-            "  public static final double HEADROOM = " + cfg.headroom + ";\n" +
-            "  public static final double CEILING = " + cfg.ceiling + ";\n" +
+            "  public static final int[] BANDS = {" + cfg.dsp.bands.join(', ') + "};\n" +
+            "  public static final double Q_PEAK = " + cfg.dsp.qPeak + ";\n" +
+            "  public static final double HEADROOM = " + cfg.dsp.headroom + ";\n" +
+            "  public static final double CEILING = " + cfg.dsp.ceiling + ";\n" +
+            "}\n"
+        new File(dir, 'AudioFormats.java').text = "package com.shelf.player;\n\n" +
+            "/** GENERATED from www/config.js by app/build.gradle - do not edit. */\n" +
+            "public final class AudioFormats {\n" +
+            "  /** regex alternation, e.g. mp3|m4a|flac */\n" +
+            "  public static final String ALTERNATION = \"" + cfg.audioExtensions.join('|') + "\";\n" +
             "}\n"
     }
 }
@@ -43,7 +51,7 @@ android {
         }
     }
     sourceSets {
-        main { java.srcDir dspGenDir }
+        main { java.srcDir sharedGenDir }
     }
     buildTypes {
         release {
@@ -55,6 +63,7 @@ android {
 
 
 dependencies {
+    testImplementation "junit:junit:4.13.2"             // JVM unit tests of the pure classes (AudioFx, AlbumFade): ./gradlew testDebugUnitTest
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.activity:activity:$androidxActivityVersion"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
@@ -67,6 +76,6 @@ dependencies {
     implementation "androidx.media3:media3-common:$media3Version"
 }
 
-tasks.named('preBuild') { dependsOn 'generateDspConfig' }
+tasks.named('preBuild') { dependsOn generateSharedConfig }
 
 apply from: 'capacitor.build.gradle'

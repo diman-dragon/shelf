@@ -136,8 +136,6 @@ input { outline: 0; }
   background: var(--nav-bg);
   border-top: 1px solid var(--nav-border);
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   z-index: 60;
   touch-action: manipulation;
   pointer-events: auto;
@@ -191,6 +189,8 @@ input { outline: 0; }
   cursor: pointer;
 }
 .library-book-item:active { transform: scale(0.99); }
+/* rows outside the screen are not laid out/painted: long libraries scroll and re-render much cheaper */
+.library-book-item { content-visibility: auto; contain-intrinsic-size: auto 84px; }
 .lib-row-main {
   min-width: 0;
   display: flex;
@@ -502,7 +502,6 @@ input { outline: 0; }
   border-radius: 16px;
   background: var(--modal-bg);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
 }
 .scan-dock-top { display: flex; align-items: center; gap: 10px; }
 .scan-dock-top>div { flex: 1; min-width: 0; }

@@ -36,8 +36,16 @@ public class PlayerWidget extends AppWidgetProvider {
     return p != null && p.getMediaItemCount() > 0;
   }
 
-  static void push(Context c) {
+  private static String lastSig = "";
+
+  static void push(Context c) { push(c, false); }
+
+  /** force = the system asked for a refresh (onUpdate): always rebuild. Otherwise identical states are skipped (no IPC storm). */
+  static void push(Context c, boolean force) {
     final boolean alive = hasBook();
+    final String sig = alive + "|" + title + "|" + artist + "|" + playing;
+    if (!force && sig.equals(lastSig)) return;
+    lastSig = sig;
     RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget);
     v.setTextViewText(R.id.wTitle, alive ? title : "AudioShelf");
     v.setTextViewText(R.id.wArtist, alive ? artist : "Откройте книгу");
@@ -53,14 +61,14 @@ public class PlayerWidget extends AppWidgetProvider {
     AppWidgetManager.getInstance(c).updateAppWidget(new ComponentName(c, PlayerWidget.class), v);
   }
 
-  @Override public void onUpdate(Context c, AppWidgetManager m, int[] ids) { push(c); }
+  @Override public void onUpdate(Context c, AppWidgetManager m, int[] ids) { push(c, true); }
 
   @Override public void onReceive(Context c, Intent i) {
     super.onReceive(c, i);
     String a = i.getAction();
     if ("prev".equals(a) || "next".equals(a) || "toggle".equals(a) || "back".equals(a) || "forward".equals(a)) {
       if (hasBook()) PlayerService.handleAction(a);
-      else push(c);                       // the service went away in the meantime: switch the buttons back to "open the app"
+      else push(c, true);                 // the service went away in the meantime: switch the buttons back to "open the app"
     }
   }
 }

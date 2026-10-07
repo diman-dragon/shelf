@@ -31,7 +31,6 @@ function showFallbackBanner(msg){
 }
 
 export function showToast(msg){
-  console.warn('[toast]', msg);
   clearTimeout(toastTimer);
   const t = document.getElementById('toast');
   if(!t){ showFallbackBanner(msg); return; }
@@ -104,8 +103,7 @@ if(typeof document !== 'undefined'){
 }
 
 export function iconBtn(ic, label, action){
-  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-  return `<button type="button" class="icon-btn" aria-label="${esc(label)}" data-action="${esc(action)}">${icon(ic)}</button>`;
+  return `<button type="button" class="icon-btn" aria-label="${label}" data-action="${action}">${icon(ic)}</button>`;
 }
 
 export function settingToggle(k, name, desc, on, ic='refresh'){

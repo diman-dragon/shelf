@@ -1,6 +1,6 @@
 /* visualizer.js — Audio Visualizer Canvas Rendering and Overlay */
-import { $ } from './state.js';
-import { ensureAudioGraph, hasSpectrum, spectrumSize, fillSpectrum, setSpectrumActive } from './sound.js';
+import { state, $ } from './state.js';
+import { audio, ensureAudioGraph, hasSpectrum, spectrumSize, fillSpectrum, setSpectrumActive } from './sound.js';
 import { showToast } from './ui-utils.js';
 
 let visualizerFrame = 0;
@@ -15,29 +15,42 @@ export function openVisualizer(){
   ensureAudioGraph().then(() => { setSpectrumActive(true); startVisualizer(); }).catch(() => showToast('Визуализатор недоступен'));
 }
 
-/**
- * The WebView is throttled while hidden, but the native FFT stream (PlayerPlugin.vizTick, ~15 msg/s through
- * the Capacitor bridge) is driven by the SERVICE-side handler and keeps burning CPU/battery behind a black screen.
- * Stop both while hidden; resume only if the overlay was still open when the app came back.
- */
-let vizWasOpenBeforeHide = false;
-document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'hidden'){
-    vizWasOpenBeforeHide = visualizerOpen;
-    if(visualizerOpen) closeVisualizer();
-  } else if(vizWasOpenBeforeHide){
-    vizWasOpenBeforeHide = false;
-    if($('visualizer')) openVisualizer();   // the player screen is still mounted → restore the overlay
-  }
-});
-
 export function closeVisualizer(){
   visualizerOpen = false;
   setSpectrumActive(false);
   const el = $('visualizer');
-  if(el){ el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); el.classList.remove('reopen-viz'); }
+  if(el){ el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); }
   stopVisualizer();
 }
+
+/* ---------------- when the visualizer is allowed to run ----------------
+ * It animates ONLY while: its overlay is open, the player screen is visible, the app is in the foreground and audio is playing.
+ *  - another screen            -> router.js onLeave closes it (and draw() stops by itself if its canvas was removed)
+ *  - app in background/screen off -> loop and native FFT stream are paused, resumed on return
+ *  - paused / silent           -> the loop goes to sleep after the bars settle (the canvas keeps the last frame), wakes on "play"
+ *  - battery <= 20 % and not charging -> half the frame rate
+ */
+let lowPower = false;
+try {
+  navigator.getBattery?.().then(b => {
+    const upd = () => { lowPower = !b.charging && b.level <= 0.2; };
+    upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd);
+  }).catch(() => {});
+} catch {}
+
+function resumeVisualizer(){
+  if(!visualizerOpen || visualizerFrame || document.hidden) return;
+  if(!$('visualizerCanvas')?.isConnected) return;
+  setSpectrumActive(true);
+  startVisualizer();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if(!visualizerOpen) return;
+  if(document.hidden){ stopVisualizer(); setSpectrumActive(false); }
+  else resumeVisualizer();
+});
+audio.addEventListener('play', resumeVisualizer);
 
 const TAU = Math.PI * 2;
 const BARS = 72;            // total bars around the circle (mirrored left/right)
@@ -54,7 +67,7 @@ function startVisualizer(){
   const sm = new Float32Array(HALF);     // smoothed level per band
   const pk = new Float32Array(HALF);     // falling peak markers
   const particles = [];
-  let bass = 0, prevBass = 0, beatCooldown = 0, hue = 200, last = performance.now(), t = 0;
+  let bass = 0, prevBass = 0, beatCooldown = 0, hue = 200, last = performance.now(), t = 0, calmSince = 0;
 
   // log-ish mapping: more resolution on low/mid (voice), upper bins quiet in speech
   const binOf = j => Math.min(data.length - 1, Math.floor(Math.pow(j / HALF, 1.6) * data.length * 0.8) + 1);
@@ -73,7 +86,9 @@ function startVisualizer(){
       if(visualizerOpen){ visualizerOpen = false; setSpectrumActive(false); }
       return;
     }
-    const dt = Math.min(.05, (now - last) / 1000 || .016); last = now; t += dt;
+    // 30 fps is plenty (the native FFT only updates at ~15 Hz and the motion is smoothed); 15 fps on a low battery
+    if(now - last < (lowPower ? 64 : 31)){ visualizerFrame = requestAnimationFrame(draw); return; }
+    const dt = Math.min(.05, (now - last) / 1000 || .033); last = now; t += dt;
     const dpr = Math.min(window.devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
     if(w < 2 || h < 2){ visualizerFrame = requestAnimationFrame(draw); return; }
     if(canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)){
@@ -85,7 +100,8 @@ function startVisualizer(){
     ctx.clearRect(0, 0, w, h);
 
     // ---- analysis: smooth bands (fast attack, slow release), bass energy, beat ----
-    const idle = .035 + .02 * Math.sin(t * 1.6);
+    const playing = !!state.playing;
+    const idle = .035 + (playing ? .02 * Math.sin(t * 1.6) : 0);     // gentle "breathing" only while audio plays
     for(let j = 0; j < HALF; j++){
       const b0 = binOf(j), b1 = Math.max(b0 + 1, binOf(j + 1));
       let s = 0; for(let k = b0; k < b1; k++) s = Math.max(s, data[k]);
@@ -195,6 +211,15 @@ function startVisualizer(){
     }
 
     ctx.globalCompositeOperation = 'source-over';
+
+    // paused/silent and everything has settled: leave the last frame on screen and stop burning CPU/GPU/battery
+    let settled = !playing && particles.length === 0 && bass < .02;
+    for(let j = 0; settled && j < HALF; j++) if(sm[j] - idle > .015) settled = false;
+    if(settled){
+      calmSince = calmSince || now;
+      if(now - calmSince > 1000){ visualizerFrame = 0; setSpectrumActive(false); return; }
+    } else calmSince = 0;
+
     visualizerFrame = requestAnimationFrame(draw);
   };
   visualizerFrame = requestAnimationFrame(draw);

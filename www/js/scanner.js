@@ -1,9 +1,10 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
 import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot, durationOfBook, cleanTitle, cleanFolderName } from './state.js';
-import { persist, saveBooksSoon, flushBooks } from './storage.js';
+import { saveBooks, saveFolders, savePlaylists, saveBooksSoon, flushBooks, evictCovers } from './storage.js';
 import { dbSet } from './db.js';
 import { openModal, closeModal, showToast } from './ui-utils.js';
 import { render, act } from './router.js';
+import CONFIG from '../config.js';
 
 let nativeScanListenersReady = false;
 let scanRenderTimer = null;
@@ -63,8 +64,7 @@ async function deleteFolder(id){
       act('unloadCurrent');                                  // stops <audio> + the native service + its notification
       if(state.screen === 'player') state.screen = 'shelf';
     }
-    await persist();
-    await dbSet('foldersSelected', state.selectedFolderIds);
+    await Promise.all([saveBooks(), saveFolders(), savePlaylists(), dbSet('foldersSelected', state.selectedFolderIds)]);
     closeModal();
     render();
     openFolderSheet();
@@ -80,8 +80,7 @@ export async function pickFolder(){
     let old = state.folders.find(x => x.uri === f.uri);
     if(!old){ old = {id:uid(), name:cleanFolderName(f.name), uri:f.uri}; state.folders.push(old); }
     if(!state.selectedFolderIds.includes(old.id)) state.selectedFolderIds.push(old.id);
-    await persist();
-    await dbSet('foldersSelected', state.selectedFolderIds);
+    await Promise.all([saveFolders(), dbSet('foldersSelected', state.selectedFolderIds)]);
     closeModal();
     state.screen = 'shelf';
     beginScan([old], old.name);
@@ -132,7 +131,11 @@ async function finishIfAllDone(){
   const s = state.scan;
   if(!s.active) return;
   clearTimeout(scanRenderTimer);
-  try { await flushBooks(); } catch(e) { showToast('Не удалось сохранить библиотеку: ' + (e?.message || e)); }
+  try {
+    await flushBooks();
+    // the covers are on disk now: keep in memory only the current book and the first screens of the library
+    evictCovers([state.current?.id, ...state.books.slice(0, 60).map(b => b.id)]);
+  } catch(e) { showToast('Не удалось сохранить библиотеку: ' + (e?.message || e)); }
   dupIndex = null;
   syncScan();
   updateScanDock();
@@ -319,7 +322,7 @@ export function initNativeScanListeners(){
       state.scan.books++;
     }
     // Batch IDB writes (covers are stored under their own keys, only changed ones) and UI updates
-    saveBooksSoon(1500, 8000);
+    saveBooksSoon(4000, 30000);                  // a crash mid-scan costs at most 30 s of results; the scan is repeatable
     if(!scanRenderTimer){
       scanRenderTimer = setTimeout(() => {
         scanRenderTimer = null;
@@ -393,5 +396,5 @@ function naturalFile(a, b){
 }
 
 /** Removes only a KNOWN audio extension: "Vol. 1 Foundation" or "Мастер и Маргарита. Булгаков" must stay intact */
-const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$/i;
+const AUDIO_EXT = new RegExp(`\\.(${CONFIG.audioExtensions.join('|')})$`, 'i');       // list shared with the native code, see config.js
 function stripExt(s=''){ return String(s).replace(AUDIO_EXT, ''); }

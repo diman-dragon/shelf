@@ -1,6 +1,6 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
 import { state, icon, escapeHtml, $, isNative, main, SEEK_BACK_SEC, SEEK_FWD_SEC } from './state.js';
-import { persist, writeLastPlayback, getSavedPosition, resumePosition, saveProgressRecord, saveBooks, saveBooksSoon, clearLastPlayback } from './storage.js';
+import { loadCover, saveSettings, savePrefsSoon, flushPrefs, writeLastPlayback, getSavedPosition, resumePosition, saveProgressRecord, saveBooks, saveBooksSoon, clearLastPlayback } from './storage.js';
 import { dbGet } from './db.js';
 import { showToast, closeModal, openModal, bookCover, fmt } from './ui-utils.js';
 import { render } from './router.js';
@@ -103,6 +103,7 @@ export async function openPlayer(id){
     applyBookSpeed(b);
     state.resumeRewind = true;
   }
+  await loadCover(b);                            // covers are read lazily
   state.screen = 'player';
   render();
   await ensureChapterLoaded();
@@ -157,6 +158,7 @@ export function renderPlayer(){
         <button type="button" class="tool" id="sleepBtn"><strong id="sleepLabel">◷</strong>Таймер</button>
         <button type="button" class="tool" id="queueBtn"><strong>☷</strong>Очередь</button>
         <button type="button" class="tool" id="soundBtn"><strong>♫</strong>Звук</button>
+        <button type="button" class="tool" id="modeBtn" aria-label="Режим воспроизведения"><strong id="modeIcon">${b.mode === 'album' ? '♪' : '▤'}</strong><span id="modeLabel">${b.mode === 'album' ? 'Альбом' : 'Книга'}</span></button>
       </div>
       <div class="swipe-hint">← визуализатор · список глав →</div>
     </div>
@@ -203,6 +205,7 @@ export function renderPlayer(){
   on('speedBtn', cycleSpeed);
   on('sleepBtn', setSleep);
   on('soundBtn', openCurrentSound);
+  on('modeBtn', toggleMode);
   on('playerMark', addBookmark);
   on('queueBtn', openQueuePanel);
   on('queueClose', closeQueuePanel);
@@ -265,7 +268,6 @@ async function loadChapter(i, t=0, autoplay=true){
       audio.playbackRate = state.speed;
       await audio.loadNative(b, i, startAt);
     } catch(e) {
-      console.error('Native load error:', e);
       if(token === loadToken){ restoring = false; loadedKey = ''; }
       showToast('Не удалось открыть аудиофайл');
       return;
@@ -294,7 +296,6 @@ async function loadChapter(i, t=0, autoplay=true){
       return;
     }
   } catch(e) {
-    console.error('Audio load error:', e);
     if(token === loadToken){ restoring = false; loadedKey = ''; }
     showToast('Не удалось открыть аудиофайл');
     return;
@@ -324,15 +325,18 @@ async function loadChapter(i, t=0, autoplay=true){
     if(dur > 0 && Math.abs((Number(f.duration) || 0) - dur) > 0.5){
       f.duration = dur;
       clearTimeout(progressSaveTimer);
-      saveBooksSoon(1500);
+      saveBooksSoon(10000, 60000);               // rare, and not urgent: durations are re-read from the file anyway
     }
     snapshotPosition();
     updatePlayerUI();
   };
   audio.onended = () => {
     if(token !== loadToken) return;
-    if(i < b.files.length - 1) loadChapter(i + 1, 0, true);
-    else finishBook();
+    if(i < b.files.length - 1){
+      // browser fallback of the "album" mode: a short pause between tracks (the native player also fades; see PlayerService)
+      if(b.mode === 'album') setTimeout(() => { if(token === loadToken && state.current === b) loadChapter(i + 1, 0, true); }, 2000);
+      else loadChapter(i + 1, 0, true);
+    } else finishBook();
   };
 
   syncPlaying();
@@ -390,6 +394,20 @@ function nextTrack(){
 
 const SPEEDS = [.8, 1, 1.2, 1.5, 1.8, 2];
 
+/** Per-book playback mode, remembered: "book" = gapless; "album" = fade out at the end of a track, short pause, next track */
+function toggleMode(){
+  const b = state.current;
+  if(!b) return;
+  b.mode = b.mode === 'album' ? 'book' : 'album';
+  const album = b.mode === 'album';
+  audio.setAlbumMode?.(album);                   // native only: the service does the fading and the pause
+  savePrefsSoon();                               // a few bytes in `bookprefs`, not the library
+  const ic = $('modeIcon'), lb = $('modeLabel');
+  if(ic) ic.textContent = album ? '♪' : '▤';
+  if(lb) lb.textContent = album ? 'Альбом' : 'Книга';
+  showToast(album ? 'Альбом: плавное затухание и пауза между треками' : 'Книга: без пауз между главами');
+}
+
 function cycleSpeed(){
   const current = Number(state.speed) || 1;
   const idx = SPEEDS.indexOf(current);
@@ -398,7 +416,8 @@ function cycleSpeed(){
   audio.playbackRate = state.speed;
   state.settings.speed = state.speed;            // default for books that have no speed of their own yet
   if(state.current) state.current.speed = state.speed;
-  persist().catch(e => console.error('[speed]', e));
+  saveSettings().catch(() => {});                           // 1 small record
+  savePrefsSoon();                                          // + the per-book speed (tiny), NOT the library
   const sb = $('speedBtn');
   if(sb) sb.innerHTML = `<strong>${state.speed.toFixed(1)}×</strong>Скорость`;
   showToast(`Скорость: ${state.speed.toFixed(1)}×`);
@@ -422,6 +441,7 @@ function updateSleepLabel(){
 function startSleepTicker(){
   clearInterval(sleepTicker);
   sleepTicker = setInterval(() => {
+    if(document.hidden) return;                  // nobody sees the label: no work (the timer itself runs in the native service)
     if(state.sleepEndsAt && state.sleepEndsAt <= Date.now()) state.sleepEndsAt = 0;
     updateSleepLabel();
     if(!state.sleepEndsAt){ clearInterval(sleepTicker); sleepTicker = 0; }
@@ -522,7 +542,8 @@ async function saveProgress(force = false){
   if(force){
     clearTimeout(progressSaveTimer);
     progressSaveTimer = null;
-    try { await saveProgressRecord(b); } catch(e) { console.error('[saveProgress]', e); }
+    flushPrefs().catch(() => {});                // EQ/speed typed in the last second must survive the app being closed
+    try { await saveProgressRecord(b); } catch { /* the position is also in localStorage and in the native service */ }
     return;
   }
   if(progressSaveTimer) return;
@@ -530,7 +551,7 @@ async function saveProgress(force = false){
   // book's position, no covers, no library) and is coalesced to once per 20 s while playing
   progressSaveTimer = setTimeout(async () => {
     progressSaveTimer = null;
-    try { await saveProgressRecord(state.current || b); } catch(e) { console.error('[saveProgress]', e); }
+    try { await saveProgressRecord(state.current || b); } catch { }
   }, 20000);
 }
 
@@ -640,7 +661,7 @@ document.addEventListener('visibilitychange', () => {
 // must not interrupt playback. The service stops itself when the app is swiped from recents.
 window.addEventListener('pagehide', () => { saveProgress(true); });
 window.addEventListener('beforeunload', () => { saveProgress(true); });
-audio.addEventListener('error', e => { restoring = false; console.error('Audio element error:', e); showToast('Ошибка воспроизведения файла'); });
+audio.addEventListener('error', e => { restoring = false; showToast('Ошибка воспроизведения файла'); });
 
 function setMediaSession(){
   if(NATIVE || !('mediaSession' in navigator) || !state.current) return;   // native: Media3 session owns notification/lock screen
@@ -676,7 +697,7 @@ bindNativeEvents({
     if(!f || !(d > 0) || loadedKey !== curKey()) return;
     if(Math.abs((Number(f.duration) || 0) - d) > 0.5){
       f.duration = d;
-      saveBooksSoon(1500);
+      saveBooksSoon(10000, 60000);
     }
   },
   ended(){

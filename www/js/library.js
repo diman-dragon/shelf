@@ -1,6 +1,6 @@
 /* library.js — Library screen, Filtering, Sorting, Book management */
 import { state, icon, escapeHtml, durationOfBook, plural, $, main } from './state.js';
-import { persist } from './storage.js';
+import { saveBooks, savePlaylists } from './storage.js';
 import { showToast, closeModal, openModal, iconBtn, bookCover, fmt } from './ui-utils.js';
 import { header } from './header.js';
 import { progress } from './progress.js';
@@ -190,7 +190,7 @@ function renameBook(id){
     const v = $('renameInput').value.trim();
     if(!v) return showToast('Введите название');
     b.title = v;
-    await persist();
+    await saveBooks();
     closeModal();
     render();
     showToast('Книга переименована');
@@ -206,7 +206,7 @@ function deleteBook(id){
     state.playlists.forEach(p => p.bookIds = (p.bookIds || []).filter(bid => bid !== id));
     // deleting from the player menu: there is no player any more — go to the library (and highlight the right tab)
     if(state.screen === 'player') state.screen = 'shelf';
-    await persist();
+    await Promise.all([saveBooks(), savePlaylists()]);
     closeModal();
     render();
     showToast('Книга удалена');

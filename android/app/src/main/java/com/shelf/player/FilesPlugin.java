@@ -510,12 +510,12 @@ public class FilesPlugin extends Plugin {
 
     private boolean isAudio(String name, String mime) {
         String n = name.toLowerCase(Locale.ROOT);
-        return (mime != null && mime.startsWith("audio/")) || n.matches(".*\\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$");
+        return (mime != null && mime.startsWith("audio/")) || n.matches(".*\\.(" + AudioFormats.ALTERNATION + ")$");   // list from www/config.js
     }
 
     /** Removes only a KNOWN audio extension, so "Vol. 1 Foundation" keeps its name */
     private String stripExt(String s) {
-        return s.replaceFirst("(?i)\\.(mp3|m4a|m4b|aac|ogg|opus|flac|wav|wma)$", "");
+        return s.replaceFirst("(?i)\\.(" + AudioFormats.ALTERNATION + ")$", "");
     }
 
     private String getTreeName(Uri uri) {

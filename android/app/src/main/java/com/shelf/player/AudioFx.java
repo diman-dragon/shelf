@@ -3,7 +3,7 @@ package com.shelf.player;
 /**
  * Pure-Java DSP chain (no Android dependencies, unit-testable):
  *   10 peaking bands  ->  auto pre-gain  ->  peak limiter.
- * Constants (bands, Q, headroom, ceiling) come from DspConfig, which Gradle generates from www/dsp.json —
+ * Constants (bands, Q, headroom, ceiling) come from DspConfig, which Gradle generates from www/config.js —
  * the web player (sound.js) reads the very same file, so there is a single place to change them.
  *
  * Why it exists: the old Web Audio graph boosted bands without any headroom and without a limiter,

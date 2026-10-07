@@ -58,7 +58,11 @@ public class PlayerPlugin extends Plugin {
   @Override public void load() { inst = this; }
 
   @Override protected void handleOnDestroy() {
+    // the WebView is gone: nobody can draw a spectrum any more, so stop the FFT tap on the audio thread too
+    // (it used to stay on for as long as the service kept playing)
+    AudioFx.shared.setSpectrum(false);
     main.post(new Runnable() { @Override public void run() {
+      vizOn = false;
       main.removeCallbacks(tick); main.removeCallbacks(vizTick);
       if (controller != null) { controller.release(); controller = null; }
     }});
@@ -88,6 +92,7 @@ public class PlayerPlugin extends Plugin {
       pending.add(new Pending(op, call));
       if (connecting) return;
       connecting = true;
+      main.postDelayed(connectTimeout, 8000);
       Context ctx = getContext();
       SessionToken token = new SessionToken(ctx, new ComponentName(ctx, PlayerService.class));
       final ListenableFuture<MediaController> f = new MediaController.Builder(ctx, token)
@@ -96,6 +101,7 @@ public class PlayerPlugin extends Plugin {
           }).buildAsync();
       f.addListener(new Runnable() { @Override public void run() {
         connecting = false;
+        main.removeCallbacks(connectTimeout);
         try {
           controller = f.get();
           controller.addListener(playerListener);
@@ -112,6 +118,14 @@ public class PlayerPlugin extends Plugin {
       }}, ContextCompat.getMainExecutor(ctx));
     }});
   }
+
+  /** The player service did not answer in time: fail the waiting calls instead of leaving the UI waiting forever. */
+  private final Runnable connectTimeout = new Runnable() { @Override public void run() {
+    if (!connecting) return;
+    connecting = false;
+    for (Pending p : pending) if (p.call != null) p.call.reject("Плеер не отвечает");
+    pending.clear();
+  }};
 
   private void safe(PluginCall call, Op op, MediaController c) {
     try { op.run(c); }
@@ -293,6 +307,13 @@ public class PlayerPlugin extends Plugin {
   @PluginMethod
   public void setSleepTimer(PluginCall call) {
     PlayerService.setSleep(call.getInt("minutes", 0));
+    call.resolve();
+  }
+
+  /** "book" = gapless, "album" = fade out at the end of each track + a short pause (remembered per book by JS) */
+  @PluginMethod
+  public void setAlbumMode(PluginCall call) {
+    PlayerService.setAlbumMode(call.getBoolean("on", false));
     call.resolve();
   }
 

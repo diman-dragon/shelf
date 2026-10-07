@@ -1,6 +1,6 @@
 /* meta.js — lazy durations & covers for books (native MediaMetadataRetriever, <audio> fallback) */
 import { state, plugin, isNative } from './state.js';
-import { saveBooksSoon } from './storage.js';
+import { saveBooksSoon, loadCover, hasStoredCover } from './storage.js';
 import { dbGet } from './db.js';
 import { bookCover } from './ui-utils.js';
 
@@ -62,7 +62,7 @@ export async function hydrateBookMeta(b, onChange){
   busy.add(b.id);
   let changed = false;
   try {
-    if(!b.cover && !b.coverChecked && b.files?.[0]?.uri){
+    if(!hasStoredCover(b) && !b.coverChecked && b.files?.[0]?.uri){
       b.coverChecked = true;
       const m = await nativeMeta(b.files[0].uri, true);
       if(m?.cover){ b.cover = m.cover; }
@@ -76,17 +76,27 @@ export async function hydrateBookMeta(b, onChange){
       if(d > 0){ f.duration = d; changed = true; onChange?.(); }
     }
   } catch(e) {
-    console.error('[hydrateBookMeta]', e);
   } finally {
     busy.delete(b.id);
   }
-  if(changed) saveBooksSoon();     // covers go to their own keys, see storage.js
+  if(changed) saveBooksSoon(4000, 30000);     // covers go to their own keys, see storage.js
 }
 
 /** Library: quietly load covers for books scanned by an older version (native only) */
 export async function hydrateLibraryCovers(books){
+  // 1) covers that are already stored: read them now, only for the rows that are drawn
+  for(const b of books || []){
+    if(!b.cover && hasStoredCover(b)){
+      loadCover(b).then(c => {
+        if(!c) return;
+        const thumb = document.querySelector(`.library-book-item[data-id="${b.id}"] .lib-thumb`);
+        if(thumb) thumb.innerHTML = bookCover(b);
+      });
+    }
+  }
+  // 2) books scanned by an older version that never had a cover: ask the native side (once per book)
   if(coverJobRunning || !isNative() || !plugin('ShelfFiles')?.getMeta) return;
-  const todo = (books || []).filter(b => !b.cover && !b.coverChecked && b.files?.[0]?.uri).slice(0, 40);
+  const todo = (books || []).filter(b => !hasStoredCover(b) && !b.coverChecked && b.files?.[0]?.uri).slice(0, 40);
   if(!todo.length) return;
   coverJobRunning = true;
   let changed = false;
@@ -105,5 +115,5 @@ export async function hydrateLibraryCovers(books){
   } finally {
     coverJobRunning = false;
   }
-  if(changed) saveBooksSoon();
+  if(changed) saveBooksSoon(4000, 30000);
 }
