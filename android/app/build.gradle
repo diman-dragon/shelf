@@ -1,0 +1,101 @@
+apply plugin: 'com.android.application'
+
+def media3Version = '1.4.1'
+
+// ---- single source of truth: package.json -> versionName / versionCode (2.2.0 -> 20200) ----
+def pkg = new groovy.json.JsonSlurper().parse(file("$rootDir/../package.json"))
+def vParts = (pkg.version.tokenize('.') + ['0', '0', '0']).take(3).collect { (it.replaceAll(/\D.*/, '') ?: '0').toInteger() }
+
+// ---- single source of truth: www/config.js -> DspConfig.java + AudioFormats.java (the web player imports the same file) ----
+def sharedSrc = file("$rootDir/../www/config.js")
+def sharedGenDir = layout.buildDirectory.dir("generated/shared").get().asFile
+def generateSharedConfig = tasks.register('generateSharedConfig') {
+    inputs.file(sharedSrc)
+    outputs.dir(sharedGenDir)
+    doLast {
+        def txt = sharedSrc.text
+        def json = txt.substring(txt.indexOf('export default') + 'export default'.length(), txt.lastIndexOf('}') + 1)
+        def cfg = new groovy.json.JsonSlurper().parseText(json)
+        def dir = new File(sharedGenDir, 'com/shelf/player')
+        dir.mkdirs()
+        new File(dir, 'DspConfig.java').text = "package com.shelf.player;\n\n" +
+            "/** GENERATED from www/config.js by app/build.gradle - do not edit. */\n" +
+            "public final class DspConfig {\n" +
+            "  public static final int[] BANDS = {" + cfg.dsp.bands.join(', ') + "};\n" +
+            "  public static final double Q_PEAK = " + cfg.dsp.qPeak + ";\n" +
+            "  public static final double HEADROOM = " + cfg.dsp.headroom + ";\n" +
+            "  public static final double CEILING = " + cfg.dsp.ceiling + ";\n" +
+            "}\n"
+        new File(dir, 'AudioFormats.java').text = "package com.shelf.player;\n\n" +
+            "/** GENERATED from www/config.js by app/build.gradle - do not edit. */\n" +
+            "public final class AudioFormats {\n" +
+            "  /** regex alternation, e.g. mp3|m4a|flac */\n" +
+            "  public static final String ALTERNATION = \"" + cfg.audioExtensions.join('|') + "\";\n" +
+            "}\n"
+    }
+}
+
+// ---- release signing: android/keystore.properties (git-ignored) or environment variables, see store/RELEASE_CHECKLIST.md ----
+def keystoreProps = new Properties()
+def keystoreFile = rootProject.file('keystore.properties')
+if (keystoreFile.exists()) keystoreFile.withInputStream { keystoreProps.load(it) }
+def signingValue = { String key, String env -> keystoreProps[key] ?: System.getenv(env) }
+def hasReleaseKey = signingValue('storeFile', 'ANDROID_KEYSTORE_FILE') != null
+
+android {
+    namespace = "com.shelf.player"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.shelf.player"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode vParts[0] * 10000 + vParts[1] * 100 + vParts[2]
+        versionName pkg.version
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    sourceSets {
+        main { java.srcDir sharedGenDir }
+    }
+    signingConfigs {
+        release {
+            if (hasReleaseKey) {
+                storeFile file(signingValue('storeFile', 'ANDROID_KEYSTORE_FILE'))
+                storePassword signingValue('storePassword', 'ANDROID_KEYSTORE_PASSWORD')
+                keyAlias signingValue('keyAlias', 'ANDROID_KEY_ALIAS')
+                keyPassword signingValue('keyPassword', 'ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            // Not shrunk on purpose: Capacitor plugins are found by reflection and the app is small. Turning R8 on
+            // needs keep rules for com.shelf.player.* and a full device test (see store/RELEASE_CHECKLIST.md).
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseKey) signingConfig signingConfigs.release
+        }
+    }
+}
+
+
+dependencies {
+    testImplementation "junit:junit:4.13.2"             // JVM unit tests of the pure classes (AudioFx, AlbumFade): ./gradlew testDebugUnitTest
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.activity:activity:$androidxActivityVersion"
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    // Native audiobook playback (ExoPlayer + MediaSession + media notification)
+    implementation "androidx.media3:media3-exoplayer:$media3Version"
+    implementation "androidx.media3:media3-session:$media3Version"
+    implementation "androidx.media3:media3-common:$media3Version"
+}
+
+tasks.named('preBuild') { dependsOn generateSharedConfig }
+
+apply from: 'capacitor.build.gradle'

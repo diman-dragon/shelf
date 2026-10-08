@@ -1,0 +1,75 @@
+name: Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Web tests and lint
+        working-directory: tests
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm test
+
+      - name: Sync Capacitor Android
+        run: node node_modules/@capacitor/cli/bin/capacitor sync android
+
+      - name: Verify Gradle wrapper
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          ./gradlew --version
+
+      - name: Build debug APK
+        working-directory: android
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          bash ./gradlew assembleDebug --stacktrace --no-daemon --console=plain
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: shelf-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Java unit tests (AudioFx, AlbumFade)
+        working-directory: android
+        run: bash ./gradlew testDebugUnitTest --no-daemon --console=plain

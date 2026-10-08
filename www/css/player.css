@@ -1,0 +1,265 @@
+/* player.css — Player screen, Chapters, Sound settings, and Visualizer */
+.player {
+  position: absolute;
+  inset: 0;
+  background: var(--player-radial);
+  color: var(--text);
+  z-index: 25;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* bottom nav is in the layout flow now, so only a small gap is needed here */
+  padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
+  touch-action: pan-y;
+}
+.player-inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: min(100%, 470px);
+  margin: 0 auto;
+  overflow: hidden;
+  touch-action: pan-y; /* vertical scroll stays native, horizontal is handled by the swipe logic */
+}
+.player-top { display: flex; justify-content: space-between; align-items: center; min-height: 44px; margin-bottom: 6px; }
+.player-cover {
+  height: clamp(110px, 31vh, 270px);
+  height: clamp(110px, 31dvh, 270px);
+  width: auto;
+  max-width: 62vw;
+  flex: 0 1 auto;               /* shrinks when a long title needs more lines */
+  min-height: 72px;
+  aspect-ratio: 0.69;
+  margin: 4px auto 8px;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  background: transparent;      /* same as the app background: no visible strip next to the cover */
+  contain: paint;
+  isolation: isolate;
+}
+.player-title {
+  text-align: center;
+  font: 700 20px/1.15 Georgia, serif;
+  max-width: 100%;
+  flex: none;
+  white-space: normal;          /* full title, wrapped to as many lines as needed */
+  overflow-wrap: anywhere;
+  margin: 0 8px;
+  color: var(--text);
+}
+.player-author {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 2px 0 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chapter {
+  text-align: center;
+  color: var(--muted-soft);
+  font-size: 11px;
+  margin: 4px 0 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seek { margin-top: 10px; }
+.seek input {
+  touch-action: none;
+  width: 100%;
+  height: 24px;
+  accent-color: var(--gold2);
+  cursor: pointer;
+}
+.book-progress { margin-top: 2px; }
+.book-progress[hidden] { display: none; }
+.time-label { color: var(--muted-soft); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.time-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 8px auto 10px;
+  width: min(100%, 430px);
+}
+.control { width: 44px; height: 44px; display: grid; place-items: center; color: var(--text); }
+/* the seek step under the rewind / forward icons */
+.control:has(.ctl-val) { grid-template-rows: auto auto; align-content: center; gap: 0; }
+.ctl-val { font-size: 9px; line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: -2px; }
+.control .icon { width: 23px; height: 23px; }
+.play-main {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: var(--gold2);
+  color: #24170b;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  box-shadow: 0 10px 28px rgba(217,154,76,0.25);
+}
+.play-main .icon { width: 28px; height: 28px; }
+
+.player-tools {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+  margin-bottom: 4px;
+}
+.tool {
+  background: var(--panel);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 8px 2px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+.tool strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+@media (max-height: 640px) { .swipe-hint { display: none; } .player-tools .tool { padding: 6px 2px; } }
+.swipe-hint {
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+  opacity: 0.75;
+  padding: 4px 0 2px;
+}
+
+/* Side Panels & Chapters */
+.side-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--modal-bg);
+  display: flex;
+  flex-direction: column;
+  touch-action: pan-y;
+}
+.side-panel.hidden { display: none !important; pointer-events: none !important; }
+.side-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.side-panel-body {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 14px 20px;
+  -webkit-overflow-scrolling: touch;
+}
+.side-panel .chapter-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+.side-panel .chapter-row.current { color: var(--gold2); font-weight: 700; }
+.bookmark-row { color: var(--gold); }
+
+/* Sound Modal (inside Player) */
+.sound-modal { max-height: 88vh; overflow: auto; max-width: 520px; }
+.sound-modal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sound-modal-head h3 { flex: 1; margin: 0; }
+.sound-modal-head small { display: block; color: var(--muted); font-size: 10px; margin-top: 3px; }
+.sound-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 12px 0 5px; }
+.preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 8px 0 12px; }
+.sound-preset {
+  min-width: 0;
+  padding: 10px 5px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--panel);
+  text-align: center;
+  color: var(--text);
+}
+.sound-preset b { display: block; font-size: 11px; }
+.sound-preset small { display: block; color: var(--muted); font-size: 9px; margin-top: 3px; }
+.sound-preset.active {
+  border-color: var(--gold2);
+  background: var(--gold-soft);
+  box-shadow: inset 0 0 0 1px var(--gold2);
+}
+.sound-setting { padding: 13px 4px 15px; border-bottom: 1px solid var(--line); }
+.sound-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 8px; }
+.sound-head b { font-size: 12px; color: var(--muted); font-weight: 600; }
+.sound-range { width: 100%; height: 28px; accent-color: var(--gold2); }
+.eq-panel { margin-top: 13px; padding: 12px; border-radius: 15px; background: var(--panel); border: 1px solid var(--card-border); }
+.eq-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; height: 180px; margin-top: 9px; align-items: end; }
+.eq-band { height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; }
+.eq-band span { font-size: 8px; color: var(--muted); }
+.eq-band b { font-size: 7px; color: var(--muted); height: 10px; }
+.eq-band input { touch-action: none; writing-mode: vertical-lr; direction: rtl; width: 25px; height: 118px; accent-color: var(--gold2); margin: 0; }
+
+/* Visualizer Overlay */
+.visualizer-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: radial-gradient(circle at 50% 50%, #120d24 0%, #070812 50%, #020205 100%);
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.visualizer-overlay.hidden { display: none !important; pointer-events: none !important; }
+.visualizer-overlay canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.visualizer-head {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 18px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 2;
+  color: #fff;
+}
+.visualizer-head>div { display: flex; flex-direction: column; min-width: 0; }
+.visualizer-head strong { font-size: 16px; }
+.visualizer-head span { font-size: 11px; color: #a9a49c; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65vw; }
+.visualizer-x {
+  background: rgba(15, 13, 11, 0.72) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 50% !important;
+  width: 42px !important;
+  height: 42px !important;
+  color: #fff;
+}
+.visualizer-center {
+  position: absolute;
+  left: 50%;
+  top: 49%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.55);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.visualizer-center .icon { width: 44px; height: 44px; }
+.visualizer-center b { font: 700 10px/1 Inter, system-ui; letter-spacing: 0.24em; }

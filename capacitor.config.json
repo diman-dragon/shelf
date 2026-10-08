@@ -1,0 +1,6 @@
+{
+  "appId": "com.shelf.player",
+  "appName": "AudioShelf",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}

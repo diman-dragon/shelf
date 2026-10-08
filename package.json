@@ -1,0 +1,20 @@
+{
+  "name": "shelf-player",
+  "version": "2.2.0",
+  "private": true,
+  "description": "AudioShelf — local audiobook and album player. The version here is the single source for Android versionName/versionCode.",
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/cli": "8.5.2",
+    "@capacitor/core": "8.5.3"
+  },
+  "scripts": {
+    "cap:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:build": "npm run cap:sync && cd android && ./gradlew assembleDebug"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

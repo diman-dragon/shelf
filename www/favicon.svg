@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#2c1a0f"/>
+      <stop offset="55%" stop-color="#16100a"/>
+      <stop offset="100%" stop-color="#0a0705"/>
+    </radialGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5cd88"/>
+      <stop offset="50%" stop-color="#d69947"/>
+      <stop offset="100%" stop-color="#9e6224"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fcf6ec"/>
+      <stop offset="100%" stop-color="#e8d9c5"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f4e8d6"/>
+      <stop offset="100%" stop-color="#decbb3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background with rounded corners -->
+  <rect width="108" height="108" rx="24" fill="url(#bgGrad)"/>
+  <rect width="106" height="106" x="1" y="1" rx="23" fill="none" stroke="rgba(240, 185, 100, 0.2)" stroke-width="1.5"/>
+
+  <!-- Headphones headband -->
+  <path d="M33 55 C33 39 42 27 54 27 C66 27 75 39 75 55" fill="none" stroke="url(#goldGrad)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M38 50 C38 41 45 33 54 33 C63 33 70 41 70 50" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Ear cups -->
+  <rect x="27" y="47" width="10" height="19" rx="5" fill="#e6a857"/>
+  <rect x="29" y="50" width="6.5" height="13" rx="3.2" fill="#422513"/>
+  <rect x="71" y="47" width="10" height="19" rx="5" fill="#e6a857"/>
+  <rect x="72.5" y="50" width="6.5" height="13" rx="3.2" fill="#422513"/>
+
+  <!-- Book base / shadow -->
+  <path d="M34 76 C43 74 50 76 54 78 C58 76 65 74 74 76 L74 79 C65 77 58 79 54 81 C50 79 43 77 34 79 Z" fill="#4f2e17"/>
+
+  <!-- Left page -->
+  <path d="M36 59 C44 58 51 60 53.5 62 L53.5 76 C51 74 44 72 36 73 Z" fill="url(#pageL)"/>
+  <!-- Right page -->
+  <path d="M72 59 C64 58 57 60 54.5 62 L54.5 76 C57 74 64 72 72 73 Z" fill="url(#pageR)"/>
+
+  <!-- Book spine -->
+  <line x1="54" y1="62" x2="54" y2="77" stroke="#b88344" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Text lines on pages -->
+  <path d="M40 64 C44 63.5 47 64.2 49.5 65 M40 67.5 C44 67 47 67.7 49.5 68.5 M40 71 C43 70.5 46 71.2 48 71.8" stroke="#967e69" stroke-width="1.3" stroke-linecap="round"/>
+  <path d="M68 64 C64 63.5 61 64.2 58.5 65 M68 67.5 C64 67 61 67.7 58.5 68.5 M68 71 C65 70.5 62 71.2 60 71.8" stroke="#967e69" stroke-width="1.3" stroke-linecap="round"/>
+
+  <!-- Audio waves rising from spine -->
+  <line x1="50" y1="54" x2="50" y2="48" stroke="url(#goldGrad)" stroke-width="2.4" stroke-linecap="round"/>
+  <line x1="54" y1="56" x2="54" y2="44" stroke="url(#goldGrad)" stroke-width="2.6" stroke-linecap="round"/>
+  <line x1="58" y1="54" x2="58" y2="48" stroke="url(#goldGrad)" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

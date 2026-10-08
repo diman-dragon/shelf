@@ -1,0 +1,53 @@
+/* variables.css — Theme variables and design tokens */
+:root {
+  --bg: #0b0a09;
+  --panel: #161411;
+  --card-bg: rgba(22, 20, 17, 0.95);
+  --card-border: #2d2822;
+  --line: #29241e;
+  --text: #f5f2ec;
+  --muted: #9c958a;
+  --muted-soft: #706a61;
+  --gold: #d69f56;
+  --gold2: #e8b66d;
+  --gold-soft: rgba(232, 182, 109, 0.12);
+  --danger: #d65a50;
+  --nav: 72px;
+  --shadow: 0 14px 40px rgba(0,0,0,0.5);
+  --app-gradient: linear-gradient(180deg, #151310 0%, #0d0c0a 38%, #080706 100%);
+  --shelf-radial: radial-gradient(110% 55% at 50% -8%, #3d2514 0%, #1a120c 38%, #0b0a09 72%);
+  --player-radial: radial-gradient(95% 48% at 50% 0%, #462815 0%, #1c120a 40%, #090807 78%);
+  --nav-bg: rgba(14, 12, 10, 0.95);
+  --nav-border: #26211a;
+  --modal-bg: #181512;
+  --modal-border: #2e2821;
+  --field-bg: #221e19;
+  --icon-btn-bg: rgba(255, 255, 255, 0.05);
+  --icon-btn-border: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="light"] {
+  --bg: #f8f5ee;
+  --panel: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #e0d8cc;
+  --line: #e4ddd2;
+  --text: #221a13;
+  --muted: #787063;
+  --muted-soft: #9c9487;
+  --gold: #b37324;
+  --gold2: #c58434;
+  --gold-soft: rgba(197, 132, 52, 0.14);
+  --danger: #d64a40;
+  --shadow: 0 10px 30px rgba(70, 50, 30, 0.12);
+  --app-gradient: linear-gradient(180deg, #fffcf8 0%, #f7f3eb 40%, #eee7dc 100%);
+  --shelf-radial: radial-gradient(110% 55% at 50% -8%, #f0decb 0%, #f8f5ee 45%, #f0eae0 75%);
+  --player-radial: radial-gradient(95% 48% at 50% 0%, #f4e3d1 0%, #f8f5ee 42%, #ede5d7 82%);
+  --nav-bg: rgba(252, 250, 246, 0.96);
+  --nav-border: #ded7ca;
+  --modal-bg: #ffffff;
+  --modal-border: #ded7ca;
+  --field-bg: #f0eae0;
+  --icon-btn-bg: rgba(0, 0, 0, 0.04);
+  --icon-btn-border: rgba(0, 0, 0, 0.08);
+}
