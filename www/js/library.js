@@ -41,12 +41,21 @@ function bindLoadMore(){
 
 export function renderShelf(){
   const { all, shown } = visibleBooks();
+  const viewMode = localStorage.getItem('shelfViewMode') || 'list';
+  const viewToggleIcon = viewMode === 'grid' ? 'list' : 'grid';
+  const viewToggleLabel = viewMode === 'grid' ? 'Список' : 'Плитка';
+
   let html = `<section class="screen shelf-screen library-screen">`;
-  html += header('Библиотека', shelfSubtitle(), `${iconBtn('filter','Фильтр','openLibraryFilter')}${iconBtn('sort','Сортировка','openSort')}${iconBtn('folderPlus','Добавить книги','openAddSheet')}`);
+  html += header('Библиотека', shelfSubtitle(), `${iconBtn('filter','Фильтр','openLibraryFilter')}${iconBtn('sort','Сортировка','openSort')}${iconBtn(viewToggleIcon,viewToggleLabel,'toggleShelfView')}${iconBtn('folderPlus','Добавить книги','openAddSheet')}`);
   if(state.query){
     html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:var(--muted)"><span>Результаты поиска: «<b>${escapeHtml(state.query)}</b>»</span><button id="clearSearch" style="background:none;border:none;color:var(--gold2);cursor:pointer">Сбросить</button></div>`;
   }
-  html += `<div class="library-vertical-list">`;
+  html += `<div class="library-filters-bar">` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='all'?'active':''}" data-filter="all">Все (${state.books.length})</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='book'?'active':''}" data-filter="book">Книги</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">Альбомы</button>` +
+  `</div>`;
+  html += `<div class="${viewMode === 'grid' ? 'shelf-grid' : 'shelf-list'}">`;
   if(!all.length){
     html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Библиотека пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`;
   } else {
@@ -59,13 +68,30 @@ export function renderShelf(){
   bindLoadMore();
   bindShelfList();
 
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.onclick = () => {
+      state.libraryFilterType = btn.dataset.filter;
+      libraryDisplayLimit = 50;
+      renderShelf();
+    };
+  });
+  const viewBtn = document.querySelector('[data-action="toggleShelfView"]');
+  if(viewBtn){
+    viewBtn.onclick = () => {
+      const current = localStorage.getItem('shelfViewMode') || 'list';
+      const next = current === 'grid' ? 'list' : 'grid';
+      localStorage.setItem('shelfViewMode', next);
+      renderShelf();
+    };
+  }
+
   // books scanned by an older version have no cover yet — load them quietly in the background
   hydrateLibraryCovers(shown);
 }
 
 /** One delegated handler for the whole list: rows can be added/removed without re-binding anything */
 function bindShelfList(){
-  const list = document.querySelector('.library-vertical-list');
+  const list = document.querySelector('.shelf-list, .shelf-grid');
   if(list) list.onclick = e => {
     const el = e.target.closest('.library-book-item');
     if(el) act('openPlayer', el.dataset.id);
@@ -90,7 +116,7 @@ function rowEl(b, sig){
  */
 export function updateShelfList(){
   if(state.screen !== 'shelf') return;
-  const list = document.querySelector('.library-vertical-list');
+  const list = document.querySelector('.shelf-list, .shelf-grid');
   const { all, shown } = visibleBooks();
   if(!list || !shown.length || list.querySelector('.shelf-empty')){ renderShelf(); return; }
 
@@ -123,9 +149,13 @@ function libraryBookRow(b, sig = rowSig(b)){
   const prog = progress(b);
   const fileCount = b.files?.length ?? 0;
   const totalDuration = durationOfBook(b);
+  const isAlbum = b?.type === 'album' || b?.type === 'music' || b?.mode === 'album';
+  const badgeText = isAlbum ? 'Альбом' : 'Книга';
+  const badgeIcon = isAlbum ? icon('music', 'badge-icon') : icon('book', 'badge-icon');
+
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}" data-sig="${escapeHtml(sig)}">
     <div class="lib-row-main">
-      <div class="lib-thumb">${bookCover(b)}</div>
+      <div class="lib-thumb">${bookCover(b)}<span class="item-badge ${isAlbum ? 'badge-album' : 'badge-book'}">${badgeIcon} ${badgeText}</span></div>
       <div class="lib-info">
         <div class="lib-title">${escapeHtml(b.title)}</div>
         <div class="lib-author">${escapeHtml(b.author||'Автор не указан')}</div>
@@ -138,8 +168,14 @@ function libraryBookRow(b, sig = rowSig(b)){
 
 function filterBooks(books){
   const q = state.query.trim().toLowerCase();
-  if(!q) return books;
-  return books.filter(b => (b.title||'').toLowerCase().includes(q) || (b.author||'').toLowerCase().includes(q));
+  let filtered = books;
+  if(state.libraryFilterType === 'book'){
+    filtered = filtered.filter(b => !(b.type === 'album' || b.type === 'music' || b.mode === 'album'));
+  } else if(state.libraryFilterType === 'album'){
+    filtered = filtered.filter(b => b.type === 'album' || b.type === 'music' || b.mode === 'album');
+  }
+  if(!q) return filtered;
+  return filtered.filter(b => (b.title||'').toLowerCase().includes(q) || (b.author||'').toLowerCase().includes(q));
 }
 
 function sortBooks(books){

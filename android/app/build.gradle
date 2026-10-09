@@ -76,7 +76,7 @@ android {
             // needs keep rules for com.shelf.player.* and a full device test (see store/RELEASE_CHECKLIST.md).
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (hasReleaseKey) signingConfig signingConfigs.release
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
         }
     }
 }

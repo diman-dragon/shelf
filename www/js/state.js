@@ -33,14 +33,16 @@ export const ICONS = {
   moon:'<path d="M20 15.5A8 8 0 0 1 8.5 4 8 8 0 1 0 20 15.5Z"/>', sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/>',
   music:'<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',  folderPlus:'<path d="M3 7h7l2 2h9v10H3V7Z"/><path d="M12 12v5m-2.5-2.5h5"/>',
-  refresh:'<path d="M20 11a8 8 0 0 0-14-4L4 9m0-5v5h5M4 13a8 8 0 0 0 14 4l2-2m0 5v-5h-5"/>', chevron:'<path d="m9 18 6-6-6-6"/>'
+  refresh:'<path d="M20 11a8 8 0 0 0-14-4L4 9m0-5v5h5M4 13a8 8 0 0 0 14 4l2-2m0 5v-5h-5"/>', chevron:'<path d="m9 18 6-6-6-6"/>',
+  grid:'<path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 0h7v7h-7v-7z"/>',
+  list:'<path d="M4 6h16M4 12h16M4 18h16"/>'
 };
 
 export let state = {
   screen:'shelf', books:[], folders:[], playlists:[],
   settings:{theme:'dark',autoscan:false,speed:1,seekStep:10},
   scan:{active:false,total:0,processed:0,books:0,skipped:0,errors:0,timeouts:0,firstError:'',counting:false,name:''},
-  query:'', librarySort:'recent', selectedFolderIds:[],
+  query:'', librarySort:'recent', libraryFilterType:'all', selectedFolderIds:[],
   current:null, currentIndex:0, currentPos:0, blobUrl:'', playing:false, speed:1, sleepTimer:null, sleepEndsAt:0, appVersion:'', resumeRewind:false
 };
 

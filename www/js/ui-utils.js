@@ -61,33 +61,55 @@ export function closeModal(){
   if(modalRoot) modalRoot.innerHTML = '';
 }
 
-function hashStr(str=''){
-  let h = 0;
-  for(let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-  return Math.abs(h);
+function bookPlaceholder(hidden=false){
+  return `<div class="cover-ph" style="${hidden?'display:none':''}">` +
+    `<svg viewBox="0 0 100 145" preserveAspectRatio="xMidYMid slice" aria-hidden="true">` +
+    `<defs>` +
+    `<linearGradient id="bookGrad" x1="0%" y1="0%" x2="100%" y2="100%">` +
+    `<stop offset="0%" stop-color="#2c2438"/>` +
+    `<stop offset="100%" stop-color="#14111c"/>` +
+    `</linearGradient>` +
+    `<linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">` +
+    `<stop offset="0%" stop-color="#f5cd88"/>` +
+    `<stop offset="100%" stop-color="#c88a38"/>` +
+    `</linearGradient>` +
+    `</defs>` +
+    `<rect width="100" height="145" fill="url(#bookGrad)"/>` +
+    `<rect x="12" y="12" width="76" height="121" rx="4" fill="none" stroke="rgba(245,205,136,0.22)" stroke-width="1.2"/>` +
+    `<path d="M30 48c7-4 15-6 20-6s13 2 20 6v49c-7-4-15-6-20-6s-13 2-20 6V48z" fill="rgba(255,255,255,0.06)" stroke="url(#goldGrad)" stroke-width="2" stroke-linejoin="round"/>` +
+    `<path d="M50 42v51" stroke="url(#goldGrad)" stroke-width="2" stroke-linecap="round"/>` +
+    `<path d="M36 58h8M36 65h8M36 72h6" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round"/>` +
+    `<path d="M56 58h8M56 65h8M56 72h6" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round"/>` +
+    `</svg></div>`;
 }
 
-function coverInitials(title=''){
-  const words = String(title).replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
-  if(!words.length) return '♪';
-  const letters = words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[1][0];
-  return letters.toUpperCase();
+function albumPlaceholder(hidden=false){
+  return `<div class="cover-ph" style="${hidden?'display:none':''}">` +
+    `<svg viewBox="0 0 100 145" preserveAspectRatio="xMidYMid slice" aria-hidden="true">` +
+    `<defs>` +
+    `<linearGradient id="albumGrad" x1="0%" y1="0%" x2="100%" y2="100%">` +
+    `<stop offset="0%" stop-color="#1e293b"/>` +
+    `<stop offset="100%" stop-color="#0f172a"/>` +
+    `</linearGradient>` +
+    `<linearGradient id="vinylGrad" x1="0%" y1="0%" x2="100%" y2="100%">` +
+    `<stop offset="0%" stop-color="#38bdf8"/>` +
+    `<stop offset="100%" stop-color="#0284c7"/>` +
+    `</linearGradient>` +
+    `</defs>` +
+    `<rect width="100" height="145" fill="url(#albumGrad)"/>` +
+    `<rect x="12" y="12" width="76" height="121" rx="4" fill="none" stroke="rgba(56,189,248,0.22)" stroke-width="1.2"/>` +
+    `<circle cx="50" cy="72" r="28" fill="#090d16" stroke="rgba(56,189,248,0.3)" stroke-width="1.5"/>` +
+    `<circle cx="50" cy="72" r="21" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>` +
+    `<circle cx="50" cy="72" r="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>` +
+    `<circle cx="50" cy="72" r="8" fill="url(#vinylGrad)"/>` +
+    `<circle cx="50" cy="72" r="3" fill="#0f172a"/>` +
+    `</svg></div>`;
 }
 
 /** Nicely styled SVG placeholder (used when there is no cover file or it failed to load) */
 function coverPlaceholder(b, hidden=false){
-  const title = b?.title || '';
-  const hue = hashStr(title + (b?.author || '')) % 360;
-  const letters = escapeHtml(coverInitials(title));
-  return `<div class="cover-ph" style="--h:${hue};${hidden?'display:none':''}">` +
-    `<svg viewBox="0 0 100 145" preserveAspectRatio="xMidYMid slice" aria-hidden="true">` +
-    `<rect x="0" y="0" width="7" height="145" fill="rgba(0,0,0,.28)"/>` +
-    `<rect x="14" y="14" width="72" height="117" rx="3" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="1.2"/>` +
-    `<path d="M30 40h17a5 5 0 0 1 3 1 5 5 0 0 1 3-1h17v34H53a5 5 0 0 0-3 1 5 5 0 0 0-3-1H30z" fill="none" stroke="rgba(255,255,255,.78)" stroke-width="2" stroke-linejoin="round"/>` +
-    `<path d="M50 41v34" stroke="rgba(255,255,255,.78)" stroke-width="2" stroke-linecap="round"/>` +
-    `<text x="50" y="108" text-anchor="middle" font-family="Georgia,serif" font-size="24" font-weight="700" fill="rgba(255,255,255,.92)">${letters}</text>` +
-    `<rect x="36" y="118" width="28" height="2" rx="1" fill="rgba(255,255,255,.35)"/>` +
-    `</svg></div>`;
+  const isAlbum = b?.type === 'album' || b?.type === 'music' || b?.mode === 'album';
+  return isAlbum ? albumPlaceholder(hidden) : bookPlaceholder(hidden);
 }
 
 export function bookCover(b, extra=''){

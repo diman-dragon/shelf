@@ -1,6 +1,6 @@
-/* player-swipe.js — horizontal swipe gesture for the player screen (thresholds + direction lock).
+/* player-swipe.js — horizontal swipe gesture handler (thresholds + direction lock).
  * Vertical scroll is never blocked; only a locked horizontal gesture is captured.
- * Usage: bindSwipe(rootElement, dir => { ... })   dir = 'left' | 'right'
+ * Usage: bindSwipe(rootElement, (dir, target) => { ... })   dir = 'left' | 'right'
  */
 const MIN_DX = 70;      // px the finger must travel horizontally
 const LOCK_PX = 12;     // movement needed before the gesture direction is decided
@@ -44,7 +44,7 @@ export function bindSwipe(root, onSwipe){
     const dx = t.clientX - x0, dy = t.clientY - y0;
     if(Math.abs(dx) < MIN_DX || Math.abs(dx) < Math.abs(dy) * RATIO) return;
     if(Date.now() - t0 > MAX_MS) return;
-    onSwipe(dx > 0 ? 'right' : 'left');
+    onSwipe(dx > 0 ? 'right' : 'left', e.target);
   }, {passive:true});
 
   root.addEventListener('touchcancel', () => { active = false; mode = ''; }, {passive:true});

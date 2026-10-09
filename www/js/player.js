@@ -8,9 +8,8 @@ import { updateHeaderNowPlaying } from './header.js';
 import { progress, bookTotal, bookElapsed } from './progress.js';
 import { audio, NATIVE, ensureAudioGraph, applyCurrentFileSound, openCurrentSound, ensureAudible } from './sound.js';
 import { openBookMenu } from './library.js';
-import { openVisualizer, closeVisualizer } from './visualizer.js';
+import { closeVisualizer } from './visualizer.js';
 import { hydrateBookMeta } from './meta.js';
-import { bindSwipe } from './player-swipe.js';
 import { bindNativeEvents, stopNativePlayer } from './native-bridge.js';
 
 let progressSaveTimer = null;
@@ -230,7 +229,6 @@ export function renderPlayer(){
   on('playerMore', () => openBookMenu(b.id));
   on('visualizerClose', closeVisualizer);
   bindChapterRows();
-  bindPlayerSwipe();
   updatePlayerUI();
   updateSleepLabel();
   if(state.sleepEndsAt > Date.now()) startSleepTicker();
@@ -510,13 +508,21 @@ function setSleep(){
   };
 }
 
+function renderBookmarks(){
+  const list = $('chapterList');
+  if(list && state.current){
+    list.innerHTML = chapterRows(state.current);
+    bindChapterRows();
+  }
+}
+
 async function addBookmark(){
   const b = state.current;
   if(!b) return;
   b.marks = b.marks || [];
   b.marks.push({i: state.currentIndex, t: Number(state.currentPos) || 0});
   await saveBooks();
-  renderPlayer();
+  renderBookmarks();
   showToast('Закладка добавлена');
 }
 
@@ -525,8 +531,7 @@ async function removeBookmark(k){
   if(!b?.marks?.[k]) return;
   b.marks.splice(k, 1);
   await saveBooks();
-  const list = $('chapterList');
-  if(list){ list.innerHTML = chapterRows(b); bindChapterRows(); }
+  renderBookmarks();
   showToast('Закладка удалена');
 }
 
@@ -765,15 +770,3 @@ bindNativeEvents({
     syncPlaying(); updatePlayerUI();
   }
 });
-
-// --- Swipes on the player (gesture logic: player-swipe.js) ---
-function bindPlayerSwipe(){ bindSwipe($('playerScreen'), handleSwipe); }
-
-function handleSwipe(dir){
-  const vis = $('visualizer'), queue = $('queuePanel');
-  if(vis && !vis.classList.contains('hidden')){ if(dir === 'right') closeVisualizer(); return; }
-  if(queue && !queue.classList.contains('hidden')){ if(dir === 'left') closeQueuePanel(); return; }
-  // swipe right → chapter list; swipe left → visualizer
-  if(dir === 'right') openQueuePanel();
-  else openVisualizer();
-}

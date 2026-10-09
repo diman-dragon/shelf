@@ -1,6 +1,6 @@
 {
   "name": "shelf-player",
-  "version": "2.2.0",
+  "version": "2.2.2",
   "private": true,
   "description": "AudioShelf — local audiobook and album player. The version here is the single source for Android versionName/versionCode.",
   "dependencies": {

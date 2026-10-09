@@ -8,9 +8,36 @@ import { renderPlaylists, renderSettings, newPlaylist } from './js/ui.js';
 import { renderShelf, updateShelfList, openLibraryFilter, openSort } from './js/library.js';
 import { renderPlayer, ensureChapterLoaded, closeQueuePanel, openPlayer, unloadCurrent } from './js/player.js';
 import { syncNativeResume } from './js/native-bridge.js';
-import { closeVisualizer } from './js/visualizer.js';
+import { closeVisualizer, openVisualizer } from './js/visualizer.js';
 import { initNativeScanListeners, scanAllFolders, openFolderSheet } from './js/scanner.js';
 import { audio } from './js/sound.js';
+import { bindSwipe } from './js/player-swipe.js';
+
+const TABS = ['shelf', 'player', 'playlists', 'settings'];
+
+function handleGlobalSwipe(dir, target){
+  const vis = document.getElementById('visualizer');
+  if(vis && !vis.classList.contains('hidden')){
+    if(dir === 'right') closeVisualizer();
+    return;
+  }
+  const isPlayerElement = target.closest('#playerScreen') || target.closest('.player-cover');
+  if(state.screen === 'player' || isPlayerElement){
+    if(state.screen === 'player' && dir === 'left'){
+      openVisualizer();
+    }
+    return;
+  }
+  const idx = TABS.indexOf(state.screen);
+  const curIdx = idx !== -1 ? idx : 0;
+  if(dir === 'left'){
+    const nextIdx = (curIdx + 1) % TABS.length;
+    setScreen(TABS[nextIdx]);
+  } else if(dir === 'right'){
+    const prevIdx = (curIdx - 1 + TABS.length) % TABS.length;
+    setScreen(TABS[prevIdx]);
+  }
+}
 
 // ---- screens and actions: modules talk through the router, not through each other (no import cycles) ----
 registerScreen('shelf', renderShelf);
@@ -155,6 +182,7 @@ async function initApp(){
   if(appInitialized) return;
   appInitialized = true;
   try {
+    bindSwipe(document.body, handleGlobalSwipe);
     state.selectedFolderIds = (await dbGet('foldersSelected')) || [];
     document.querySelectorAll('.nav-ico').forEach(n => {
       n.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.dataset.icon]||''}</svg>`;
