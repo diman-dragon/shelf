@@ -10,3 +10,6 @@ android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
 # Local dev tools
 check.ps1
+# the fixed DEBUG key used by CI builds, so every APK installs over the previous one (not a secret, never used for Play)
+!ci-debug.keystore
+!android/ci-debug.keystore

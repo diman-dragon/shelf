@@ -25,13 +25,15 @@ public final class AudioFx {
     final float[] gains = new float[NB];                     // dB per filter
     final float gainDb;
     final float volume;                                      // 0..3: above 1 it is a real boost, the limiter keeps the output under the ceiling
-    Params(float[] eq, float gainDb, float volume) {
+    final float normDb;                                      // loudness normalisation of the current file (Normalizer), dB, on top of the user's settings
+    Params(float[] eq, float gainDb, float volume, float normDb) {
       for (int i = 0; i < BANDS.length; i++) gains[i] = i < eq.length ? clamp(eq[i], -15, 15) : 0;
       this.gainDb = clamp(gainDb, -24, 12);
       this.volume = clamp(volume, 0, MAX_VOLUME);
+      this.normDb = clamp(normDb, -15, 15);
     }
     boolean sameAs(Params o) {
-      return o != null && gainDb == o.gainDb && volume == o.volume && java.util.Arrays.equals(gains, o.gains);
+      return o != null && gainDb == o.gainDb && volume == o.volume && normDb == o.normDb && java.util.Arrays.equals(gains, o.gains);
     }
   }
 
@@ -84,7 +86,7 @@ public final class AudioFx {
         }
       }
       boostDb = best;
-      double preDb = -HEADROOM_FACTOR * Math.max(0, best) + p.gainDb;
+      double preDb = -HEADROOM_FACTOR * Math.max(0, best) + p.gainDb + p.normDb;
       preTarget = (float) (Math.pow(10, preDb / 20) * p.volume);
       flat = !anyOn && Math.abs(preTarget - 1f) < 1e-6f;
       builds++;
@@ -110,7 +112,7 @@ public final class AudioFx {
     return d;
   }
 
-  private volatile Params params = new Params(new float[BANDS.length], 0, 1);
+  private volatile Params params = new Params(new float[BANDS.length], 0, 1, 0);
 
   // ---- per-stream state (audio thread only) ----
   private volatile int sampleRate = 44100;
@@ -139,10 +141,23 @@ public final class AudioFx {
 
   /** Called from any thread. eq = one value in dB per band, gainDb = user pre-gain, volume 0..3 (1 = unchanged, above 1 = boost) */
   public void set(float[] eq, float gainDb, float volume) {
-    Params np = new Params(eq == null ? new float[BANDS.length] : eq, gainDb, volume);
-    if (np.sameAs(params)) return;           // identical settings (the UI re-sends them on every "play"): nothing to do at all
-    params = np;
-    designFor(np, sampleRate);               // the heavy maths happen HERE, on the caller's thread, not in the audio stream
+    synchronized (this) {
+      Params np = new Params(eq == null ? new float[BANDS.length] : eq, gainDb, volume, params.normDb);
+      if (np.sameAs(params)) return;           // identical settings (the UI re-sends them on every "play"): nothing to do at all
+      params = np;
+      designFor(np, sampleRate);               // the heavy maths happen HERE, on the caller's thread, not in the audio stream
+    }
+  }
+
+  /** Called from any thread: the loudness correction (dB) of the file that is playing now; 0 = none. Keeps the user's EQ / volume. */
+  public void setNorm(float normDb) {
+    synchronized (this) {
+      Params o = params;
+      Params np = new Params(o.gains, o.gainDb, o.volume, normDb);
+      if (np.sameAs(o)) return;
+      params = np;
+      designFor(np, sampleRate);
+    }
   }
 
   /** Sample rate of the running stream (the plugin reports the headroom for exactly this rate). */

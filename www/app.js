@@ -6,7 +6,7 @@ import { registerScreen, registerAction, render, bindNav, setScreen } from './js
 import { showToast, closeModal, applySystemBars } from './js/ui-utils.js';
 import { renderSettings } from './js/ui.js';
 import { renderDiscover, randomPick } from './js/discover.js';
-import { renderShelf, updateShelfList, openLibraryFilter, openSort } from './js/library.js';
+import { renderShelf, updateShelfList, openLibraryFilter, openSort, startShelfLive } from './js/library.js';
 import { renderPlayer, ensureChapterLoaded, closeQueuePanel, openPlayer, openPlayerAt, playBook, unloadCurrent } from './js/player.js';
 import { syncNativeResume } from './js/native-bridge.js';
 import { closeVisualizer, stepPicture } from './js/visualizer.js';
@@ -177,6 +177,7 @@ async function initApp(){
   appInitialized = true;
   try {
     applyDocumentLang();
+    startShelfLive();
     bindSwipe(document.body, handleGlobalSwipe);
     state.selectedFolderIds = (await dbGet('foldersSelected')) || [];
     document.querySelectorAll('.nav-ico').forEach(n => {
@@ -187,6 +188,7 @@ async function initApp(){
     try { bindNav(); } catch {}
     try { state.appVersion = (await window.Capacitor?.Plugins?.App?.getInfo?.())?.version || ''; } catch {}
     await loadState();
+    audio.setNormalize?.(state.settings.normalize !== false);
     audio.setSeekStep?.(seekStep());           // native: the notification / lock screen / widget use the same step
   } catch (e) {
     showToast(t('Ошибка инициализации: {e}', { e: e.message || t('Сбой старта') }));

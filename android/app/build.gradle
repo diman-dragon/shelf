@@ -61,6 +61,12 @@ android {
         main { java.srcDir sharedGenDir }
     }
     signingConfigs {
+        ci {
+            storeFile rootProject.file('ci-debug.keystore')
+            storePassword 'android'
+            keyAlias 'ciDebug'
+            keyPassword 'android'
+        }
         release {
             if (hasReleaseKey) {
                 storeFile file(signingValue('storeFile', 'ANDROID_KEYSTORE_FILE'))
@@ -72,16 +78,16 @@ android {
     }
     buildTypes {
         debug {
-            // With the permanent key the CI APK is signed like the release one, so builds install over each other
-            // (otherwise every CI run gets a random debug key and Android says "conflicts with an existing package").
-            if (hasReleaseKey) signingConfig signingConfigs.release
+            // Always the same key (android/ci-debug.keystore, committed on purpose: it is a debug key, not a secret).
+            // A fresh random debug key on every CI run is what made Android refuse the update ("conflicts with an existing package").
+            signingConfig signingConfigs.ci
         }
         release {
             // Not shrunk on purpose: Capacitor plugins are found by reflection and the app is small. Turning R8 on
             // needs keep rules for com.shelf.player.* and a full device test (see store/RELEASE_CHECKLIST.md).
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.ci
         }
     }
 }

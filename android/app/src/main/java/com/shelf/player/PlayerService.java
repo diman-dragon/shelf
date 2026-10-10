@@ -331,9 +331,61 @@ public class PlayerService extends MediaSessionService {
     pauseAllPlayersAndStopSelf();
   }
 
+  // ---------------- loudness normalisation (see Normalizer) ----------------
+  static volatile PlayerService self;
+
+  private static String uriOf(MediaItem it) {
+    return it != null && it.localConfiguration != null ? it.localConfiguration.uri.toString() : null;
+  }
+
+  /** Puts the measured correction of the file that plays now into the DSP chain (0 = none / not measured yet / switched off). */
+  private void applyNorm() {
+    float g = 0f;
+    ExoPlayer p = player;
+    if (Normalizer.enabled && p != null) {
+      String u = uriOf(p.getCurrentMediaItem());
+      if (u != null) {
+        float c = Normalizer.cached(this, u);
+        if (!Float.isNaN(c)) g = c;
+      }
+    }
+    AudioFx.shared.setNorm(g);
+  }
+
+  /** The current file first, then the rest of the book in playing order: measured in the background, one at a time. */
+  private void scheduleNorm() {
+    ExoPlayer p = player;
+    if (p == null || !Normalizer.enabled) return;
+    int n = p.getMediaItemCount();
+    if (n == 0) return;
+    int cur = Math.max(0, p.getCurrentMediaItemIndex());
+    List<String> order = new ArrayList<>();
+    for (int k = 0; k < n && k < 300; k++) order.add(uriOf(p.getMediaItemAt((cur + k) % n)));
+    Normalizer.enqueue(this, order);
+  }
+
+  private void normChanged() { applyNorm(); scheduleNorm(); }
+
+  /** Settings switch (any thread): re-applies or removes the correction right away. */
+  static void refreshNorm() {
+    MAIN.post(new Runnable() {
+      @Override public void run() {
+        PlayerService s = self;
+        if (s != null) s.normChanged();
+        else AudioFx.shared.setNorm(0f);
+      }
+    });
+  }
+
   // ---------------- lifecycle ----------------
   @Override public void onCreate() {
     super.onCreate();
+    self = this;
+    Normalizer.listener = new Normalizer.Listener() {
+      @Override public void onMeasured(String uri) {
+        MAIN.post(new Runnable() { @Override public void run() { PlayerService s = self; if (s != null) s.applyNorm(); } });
+      }
+    };
 
     DefaultRenderersFactory renderers = new DefaultRenderersFactory(this) {
       @Override protected AudioSink buildAudioSink(Context context, boolean enableFloatOutput,
@@ -379,6 +431,7 @@ public class PlayerService extends MediaSessionService {
         pushWidget();
       }
       @Override public void onMediaItemTransition(@Nullable MediaItem item, int reason) {
+        normChanged();                               // the next file may be louder or quieter than this one
         persistPosition();
         pushWidget();
         if (albumMode) albumStep();
@@ -543,6 +596,9 @@ public class PlayerService extends MediaSessionService {
     // NOT cleared here on purpose: if the service is destroyed by the system in the middle of a call, the saved
     // interruption is exactly what "Play" in the shade needs afterwards (onPlaybackResumption)
     live = null;
+    self = null;
+    Normalizer.listener = null;
+    AudioFx.shared.setNorm(0f);
     if (session != null) {
       session.getPlayer().release();
       session.release();

@@ -97,4 +97,26 @@ public class AudioFxTest {
     assertEquals(10, DspConfig.BANDS.length);
     assertTrue(AudioFormats.ALTERNATION.contains("mp3") && AudioFormats.ALTERNATION.contains("m4b"));
   }
+
+  @Test public void fileNormalisationScalesTheSignalAndKeepsTheUsersSettings() {
+    AudioFx fx = AudioFx.shared;
+    fx.set(new float[DspConfig.BANDS.length], 0f, 1f);
+    fx.setNorm(0f);
+    fx.configure(RATE, 2);
+    float[] a = sine(440, 0.1, 9600);
+    fx.process(a, 9600);
+    float base = peak(a);
+    fx.setNorm(6f);                                          // +6 dB: about twice the amplitude
+    fx.configure(RATE, 2);
+    float[] b = sine(440, 0.1, 9600);
+    fx.process(b, 9600);
+    assertEquals(2.0, peak(b) / base, 0.05);
+    fx.set(new float[DspConfig.BANDS.length], 0f, 1f);       // the UI re-sends its settings: the correction stays
+    fx.configure(RATE, 2);
+    float[] c = sine(440, 0.1, 9600);
+    fx.process(c, 9600);
+    assertEquals(2.0, peak(c) / base, 0.05);
+    fx.setNorm(0f);
+    fx.configure(RATE, 2);
+  }
 }

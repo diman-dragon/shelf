@@ -239,4 +239,6 @@ export const EN = {
   "Эквалайзер": "Equalizer",
   "Волны": "Waves"
   ,"Не слушали": "Not started"
+  ,"Выравнивание громкости": "Volume leveling"
+  ,"Все файлы звучат одинаково громко. Считается в фоне, место не занимает": "Every file plays at a similar loudness. Analyzed in the background, takes no extra space"
 };

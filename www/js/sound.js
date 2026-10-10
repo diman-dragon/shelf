@@ -181,6 +181,8 @@ class NativeAudio extends EventTarget {
   }
 
   /** Seek step of the notification / lock screen / widget buttons (the service reads it from here). */
+  /** Loudness normalisation on/off (native only; measuring runs in the background in the service) */
+  setNormalize(on){ return Promise.resolve(this.P.setNormalize?.({on: !!on})).catch(() => {}); }
   setSeekStep(sec){ return this.P.setSeekStep({sec: Math.round(Number(sec)) || 10}).catch(() => {}); }
 
   /** "album": the last seconds of every track fade out, a short pause, the next one fades in. "book": gapless. */

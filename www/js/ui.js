@@ -1,6 +1,6 @@
 /* ui.js — Settings (screen + its modals) */
 import { state, icon, escapeHtml, $, main, seekStep, DEFAULT_SEEK_STEP } from './state.js';
-import { audio } from './sound.js';
+import { audio, NATIVE } from './sound.js';
 import { saveSettings } from './storage.js';
 import { showToast, openModal, closeModal, settingToggle, applySystemBars } from './ui-utils.js';
 import { header } from './header.js';
@@ -9,6 +9,7 @@ import { t, plural, getLangSetting, setLangSetting } from './i18n.js';
 
 export function renderSettings(){
   const s = state.settings;
+  if(s.normalize === undefined) s.normalize = true;            // on unless the person switched it off
   const folderCount = state.folders.length;
   main.innerHTML = `<section class="screen">${header(t('Настройки'))}
     <div class="settings-group"><p class="settings-title">${t('Хранилище')}</p>
@@ -21,6 +22,7 @@ export function renderSettings(){
     </div>
     <div class="settings-group"><p class="settings-title">${t('Воспроизведение')}</p>
       <div class="setting" id="seekSetting"><div class="setting-icon">${icon('rewind')}</div><div class="setting-main"><div class="setting-name">${t('Шаг перемотки')}</div><div class="setting-desc">${t('Кнопки «назад» и «вперёд» в плеере, уведомлении и виджете')}</div></div><div class="setting-value">±${seekStep()} ${t('с')}</div></div>
+      ${NATIVE ? settingToggle('normalize', t('Выравнивание громкости'), t('Все файлы звучат одинаково громко. Считается в фоне, место не занимает'), !!s.normalize, 'music') : ''}
     </div>
     <div class="settings-group"><p class="settings-title">${t('Внешний вид')}</p>
       <div class="setting" id="themeSetting"><div class="setting-icon">${icon(s.theme==='dark'?'moon':'sun')}</div><div class="setting-main"><div class="setting-name">${t('Тема оформления')}</div><div class="setting-desc">${t('Тёмная или светлая тема')}</div></div><div class="setting-value">${t(s.theme==='dark'?'Тёмная':'Светлая')}</div></div>
@@ -43,6 +45,7 @@ export function renderSettings(){
     const k = el.dataset.settingToggle;
     state.settings[k] = !state.settings[k];
     await saveSettings();
+    if(k === 'normalize') audio.setNormalize?.(state.settings.normalize);
     renderSettings();
   });
 }

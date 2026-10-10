@@ -247,3 +247,17 @@ function deleteBook(id){
     showToast(t('Удалено из библиотеки'));
   };
 }
+
+/** The library stays alive on its own: while it is on screen, progress bars, finished marks and covers follow the listening
+ *  (and a scan that ends in the background) without leaving and re-entering the tab. Cheap: only changed rows are redrawn. */
+let shelfLive = 0;
+export function startShelfLive(){
+  if(shelfLive) return;
+  const tick = () => {
+    if(state.screen !== 'shelf' || document.hidden || state.scan?.active) return;
+    if(!document.querySelector('.shelf-list, .shelf-grid') || !visibleBooks().shown.length) return;
+    updateShelfList();
+  };
+  shelfLive = setInterval(tick, 2000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) tick(); });
+}

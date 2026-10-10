@@ -108,3 +108,7 @@ capacitor.settings.gradle
 keystore.properties
 *.jks
 *.keystore
+
+# the fixed DEBUG key used by CI builds, so every APK installs over the previous one (not a secret, never used for Play)
+!ci-debug.keystore
+!android/ci-debug.keystore

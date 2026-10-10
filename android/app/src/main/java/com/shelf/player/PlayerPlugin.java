@@ -274,6 +274,14 @@ public class PlayerPlugin extends Plugin {
   }
 
   /** eq[] dB (one per band), gain dB (preset trim), volume 0..3 (above 1 = boost, limited by AudioFx) — applied inside the native audio pipeline */
+  /** Settings → loudness normalisation on/off. Measuring happens in the background inside the service (Normalizer). */
+  @PluginMethod
+  public void setNormalize(PluginCall call) {
+    Normalizer.enabled = call.getBoolean("on", true);
+    PlayerService.refreshNorm();
+    call.resolve();
+  }
+
   @PluginMethod
   public void setFx(PluginCall call) {
     JSArray a = call.getArray("eq");
