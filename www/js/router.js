@@ -1,6 +1,6 @@
 /* router.js — screen switching + a tiny action registry.
  *
- * The screens (library, player, playlists, settings) register themselves from app.js. That lets every module call
+ * The screens (library, player, for-you, settings) register themselves from app.js. That lets every module call
  * render()/setScreen()/act() WITHOUT importing the screens — which is what used to create the import cycles
  * ui.js ↔ player.js ↔ library.js ↔ scanner.js.
  */

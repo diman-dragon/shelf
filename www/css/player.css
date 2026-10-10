@@ -215,6 +215,14 @@
 .eq-band b { font-size: 7px; color: var(--muted); height: 10px; }
 .eq-band input { touch-action: none; writing-mode: vertical-lr; direction: rtl; width: 25px; height: 118px; accent-color: var(--gold2); margin: 0; }
 
+/* Dots under the cover / on the visual: where you are in the picture loop (cover, visual 1, 2, 3) */
+.pic-dots { display: flex; justify-content: center; gap: 6px; min-height: 6px; margin: -2px 0 6px; }
+.pic-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-soft); opacity: .45; transition: width .18s, opacity .18s, background .18s; }
+.pic-dots i.on { width: 16px; border-radius: 4px; background: var(--gold2); opacity: 1; }
+.pic-dots-viz { position: absolute; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom)); margin: 0; z-index: 2; pointer-events: none; }
+.pic-dots-viz i { background: #fff; }
+.pic-dots-viz i.on { background: #fff; }
+
 /* Visualizer Overlay */
 .visualizer-overlay {
   position: absolute;

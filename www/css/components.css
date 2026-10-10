@@ -234,44 +234,27 @@ input { outline: 0; }
   font-size: 10px;
 }
 
-/* Badges */
-.item-badge {
+/* Kind mark on a cover: only a tiny icon (book / vinyl record), no words */
+.kind-badge {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  left: 5px;
+  bottom: 5px;
   z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 600;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 8, 6, 0.62);
+  color: #f5cd88;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   pointer-events: none;
 }
-.badge-book {
-  background: rgba(44, 36, 56, 0.85);
-  color: #f5cd88;
-  border: 1px solid rgba(245, 205, 136, 0.25);
-}
-.badge-album {
-  background: rgba(30, 41, 59, 0.85);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.25);
-}
-.badge-icon {
-  width: 11px;
-  height: 11px;
-  display: inline-flex;
-}
-.badge-icon svg {
-  width: 100%;
-  height: 100%;
-  fill: currentColor;
-}
+.kind-badge.kind-music { color: #7dd3fc; }
+.kind-badge .kind-ico { width: 12px; height: 12px; }
+.kind-badge .kind-ico svg { stroke-width: 2.1; }
 
 /* Filter chips bar */
 .library-filters-bar {
@@ -697,3 +680,73 @@ button, .icon-btn, .tool, .control, .play-main, .nav-item, [data-action], [data-
 .bookmark-row { align-items: center; }
 .mark-del { background: none; border: 0; color: var(--muted); font-size: 15px; padding: 6px 10px; margin: -6px -8px -6px 0; cursor: pointer; }
 .lib-done { color: var(--gold2); }
+
+
+/* ---------- «Для вас» (discover) ---------- */
+.discover-screen { padding-bottom: 28px; }
+.dv-section { margin-top: 22px; }
+.dv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.dv-head h3 { margin: 0; font: 700 17px/1.2 Georgia, serif; }
+.dv-head span { color: var(--muted-soft); font-size: 11px; }
+.dv-rail {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  margin: 0 -16px;
+  padding: 2px 16px 6px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+}
+.dv-rail::-webkit-scrollbar { display: none; }
+.dv-card { flex: none; width: 104px; text-align: left; scroll-snap-align: start; color: var(--text); }
+.dv-cover, .dv-hero-cover { position: relative; border-radius: 10px; overflow: hidden; isolation: isolate; contain: paint; background: transparent; }
+.dv-cover { width: 104px; height: 150px; box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+.dv-title { margin-top: 8px; font-size: 12.5px; font-weight: 650; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dv-sub { margin-top: 2px; font-size: 11px; color: var(--muted); }
+.dv-prog { height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 7px; }
+.dv-prog i { display: block; height: 100%; background: var(--gold2); border-radius: inherit; }
+
+.dv-hero {
+  display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 20px;
+  background: linear-gradient(135deg, var(--gold-soft), transparent 70%), var(--card-bg);
+  border: 1px solid var(--card-border); cursor: pointer;
+}
+.dv-hero-cover { width: 74px; height: 106px; flex: none; box-shadow: 0 8px 22px rgba(0,0,0,.4); }
+.dv-hero-body { min-width: 0; flex: 1; }
+.dv-hero-body small { color: var(--gold2); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+.dv-hero-title { margin-top: 4px; font: 700 17px/1.2 Georgia, serif; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dv-hero-sub { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.dv-play {
+  flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--gold2); color: #24170b; box-shadow: 0 8px 22px rgba(217,154,76,.28);
+}
+.dv-play .icon { width: 24px; height: 24px; }
+
+.dv-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.dv-stat { padding: 12px 8px; border-radius: 16px; background: var(--panel); border: 1px solid var(--card-border); text-align: center; }
+.dv-stat b { display: block; font: 700 19px/1.1 Georgia, serif; color: var(--text); }
+.dv-stat b i { font: 500 11px/1 Inter, system-ui, sans-serif; color: var(--muted); font-style: normal; }
+.dv-stat span { display: block; margin-top: 5px; font-size: 10.5px; color: var(--muted); }
+
+.dv-surprise {
+  width: 100%; margin-top: 14px; display: flex; align-items: center; gap: 12px; padding: 13px 14px; text-align: left;
+  border-radius: 16px; border: 1px dashed var(--gold); background: var(--gold-soft); color: var(--text);
+}
+.dv-surprise .icon { width: 24px; height: 24px; color: var(--gold2); flex: none; }
+.dv-surprise b { display: block; font-size: 14px; }
+.dv-surprise small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
+
+.dv-mark { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.dv-mark > div { flex: 1; min-width: 0; }
+.dv-mark b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-mark small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-mark-ico { color: var(--gold2); display: grid; }
+.dv-mark-ico .icon, .dv-mark > .icon { width: 18px; height: 18px; }
+.dv-more { padding: 10px 4px 0; font-size: 12px; color: var(--muted); }
+
+.dv-empty { text-align: center; padding: 60px 24px; color: var(--muted); }
+.dv-empty > .icon { width: 44px; height: 44px; color: var(--gold2); margin-bottom: 10px; }
+.dv-empty div { font-size: 15px; color: var(--text); }
+.dv-empty small { display: block; margin: 8px auto 18px; max-width: 280px; font-size: 12px; line-height: 1.45; }
+.dv-btn { padding: 11px 20px; border-radius: 14px; background: var(--gold2); color: #24170b; font-weight: 700; }

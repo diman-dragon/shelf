@@ -35,4 +35,4 @@ MADE FOR THE ROAD
 PRIVACY
 The app collects and transmits no data. Access to your folders is read-only.
 
-Dark and light themes, playlists, library search and sorting.
+Dark and light themes, a "For you" screen with shelves, library search and sorting.

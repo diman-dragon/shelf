@@ -19,7 +19,8 @@ export function bindSwipe(root, onSwipe){
     if(e.touches.length !== 1) return;
     const t = e.touches[0];
     if(t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return;
-    if(e.target.closest('input[type="range"]')) return;   // sliders handle their own drag
+    // sliders handle their own drag; rows that scroll sideways, open modals and side panels keep their own gestures
+    if(e.target.closest('input[type="range"], [data-noswipe], #modalRoot, .side-panel, .library-filters-bar')) return;
     x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); active = true;
   }, {passive:true});
 

@@ -76,14 +76,14 @@ ok(!/onerror/.test(w.document.getElementById('main').innerHTML), 'no inline oner
 console.log('== every screen renders without errors');
 {
   const { setScreen: go } = await import(pathToFileURL(WWW + '/js/router.js').href);
-  for (const name of ['playlists', 'settings', 'shelf']) {
+  for (const name of ['discover', 'settings', 'shelf']) {
     const before = errors.length;
     go(name);
     ok(errors.length === before && w.document.querySelector('#main .screen'), `screen "${name}" rendered`);
   }
-  go('playlists');
-  const addPl = w.document.querySelector('[data-action="newPlaylist"]');
-  ok(!!addPl, 'playlists: "new playlist" button present');
+  go('discover');
+  ok(!!w.document.querySelector('.dv-hero') && !!w.document.querySelector('.dv-stats'), 'for you: hero + stats drawn');
+  ok(!w.document.querySelector('[data-nav="playlists"]'), 'no playlists tab any more');
   go('shelf');
 }
 
@@ -283,6 +283,78 @@ console.log('== store requirements inside the app');
   w.document.getElementById('licensesSetting').click(); await new Promise(r=>setTimeout(r,40));
   ok(/Capacitor/.test(w.document.getElementById('modalRoot').textContent) && /Media3/.test(w.document.getElementById('modalRoot').textContent), 'open-source licences open from the settings');
   w.document.querySelector('#modalRoot [data-close]').click(); await new Promise(r=>setTimeout(r,40));
+}
+
+console.log('== swipes: the picture changes on the player cover, everywhere else the screens move');
+{
+  w.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, { get: (t, k) => (k === 'createLinearGradient' || k === 'createRadialGradient') ? () => ({ addColorStop(){} }) : () => {}, set: () => true });
+  const swipe = async (el, dir) => {
+    const x0 = dir === 'left' ? 500 : 300, x1 = dir === 'left' ? 300 : 500;
+    const mk = (type, x, key) => { const e = new w.Event(type, { bubbles: true, cancelable: true }); const t = { clientX: x, clientY: 300 }; e[key] = [t]; if(key !== 'touches') e.touches = []; return e; };
+    el.dispatchEvent(mk('touchstart', x0, 'touches'));
+    el.dispatchEvent(mk('touchmove', (x0 + x1) / 2, 'touches'));
+    el.dispatchEvent(mk('touchend', x1, 'changedTouches'));
+    await new Promise(r => setTimeout(r, 60));
+  };
+  const hidden = () => { const v = w.document.getElementById('visualizer'); return !v || v.classList.contains('hidden'); };
+  state.current = state.books.find(b => b.id === 'b1'); state.currentIndex = 0; state.currentPos = 0;
+  setScreen('shelf'); await new Promise(r => setTimeout(r, 40));
+  await swipe(w.document.querySelector('.library-filters-bar'), 'left');
+  ok(state.screen === 'shelf', 'a swipe on a sideways-scrolling row does not change the screen');
+  await swipe(w.document.querySelector('.shelf-list, .shelf-grid'), 'left');
+  ok(state.screen === 'player', 'library: swipe left -> player');
+  await swipe(w.document.querySelector('.player-title'), 'left');
+  ok(state.screen === 'discover', 'player (outside the picture): swipe left -> next screen, not the visualizer');
+  await swipe(w.document.querySelector('.dv-hero, .dv-stats'), 'right');
+  ok(state.screen === 'player', 'swipe right goes back');
+  await swipe(w.document.querySelector('.player-title'), 'right');
+  ok(state.screen === 'shelf' && hidden(), 'player: swipe right -> library');
+  await swipe(w.document.querySelector('.shelf-list, .shelf-grid'), 'right');
+  ok(state.screen === 'settings', 'the order is a loop: library <- settings');
+  await swipe(w.document.querySelector('.settings-group'), 'left');
+  ok(state.screen === 'shelf', 'settings -> library (loop)');
+  setScreen('player'); await new Promise(r => setTimeout(r, 60));
+  ok(hidden(), 'cover shown');
+  await swipe(w.document.getElementById('playerCover'), 'left');
+  ok(state.screen === 'player' && !hidden(), 'on the cover: swipe left -> first visual (screen stays)');
+  ok(w.document.getElementById('visualizerName').textContent === 'Кольцо', 'visual 1 = ' + w.document.getElementById('visualizerName').textContent);
+  await swipe(w.document.getElementById('visualizer'), 'left');
+  ok(w.document.getElementById('visualizerName').textContent === 'Эквалайзер' && !hidden(), 'on the visual: swipe left -> next visual');
+  await swipe(w.document.getElementById('visualizer'), 'left');
+  ok(w.document.getElementById('visualizerName').textContent === 'Волны', 'visual 3');
+  await swipe(w.document.getElementById('visualizer'), 'left');
+  ok(hidden() && state.screen === 'player', 'after the last visual: back to the cover (a loop)');
+  await swipe(w.document.getElementById('playerCover'), 'right');
+  ok(!hidden() && w.document.getElementById('visualizerName').textContent === 'Волны', 'swipe right on the cover -> last visual');
+  await swipe(w.document.getElementById('visualizer'), 'right');
+  await swipe(w.document.getElementById('visualizer'), 'right');
+  await swipe(w.document.getElementById('visualizer'), 'right');
+  ok(hidden(), 'swiping right through all visuals returns to the cover');
+  ok(w.document.querySelectorAll('.pic-dots i').length >= 4, 'dots show the position in the loop');
+  w.document.getElementById('modalRoot').innerHTML = '<div class="modal-back"><div class="modal"><p id="mm">x</p></div></div>';
+  await swipe(w.document.getElementById('mm'), 'left');
+  ok(state.screen === 'player', 'an open window is never swiped away');
+  w.document.getElementById('modalRoot').innerHTML = '';
+}
+
+console.log('== music says "tracks", books say "chapters"');
+{
+  const b = state.books.find(x => x.id === 'b1');
+  b.mode = 'book'; state.current = b; state.currentIndex = 0;
+  setScreen('player'); await new Promise(r => setTimeout(r, 60));
+  ok(/^Глава 1 из/.test(w.document.querySelector('.chapter').textContent) && w.document.getElementById('queueTitle').textContent === 'Главы', 'book: Глава / Главы');
+  w.document.getElementById('modeBtn').click(); await new Promise(r => setTimeout(r, 60));
+  ok(/^Трек 1 из/.test(w.document.querySelector('.chapter').textContent), 'music: "Трек 1 из ..." in the player');
+  ok(w.document.getElementById('chLabel').textContent === 'Трек' && w.document.getElementById('queueTitle').textContent === 'Треки', 'music: Трек / Треки everywhere in the player');
+  ok(/Предыдущий трек/.test(w.document.getElementById('prevBtn').getAttribute('aria-label')), 'music: buttons say "трек"');
+  setScreen('shelf'); await new Promise(r => setTimeout(r, 40));
+  const row = w.document.querySelector('.library-book-item[data-id="b1"] .lib-meta').textContent;
+  ok(/треков|трека|трек/.test(row) && !/глав/.test(row), 'library row for music: ' + row.trim());
+  ok(!/Книга|Альбом/.test(w.document.querySelector('.library-book-item[data-id="b1"] .lib-thumb').textContent), 'no words on covers');
+  ok(!!w.document.querySelector('.library-book-item[data-id="b1"] .kind-badge.kind-music'), 'music cover: small vinyl mark');
+  ok(!!w.document.querySelector('.library-book-item:not([data-id="b1"]) .kind-badge.kind-book'), 'book cover: small book mark');
+  b.mode = 'book'; setScreen('player'); await new Promise(r => setTimeout(r, 40)); setScreen('shelf');
+  ok(/глав/.test(w.document.querySelector('.library-book-item[data-id="b1"] .lib-meta').textContent), 'back to a book: chapters');
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL OK');

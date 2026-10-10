@@ -65,4 +65,12 @@ public class InterruptionTest {
     assertEquals(0, Interruption.rewindPosition(0));
     assertEquals(0, Interruption.rewindPosition(4_999));
   }
+
+  @Test public void aSavedInterruptionIsHonouredOnlyWhileItIsFresh() {
+    long t0 = 1_000_000L;
+    assertTrue(Interruption.fresh(t0, t0 + 20 * 60_000));            // a 20 minute call: still fresh after the process was killed
+    assertFalse(Interruption.fresh(t0, t0 + Interruption.MAX_AGE_MS + 1));
+    assertFalse("nothing saved", Interruption.fresh(0, t0));
+    assertFalse("clock went backwards", Interruption.fresh(t0, t0 - 1));
+  }
 }

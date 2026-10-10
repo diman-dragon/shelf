@@ -1,42 +1,37 @@
 /* app.js — Main Application Entry Point */
-import { state, ICONS, DEFAULT_PLAYLISTS, isNative, modalRoot, cleanTitle, cleanFolderName, seekStep } from './js/state.js';
+import { state, ICONS, TABS, isNative, modalRoot, cleanTitle, cleanFolderName, seekStep } from './js/state.js';
 import { loadBooks, loadCover, saveBooksSoon, saveSettings, readLastPlayback, getSavedPosition } from './js/storage.js';
 import { dbGet } from './js/db.js';
 import { registerScreen, registerAction, render, bindNav, setScreen } from './js/router.js';
 import { showToast, closeModal, applySystemBars } from './js/ui-utils.js';
-import { renderPlaylists, renderSettings, newPlaylist } from './js/ui.js';
+import { renderSettings } from './js/ui.js';
+import { renderDiscover, randomPick } from './js/discover.js';
 import { renderShelf, updateShelfList, openLibraryFilter, openSort } from './js/library.js';
-import { renderPlayer, ensureChapterLoaded, closeQueuePanel, openPlayer, unloadCurrent } from './js/player.js';
+import { renderPlayer, ensureChapterLoaded, closeQueuePanel, openPlayer, openPlayerAt, playBook, unloadCurrent } from './js/player.js';
 import { syncNativeResume } from './js/native-bridge.js';
-import { closeVisualizer, openVisualizer } from './js/visualizer.js';
+import { closeVisualizer, stepPicture } from './js/visualizer.js';
 import { initNativeScanListeners, scanAllFolders, openFolderSheet } from './js/scanner.js';
 import { audio } from './js/sound.js';
 import { bindSwipe } from './js/player-swipe.js';
 
-const TABS = ['shelf', 'player', 'playlists', 'settings'];
-
+/**
+ * Swipe rules (one place, one logic):
+ *  - on the PLAYER PICTURE (the cover, and the visualizer that replaces it) a swipe changes the picture:
+ *    cover -> visual 1 -> visual 2 -> ... and back (left = next, right = previous);
+ *  - everywhere else a swipe moves through the screens of the bottom bar (Library, Player, For you, Settings), in a loop.
+ * Sliders, horizontally scrolling rows ([data-noswipe]), modals and side panels never trigger either (see player-swipe.js).
+ */
 function handleGlobalSwipe(dir, target){
-  const vis = document.getElementById('visualizer');
-  if(vis && !vis.classList.contains('hidden')){
-    if(dir === 'right') closeVisualizer();
+  const step = dir === 'left' ? 1 : -1;
+  if(target.closest('#playerCover, #visualizer')){
+    if(state.screen === 'player') stepPicture(step);
     return;
   }
-  const isPlayerElement = target.closest('#playerScreen') || target.closest('.player-cover');
-  if(state.screen === 'player' || isPlayerElement){
-    if(state.screen === 'player' && dir === 'left'){
-      openVisualizer();
-    }
-    return;
-  }
-  const idx = TABS.indexOf(state.screen);
-  const curIdx = idx !== -1 ? idx : 0;
-  if(dir === 'left'){
-    const nextIdx = (curIdx + 1) % TABS.length;
-    setScreen(TABS[nextIdx]);
-  } else if(dir === 'right'){
-    const prevIdx = (curIdx - 1 + TABS.length) % TABS.length;
-    setScreen(TABS[prevIdx]);
-  }
+  // the player tab only exists while a book is loaded
+  const tabs = TABS.filter(t => t !== 'player' || state.current);
+  const idx = tabs.indexOf(state.screen);
+  const cur = idx !== -1 ? idx : 0;
+  setScreen(tabs[(cur + step + tabs.length) % tabs.length]);
 }
 
 // ---- screens and actions: modules talk through the router, not through each other (no import cycles) ----
@@ -45,12 +40,14 @@ registerScreen('player', () => { if(state.current) renderPlayer(); else renderSh
   onEnter: () => { if(state.current) ensureChapterLoaded(); },   // load the saved chapter/position only if <audio> doesn't hold it yet
   onLeave: () => { closeVisualizer(); closeQueuePanel(); }       // leaving the player: no visualizer loop on a detached canvas, no open panel
 });
-registerScreen('playlists', renderPlaylists);
+registerScreen('discover', renderDiscover);
 registerScreen('settings', renderSettings);
 registerAction('openAddSheet', openFolderSheet);
 registerAction('openLibraryFilter', openLibraryFilter);
 registerAction('openSort', openSort);
-registerAction('newPlaylist', newPlaylist);
+registerAction('randomPick', randomPick);
+registerAction('playBook', playBook);
+registerAction('openPlayerAt', openPlayerAt);
 registerAction('openCurrent', () => { if(state.current) openPlayer(state.current.id); });
 registerAction('openPlayer', openPlayer);
 registerAction('updateShelf', updateShelfList);
@@ -127,7 +124,7 @@ async function loadState(){
     state.folders = (await dbGet('folders')) || [];
     // folder names saved by older versions still carry the SAF volume prefix ("primary:Audiobooks")
     state.folders.forEach(f => { f.name = cleanFolderName(f.name); });
-    state.playlists = (await dbGet('playlists')) || [];
+    state.playlists = (await dbGet('playlists')) || [];     // not shown any more; kept so nothing the person made is lost
     const settings = await dbGet('settings');
     if(settings) state.settings = {...state.settings, ...settings};
   } catch (e) {
@@ -136,10 +133,6 @@ async function loadState(){
 
   document.documentElement.dataset.theme = state.settings.theme || 'dark';
   applySystemBars(state.settings.theme || 'dark');
-
-  if(!state.playlists.length){
-    state.playlists = DEFAULT_PLAYLISTS.map(([id,name,emoji])=>({id,name,emoji,bookIds:[]}));
-  }
 
   await syncNativeResume();   // native player may hold a newer position than the last JS save
   const last = readLastPlayback();

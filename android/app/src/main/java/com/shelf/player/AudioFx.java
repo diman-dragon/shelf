@@ -18,15 +18,17 @@ public final class AudioFx {
   private static final float CEILING = (float) DspConfig.CEILING;   // about -0.26 dBFS
   private static final double HEADROOM_FACTOR = DspConfig.HEADROOM;  // compensate this share of the peak boost, limiter handles the rest
   private static final int FFT_N = 256;
+  /** Book volume limit: 300 %. Everything above 100 % is made safe by the limiter below. */
+  public static final float MAX_VOLUME = 3f;
 
   private static final class Params {
     final float[] gains = new float[NB];                     // dB per filter
     final float gainDb;
-    final float volume;
+    final float volume;                                      // 0..3: above 1 it is a real boost, the limiter keeps the output under the ceiling
     Params(float[] eq, float gainDb, float volume) {
       for (int i = 0; i < BANDS.length; i++) gains[i] = i < eq.length ? clamp(eq[i], -15, 15) : 0;
       this.gainDb = clamp(gainDb, -24, 12);
-      this.volume = clamp(volume, 0, 1);
+      this.volume = clamp(volume, 0, MAX_VOLUME);
     }
     boolean sameAs(Params o) {
       return o != null && gainDb == o.gainDb && volume == o.volume && java.util.Arrays.equals(gains, o.gains);
@@ -135,7 +137,7 @@ public final class AudioFx {
 
   // ======================= public API =======================
 
-  /** Called from any thread. eq = one value in dB per band, gainDb = user pre-gain, volume 0..1 */
+  /** Called from any thread. eq = one value in dB per band, gainDb = user pre-gain, volume 0..3 (1 = unchanged, above 1 = boost) */
   public void set(float[] eq, float gainDb, float volume) {
     Params np = new Params(eq == null ? new float[BANDS.length] : eq, gainDb, volume);
     if (np.sameAs(params)) return;           // identical settings (the UI re-sends them on every "play"): nothing to do at all

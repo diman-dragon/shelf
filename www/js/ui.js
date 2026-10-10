@@ -1,54 +1,10 @@
-/* ui.js — Playlists, Settings (screens + their modals) */
-import { state, icon, escapeHtml, plural, uid, $, main, seekStep, DEFAULT_SEEK_STEP } from './state.js';
+/* ui.js — Settings (screen + its modals) */
+import { state, icon, escapeHtml, plural, $, main, seekStep, DEFAULT_SEEK_STEP } from './state.js';
 import { audio } from './sound.js';
-import { savePlaylists, saveSettings } from './storage.js';
-import { showToast, openModal, closeModal, settingToggle, iconBtn, applySystemBars } from './ui-utils.js';
+import { saveSettings } from './storage.js';
+import { showToast, openModal, closeModal, settingToggle, applySystemBars } from './ui-utils.js';
 import { header } from './header.js';
-import { act } from './router.js';
 import { openFolderSheet, pickFolder } from './scanner.js';
-
-export function renderPlaylists(){
-  const ps = state.playlists;
-  main.innerHTML = `<section class="screen">${header('Плейлисты','Подборки и закладки', iconBtn('plus','Новый плейлист','newPlaylist'))}<div class="playlists">${ps.map(p=>`<div class="playlist" data-pl="${escapeHtml(p.id)}"><div class="playlist-art">${p.emoji||'♫'}</div><div class="playlist-info"><div class="playlist-name">${escapeHtml(p.name)}</div><div class="playlist-count">${(p.bookIds||[]).length} ${plural((p.bookIds||[]).length,'аудиокнига','аудиокниги','аудиокниг')}</div></div>${icon('chevron')}</div>`).join('')}</div></section>`;
-  document.querySelectorAll('.playlist[data-pl]').forEach(el => el.onclick = () => openPlaylist(el.dataset.pl));
-  }
-
-export function newPlaylist(){
-  openModal(`<h3>Новый плейлист</h3><input class="field" id="newPlName" placeholder="Название"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="newPlSave">Создать</button></div>`);
-  $('newPlSave').onclick = async () => {
-    const name = $('newPlName').value.trim();
-    if(!name) return showToast('Введите название');
-    state.playlists.push({id:uid(), name, emoji:'♫', bookIds:[]});
-    await savePlaylists();
-    closeModal();
-    renderPlaylists();
-  };
-}
-
-export function openPlaylistChooser(bookId){
-  openModal(`<h3>Добавить в плейлист</h3>${state.playlists.map(p=>`<div class="modal-row" data-choose-pl="${escapeHtml(p.id)}"><span style="flex:1">${p.emoji||'♫'} ${escapeHtml(p.name)}</span>${(p.bookIds||[]).includes(bookId)?'✓':''}</div>`).join('')}`);
-  document.querySelectorAll('[data-choose-pl]').forEach(el => el.onclick = () => {
-    togglePlaylistBook(el.dataset.choosePl, bookId);
-    closeModal();
-    showToast('Плейлист обновлён');
-  });
-}
-
-async function togglePlaylistBook(pid, bid){
-  const p = state.playlists.find(x => x.id === pid);
-  if(!p) return;
-  p.bookIds = p.bookIds || [];
-  p.bookIds.includes(bid) ? p.bookIds = p.bookIds.filter(x => x !== bid) : p.bookIds.push(bid);
-  await savePlaylists();
-}
-
-function openPlaylist(id){
-  const p = state.playlists.find(x => x.id === id);
-  if(!p) return;
-  const books = (p.bookIds || []).map(bid => state.books.find(b => b.id === bid)).filter(Boolean);
-  openModal(`<h3>${escapeHtml(p.name)}</h3>${books.length?books.map(b=>`<div class="modal-row" data-pl-book="${b.id}"><div style="flex:1"><b>${escapeHtml(b.title)}</b><div style="font-size:11px;color:var(--muted)">${escapeHtml(b.author||'')}</div></div>${icon('chevron')}</div>`).join(''):`<div style="padding:22px 5px;color:var(--muted);text-align:center">В этом плейлисте пока ничего нет.</div>`}<div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);
-  document.querySelectorAll('[data-pl-book]').forEach(el => el.onclick = () => { closeModal(); act('openPlayer', el.dataset.plBook); });
-}
 
 export function renderSettings(){
   const s = state.settings;
@@ -56,7 +12,7 @@ export function renderSettings(){
   main.innerHTML = `<section class="screen">${header('Настройки')}
     <div class="settings-group"><p class="settings-title">Хранилище</p>
       <div class="setting" id="settingsFolders"><div class="setting-icon">${icon('folder')}</div><div class="setting-main"><div class="setting-name">Выбранные папки</div><div class="setting-desc">${folderCount} ${plural(folderCount,'папка','папки','папок')}</div></div><div class="chevron">${icon('chevron')}</div></div>
-      <div class="setting" id="addFolder"><div class="setting-icon">${icon('folderPlus')}</div><div class="setting-main"><div class="setting-name">Добавить папку</div><div class="setting-desc">Папки с аудиокнигами</div></div><div class="chevron">${icon('chevron')}</div></div>
+      <div class="setting" id="addFolder"><div class="setting-icon">${icon('folderPlus')}</div><div class="setting-main"><div class="setting-name">Добавить папку</div><div class="setting-desc">Папки с книгами и музыкой</div></div><div class="chevron">${icon('chevron')}</div></div>
     </div>
     <div class="settings-group"><p class="settings-title">Сканирование</p>
       <div class="setting" id="formats"><div class="setting-icon">${icon('music')}</div><div class="setting-main"><div class="setting-name">Форматы аудио</div><div class="setting-desc">MP3, M4A, M4B, AAC, OGG, OPUS, FLAC, WAV, WMA</div></div></div>
@@ -92,7 +48,7 @@ function openPrivacy(){
   openModal(`<h3>Политика конфиденциальности</h3>
     <div style="color:var(--muted);font-size:13px;line-height:1.5;max-height:55vh;overflow:auto">
       <p><b>AudioShelf не собирает, не передаёт и не продаёт никаких данных.</b></p>
-      <p>Библиотека, позиции прослушивания, закладки, плейлисты и настройки хранятся только на вашем устройстве.</p>
+      <p>Библиотека, позиции прослушивания, закладки и настройки хранятся только на вашем устройстве.</p>
       <p>Приложение не использует аккаунты, рекламу, аналитику и сетевые запросы. Файлы выбранных вами папок читаются только для воспроизведения и сканирования, они не изменяются и не копируются.</p>
       <p>Уведомление и фоновая служба нужны только для воспроизведения и сканирования. Уведомления о звонках и других приложениях приложение не читает.</p>
       <p>Удаление приложения удаляет все его данные.</p>

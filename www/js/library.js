@@ -1,11 +1,10 @@
 /* library.js — Library screen, Filtering, Sorting, Book management */
-import { state, icon, escapeHtml, durationOfBook, plural, $, main } from './state.js';
-import { saveBooks, savePlaylists } from './storage.js';
-import { showToast, closeModal, openModal, iconBtn, bookCover, fmt } from './ui-utils.js';
+import { state, icon, escapeHtml, durationOfBook, plural, isMusic, partsCount, $, main } from './state.js';
+import { saveBooks } from './storage.js';
+import { showToast, closeModal, openModal, iconBtn, bookCover, kindBadge, fmt } from './ui-utils.js';
 import { header } from './header.js';
 import { progress } from './progress.js';
 import { render, act } from './router.js';
-import { openPlaylistChooser } from './ui.js';
 import { openFolderSheet, scanDock } from './scanner.js';
 import { hydrateLibraryCovers } from './meta.js';
 
@@ -20,12 +19,16 @@ function visibleBooks(){
 
 function shelfSubtitle(){
   const totalBooks = state.books.length;
+  const music = state.books.filter(isMusic).length, books = totalBooks - music;
   let totalProg = 0;
   if(totalBooks > 0){
     // computed fresh every time: a cached value went stale as soon as progress or durations changed
     totalProg = Math.round(state.books.reduce((acc, b) => acc + progress(b), 0) / totalBooks);
   }
-  return `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${totalBooks} ${plural(totalBooks,'книга','книги','книг')} &middot; Общий прогресс: ${totalProg}%</span>`;
+  const parts = [];
+  if(books || !music) parts.push(`${books} ${plural(books,'книга','книги','книг')}`);
+  if(music) parts.push(`${music} ${plural(music,'альбом','альбома','альбомов')}`);
+  return `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${parts.join(' &middot; ')} &middot; Общий прогресс: ${totalProg}%</span>`;
 }
 
 function loadMoreHtml(total, shownCount){
@@ -46,18 +49,18 @@ export function renderShelf(){
   const viewToggleLabel = viewMode === 'grid' ? 'Список' : 'Плитка';
 
   let html = `<section class="screen shelf-screen library-screen">`;
-  html += header('Библиотека', shelfSubtitle(), `${iconBtn('filter','Фильтр','openLibraryFilter')}${iconBtn('sort','Сортировка','openSort')}${iconBtn(viewToggleIcon,viewToggleLabel,'toggleShelfView')}${iconBtn('folderPlus','Добавить книги','openAddSheet')}`);
+  html += header('Библиотека', shelfSubtitle(), `${iconBtn('filter','Фильтр','openLibraryFilter')}${iconBtn('sort','Сортировка','openSort')}${iconBtn(viewToggleIcon,viewToggleLabel,'toggleShelfView')}${iconBtn('folderPlus','Добавить в библиотеку','openAddSheet')}`);
   if(state.query){
     html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:var(--muted)"><span>Результаты поиска: «<b>${escapeHtml(state.query)}</b>»</span><button id="clearSearch" style="background:none;border:none;color:var(--gold2);cursor:pointer">Сбросить</button></div>`;
   }
   html += `<div class="library-filters-bar">` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='all'?'active':''}" data-filter="all">Все (${state.books.length})</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='book'?'active':''}" data-filter="book">Книги</button>` +
-    `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">Альбомы</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">Музыка</button>` +
   `</div>`;
   html += `<div class="${viewMode === 'grid' ? 'shelf-grid' : 'shelf-list'}">`;
   if(!all.length){
-    html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Библиотека пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или отдельные файлы.</div><button id="emptyAdd">Добавить книги</button></div></div>`;
+    html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Библиотека пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или музыкой.</div><button id="emptyAdd">Добавить в библиотеку</button></div></div>`;
   } else {
     html += shown.map(libraryBookRow).join('');
   }
@@ -100,7 +103,7 @@ function bindShelfList(){
 
 /** What a row looks like — if this string is unchanged, the row's DOM is left alone */
 function rowSig(b){
-  return [b.title, b.author, b.files?.length || 0, durationOfBook(b), b.cover ? b.cover.length : 0, Math.round(progress(b) * 10), b.finished ? 1 : 0].join('|');
+  return [b.title, b.author, b.files?.length || 0, durationOfBook(b), b.cover ? b.cover.length : 0, Math.round(progress(b) * 10), b.finished ? 1 : 0, isMusic(b) ? 1 : 0].join('|');
 }
 
 function rowEl(b, sig){
@@ -149,17 +152,14 @@ function libraryBookRow(b, sig = rowSig(b)){
   const prog = progress(b);
   const fileCount = b.files?.length ?? 0;
   const totalDuration = durationOfBook(b);
-  const isAlbum = b?.type === 'album' || b?.type === 'music' || b?.mode === 'album';
-  const badgeText = isAlbum ? 'Альбом' : 'Книга';
-  const badgeIcon = isAlbum ? icon('music', 'badge-icon') : icon('book', 'badge-icon');
 
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}" data-sig="${escapeHtml(sig)}">
     <div class="lib-row-main">
-      <div class="lib-thumb">${bookCover(b)}<span class="item-badge ${isAlbum ? 'badge-album' : 'badge-book'}">${badgeIcon} ${badgeText}</span></div>
+      <div class="lib-thumb">${bookCover(b)}${kindBadge(b)}</div>
       <div class="lib-info">
         <div class="lib-title">${escapeHtml(b.title)}</div>
         <div class="lib-author">${escapeHtml(b.author||'Автор не указан')}</div>
-        <div class="lib-meta">${fileCount} ${plural(fileCount,'глава','главы','глав')} &middot; ${totalDuration > 0 ? fmt(totalDuration) : '—'}${b.finished ? ' &middot; <span class="lib-done">прослушано</span>' : ''}</div>
+        <div class="lib-meta">${fileCount} ${partsCount(b, fileCount)} &middot; ${totalDuration > 0 ? fmt(totalDuration) : '—'}${b.finished ? ' &middot; <span class="lib-done">прослушано</span>' : ''}</div>
       </div>
     </div>
     <div class="lib-progress-line"><i style="width:${prog}%"></i></div>
@@ -170,9 +170,9 @@ function filterBooks(books){
   const q = state.query.trim().toLowerCase();
   let filtered = books;
   if(state.libraryFilterType === 'book'){
-    filtered = filtered.filter(b => !(b.type === 'album' || b.type === 'music' || b.mode === 'album'));
+    filtered = filtered.filter(b => !isMusic(b));
   } else if(state.libraryFilterType === 'album'){
-    filtered = filtered.filter(b => b.type === 'album' || b.type === 'music' || b.mode === 'album');
+    filtered = filtered.filter(isMusic);
   }
   if(!q) return filtered;
   return filtered.filter(b => (b.title||'').toLowerCase().includes(q) || (b.author||'').toLowerCase().includes(q));
@@ -212,16 +212,15 @@ export function openSort(){
 export function openBookMenu(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
-  openModal(`<h3>${escapeHtml(b.title)}</h3><div class="modal-row" id="menuRename"><span>✏ Переименовать</span></div><div class="modal-row" id="menuPlaylist"><span>+ Добавить в плейлист</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 Удалить из библиотеки</span></div><div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);
+  openModal(`<h3>${escapeHtml(b.title)}</h3><div class="modal-row" id="menuRename"><span>✏ Переименовать</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 Удалить из библиотеки</span></div><div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);
   $('menuRename').onclick = () => { closeModal(); renameBook(b.id); };
-  $('menuPlaylist').onclick = () => { closeModal(); openPlaylistChooser(b.id); };
   $('menuDelete').onclick = () => { closeModal(); deleteBook(b.id); };
 }
 
 function renameBook(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
-  openModal(`<h3>Переименовать книгу</h3><input class="field" id="renameInput" value="${escapeHtml(b.title)}"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="renameSave">Сохранить</button></div>`);
+  openModal(`<h3>Переименовать</h3><input class="field" id="renameInput" value="${escapeHtml(b.title)}"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="renameSave">Сохранить</button></div>`);
   $('renameSave').onclick = async () => {
     const v = $('renameInput').value.trim();
     if(!v) return showToast('Введите название');
@@ -229,22 +228,21 @@ function renameBook(id){
     await saveBooks();
     closeModal();
     render();
-    showToast('Книга переименована');
+    showToast('Переименовано');
   };
 }
 
 function deleteBook(id){
-  openModal(`<h3>Удалить книгу?</h3><p style="color:var(--muted);font-size:13px">Книга будет удалена из библиотеки. Файлы на устройствах не удаляются.</p><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="bookDeleteConfirm" style="background:var(--danger);color:#fff">Удалить</button></div>`);
+  openModal(`<h3>Удалить из библиотеки?</h3><p style="color:var(--muted);font-size:13px">Запись будет удалена из библиотеки. Файлы на устройствах не удаляются.</p><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="bookDeleteConfirm" style="background:var(--danger);color:#fff">Удалить</button></div>`);
   $('bookDeleteConfirm').onclick = async () => {
     // the deleted book must not keep playing: stops <audio>, the native service queue and its notification
     if(state.current?.id === id) act('unloadCurrent');
     state.books = state.books.filter(x => x.id !== id);
-    state.playlists.forEach(p => p.bookIds = (p.bookIds || []).filter(bid => bid !== id));
     // deleting from the player menu: there is no player any more — go to the library (and highlight the right tab)
     if(state.screen === 'player') state.screen = 'shelf';
-    await Promise.all([saveBooks(), savePlaylists()]);
+    await saveBooks();
     closeModal();
     render();
-    showToast('Книга удалена');
+    showToast('Удалено из библиотеки');
   };
 }

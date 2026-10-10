@@ -44,6 +44,28 @@ public class AudioFxTest {
     fx.configure(RATE, 2);
   }
 
+  @Test public void volumeAboveOneIsARealBoostButNeverOverflows() {
+    AudioFx fx = AudioFx.shared;
+    // quiet material: 300 % really is louder (about x3)
+    fx.set(new float[DspConfig.BANDS.length], 0f, 3f);
+    fx.configure(RATE, 2);
+    float[] quiet = sine(440, 0.1, 9600);
+    fx.process(quiet, 9600);
+    assertTrue("quiet signal is boosted ~x3: " + peak(quiet), peak(quiet) > 0.27f && peak(quiet) < 0.33f);
+    // loud material: whatever the boost, the output stays under the ceiling
+    fx.configure(RATE, 2);
+    float[] loud = sine(220, 0.95, 48000);
+    fx.process(loud, 48000);
+    assertTrue("limited: " + peak(loud), peak(loud) <= (float) DspConfig.CEILING + 1e-6f);
+    // the request is clamped at 300 %
+    fx.set(new float[DspConfig.BANDS.length], 0f, 50f);
+    fx.configure(RATE, 2);
+    float[] q2 = sine(440, 0.1, 9600);
+    fx.process(q2, 9600);
+    assertTrue("clamped at x3: " + peak(q2), peak(q2) < 0.33f);
+    fx.set(new float[DspConfig.BANDS.length], 0f, 1f);     // leave the shared instance neutral for the other tests
+  }
+
   @Test public void reportsThePeakBoostOfTheCurve() {
     AudioFx fx = AudioFx.shared;
     fx.set(new float[]{6, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 0f, 1f);

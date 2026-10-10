@@ -1,5 +1,5 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
-import { state, icon, escapeHtml, $, isNative, main, seekStep } from './state.js';
+import { state, icon, escapeHtml, $, isNative, main, seekStep, isMusic, partName } from './state.js';
 import { loadCover, saveSettings, savePrefsSoon, flushPrefs, writeLastPlayback, getSavedPosition, resumePosition, saveProgressRecord, saveBooks, saveBooksSoon, clearLastPlayback } from './storage.js';
 import { dbGet } from './db.js';
 import { showToast, closeModal, openModal, bookCover, fmt } from './ui-utils.js';
@@ -8,7 +8,7 @@ import { updateHeaderNowPlaying } from './header.js';
 import { progress, bookTotal, bookElapsed } from './progress.js';
 import { audio, NATIVE, ensureAudioGraph, applyCurrentFileSound, openCurrentSound, ensureAudible } from './sound.js';
 import { openBookMenu } from './library.js';
-import { closeVisualizer } from './visualizer.js';
+import { closeVisualizer, syncPictureDots } from './visualizer.js';
 import { hydrateBookMeta } from './meta.js';
 import { bindNativeEvents, stopNativePlayer } from './native-bridge.js';
 
@@ -111,6 +111,21 @@ export async function openPlayer(id){
   ensureAudible();
 }
 
+/** "Слушать дальше" from the «Для вас» screen: open the book and start playing it */
+export async function playBook(id){
+  await openPlayer(id);
+  if(state.current?.id === id && !state.playing) await togglePlay(true);
+}
+
+/** A bookmark: open the book at an exact track/chapter and time, and play */
+export async function openPlayerAt(id, index, sec){
+  await openPlayer(id);
+  const b = state.current;
+  if(!b || b.id !== id || !b.files?.[index]) return;
+  state.resumeRewind = false;
+  await loadChapter(index, Number(sec) || 0, true);
+}
+
 export function renderPlayer(){
   const b = state.current;
   if(!b) return;
@@ -140,21 +155,22 @@ export function renderPlayer(){
         </div>
       </div>
       <div class="player-cover" id="playerCover">${bookCover(b)}</div>
+      <div class="pic-dots" aria-hidden="true"></div>
       <div class="player-title">${escapeHtml(b.title)}</div>
       <div class="player-author">${escapeHtml(b.author||'Автор не указан')}</div>
-      <div class="chapter">${b.mode === 'album' ? 'Трек' : 'Глава'} ${i+1} из ${b.files.length} · ${escapeHtml(f.name)}</div>
-      <div class="seek"><input id="seekCh" type="range" min="0" max="1000" value="0" aria-label="Позиция в главе"></div>
-      <div class="time-row"><span id="chCur">0:00</span><span class="time-label" id="chLabel">${b.mode === 'album' ? 'Трек' : 'Глава'}</span><span id="chDur">${fmt(Number(f.duration) || 0)}</span></div>
-      <div class="book-progress" id="bookProgress"${b.mode === 'album' ? ' hidden' : ''}>
+      <div class="chapter">${partName(b)} ${i+1} из ${b.files.length} · ${escapeHtml(f.name)}</div>
+      <div class="seek"><input id="seekCh" type="range" min="0" max="1000" value="0" aria-label="Позиция в ${isMusic(b) ? 'треке' : 'главе'}"></div>
+      <div class="time-row"><span id="chCur">0:00</span><span class="time-label" id="chLabel">${partName(b)}</span><span id="chDur">${fmt(Number(f.duration) || 0)}</span></div>
+      <div class="book-progress" id="bookProgress"${isMusic(b) ? ' hidden' : ''}>
         <div class="seek"><input id="seek" type="range" min="0" max="1000" value="${Math.round(pct*10)}" aria-label="Позиция в книге"></div>
         <div class="time-row"><span id="curTime">${fmt(elapsed)}</span><span class="time-label">Вся книга</span><span id="durTime">${fmt(totalDur)}</span></div>
       </div>
       <div class="controls">
-        <button type="button" class="control" id="prevBtn" aria-label="Предыдущая глава">${icon('prev')}</button>
+        <button type="button" class="control" id="prevBtn" aria-label="${isMusic(b) ? 'Предыдущий трек' : 'Предыдущая глава'}">${icon('prev')}</button>
         <button type="button" class="control" id="backBtn" aria-label="Назад ${seekStep()} секунд">${icon('rewind')}<small class="ctl-val" id="backVal">−${seekStep()}</small></button>
         <button type="button" class="play-main" id="playBtn" aria-label="Воспроизведение">${icon(state.playing?'pause':'play')}</button>
         <button type="button" class="control" id="forwardBtn" aria-label="Вперёд ${seekStep()} секунд">${icon('forward')}<small class="ctl-val" id="fwdVal">+${seekStep()}</small></button>
-        <button type="button" class="control" id="nextBtn" aria-label="Следующая глава">${icon('next')}</button>
+        <button type="button" class="control" id="nextBtn" aria-label="${isMusic(b) ? 'Следующий трек' : 'Следующая глава'}">${icon('next')}</button>
       </div>
       <div class="player-tools">
         <button type="button" class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>Скорость</button>
@@ -163,12 +179,12 @@ export function renderPlayer(){
         <button type="button" class="tool" id="soundBtn"><strong>♫</strong>Звук</button>
         <button type="button" class="tool" id="modeBtn" aria-label="Режим воспроизведения"><strong id="modeIcon">${b.mode === 'album' ? '♪' : '▤'}</strong><span id="modeLabel">${b.mode === 'album' ? 'Альбом' : 'Книга'}</span></button>
       </div>
-      <div class="swipe-hint">← визуализатор · список глав →</div>
+      <div class="swipe-hint">Свайп по обложке — визуализатор · по экрану — разделы</div>
     </div>
     <div class="side-panel queue-panel hidden" id="queuePanel" aria-hidden="true">
       <div class="side-panel-head">
         <button type="button" class="icon-btn" id="queueClose" aria-label="Закрыть">${icon('close')}</button>
-        <strong>Главы</strong>
+        <strong id="queueTitle">${isMusic(b) ? 'Треки' : 'Главы'}</strong>
       </div>
       <div class="side-panel-body chapter-list" id="chapterList">${chapterRows(b)}</div>
     </div>
@@ -176,9 +192,9 @@ export function renderPlayer(){
       <canvas id="visualizerCanvas"></canvas>
       <div class="visualizer-head">
         <button type="button" class="icon-btn visualizer-x" id="visualizerClose" aria-label="Закрыть">${icon('close')}</button>
-        <div><strong>Визуализатор</strong><span>${escapeHtml(f.name)}</span></div>
+        <div><strong id="visualizerName">Визуализатор</strong><span>${escapeHtml(f.name)}</span></div>
       </div>
-      <div class="visualizer-center"><span>${icon('music')}</span><b>AudioShelf</b></div>
+      <div class="pic-dots pic-dots-viz" aria-hidden="true"></div>
     </div>
   </section>`;
 
@@ -229,6 +245,7 @@ export function renderPlayer(){
   on('playerMore', () => openBookMenu(b.id));
   on('visualizerClose', closeVisualizer);
   bindChapterRows();
+  syncPictureDots();
   updatePlayerUI();
   updateSleepLabel();
   if(state.sleepEndsAt > Date.now()) startSleepTicker();
@@ -256,7 +273,7 @@ function bindChapterRows(){
 function chapterRows(b){
   let out = '';
   (b.marks || []).forEach((m,k)=>{
-    out += `<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||'Глава')} · ${fmt(m.t)}</span><button type="button" class="mark-del" data-mark-del="${k}" aria-label="Удалить закладку">✕</button></div>`;
+    out += `<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||partName(b))} · ${fmt(m.t)}</span><button type="button" class="mark-del" data-mark-del="${k}" aria-label="Удалить закладку">✕</button></div>`;
   });
   b.files.forEach((f,i)=>{
     out += `<div class="chapter-row ${i===state.currentIndex?'current':''}" data-chapter="${i}"><span>${i+1}. ${escapeHtml(f.name)}</span><span>${i===state.currentIndex?(state.playing?'▶':'Ⅱ'):fmt(f.duration)}</span></div>`;
@@ -617,7 +634,7 @@ function updatePlayerUI(){
     const dt = $('durTime');
     if(dt) dt.textContent = fmt(total);
     // current chapter / track
-    const album = b.mode === 'album';
+    const album = isMusic(b);
     const chLen = chapterLength();
     const chPos = Math.max(0, Math.min(chLen || Infinity, Number(state.currentPos) || 0));
     if(!chDragging){
@@ -631,11 +648,16 @@ function updatePlayerUI(){
     const bp = $('bookProgress');                  // album: only the current track, no whole-book bar
     if(bp) bp.hidden = album;
     const cl = $('chLabel');
-    if(cl) cl.textContent = album ? 'Трек' : 'Глава';
+    if(cl) cl.textContent = partName(b);
     const pb = $('playBtn');
     if(pb) pb.innerHTML = icon(state.playing ? 'pause' : 'play');
     const ch = document.querySelector('.chapter');
-    if(ch) ch.textContent = `${album ? 'Трек' : 'Глава'} ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;
+    if(ch) ch.textContent = `${partName(b)} ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;
+    const qt = $('queueTitle');
+    if(qt) qt.textContent = album ? 'Треки' : 'Главы';
+    const pv = $('prevBtn'), nx = $('nextBtn');
+    if(pv) pv.setAttribute('aria-label', album ? 'Предыдущий трек' : 'Предыдущая глава');
+    if(nx) nx.setAttribute('aria-label', album ? 'Следующий трек' : 'Следующая глава');
     document.querySelectorAll('[data-chapter]').forEach(el => {
       el.classList.toggle('current', +el.dataset.chapter === state.currentIndex);
     });

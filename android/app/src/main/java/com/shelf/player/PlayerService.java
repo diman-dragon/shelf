@@ -115,20 +115,74 @@ public class PlayerService extends MediaSessionService {
   private boolean pausedByUs;                      // we paused because of a call (ExoPlayer does not resume by itself then)
   private CallModeWatcher callWatcher;
 
+  private long interruptionSince;                  // SystemClock.elapsedRealtime() when the current interruption began
+
   private void interruptionBegin() {
     ExoPlayer p = player;
     if (p == null) return;
+    boolean was = interruption.isActive();
     interruption.begin(p.getPlayWhenReady(), p.getCurrentMediaItemIndex(), p.getCurrentPosition());
+    if (!was && interruption.isActive()) {
+      interruptionSince = SystemClock.elapsedRealtime();
+      // 1) written to disk: the system may kill the process during a 15-30 minute call, flags in RAM would be lost with it
+      String id = currentBookId();
+      if (id != null) QueueStore.saveInterruption(this, id, interruption.index(), interruption.posMs());
+      // 2) keep the service a FOREGROUND one while it is paused by the call (see onUpdateNotification)
+      keepForegroundNow();
+    }
+  }
+
+  private void interruptionOver() {
+    QueueStore.clearInterruption(this);
+    interruptionSince = 0;
+  }
+
+  /** "book id" part of the current media id ("<bookId>:<index>"), or null */
+  private String currentBookId() {
+    ExoPlayer p = player;
+    MediaItem it = p == null ? null : p.getCurrentMediaItem();
+    if (it == null || it.mediaId == null) return null;
+    int colon = it.mediaId.lastIndexOf(':');
+    return colon > 0 ? it.mediaId.substring(0, colon) : null;
+  }
+
+  /**
+   * A call / notification sound paused the player: the service must stay in the FOREGROUND. Media3 drops the foreground
+   * status as soon as playback is paused, the process then counts as an ordinary background one, and during a long call
+   * (Doze, low-memory killer) the system destroys it — the shade was left with a dead "Play" button.
+   * Held only while the interruption is active, and for at most INTERRUPTION_HOLD_MS (a stuck interruption must not pin the service forever).
+   */
+  private static final long INTERRUPTION_HOLD_MS = 3L * 60 * 60 * 1000;
+
+  private boolean holdForeground() {
+    if (!(pausedByUs || interruption.isActive())) return false;
+    return interruptionSince != 0 && SystemClock.elapsedRealtime() - interruptionSince < INTERRUPTION_HOLD_MS;
+  }
+
+  /** Same call Media3 makes itself, but with "stay in foreground" forced on; the system refusing it is not an error here. */
+  private void keepForegroundNow() {
+    final MediaSession s = session;
+    if (s == null) return;
+    MAIN.post(new Runnable() {
+      @Override public void run() {
+        try { if (holdForeground()) onUpdateNotification(s, true); } catch (Exception ignored) { }
+      }
+    });
+  }
+
+  @Override public void onUpdateNotification(MediaSession s, boolean startInForegroundRequired) {
+    super.onUpdateNotification(s, startInForegroundRequired || holdForeground());
   }
 
   private void interruptionMaybeEnd() {
     ExoPlayer p = player;
-    if (p == null) { interruption.cancel(); return; }
+    if (p == null) { interruption.cancel(); interruptionOver(); return; }
     if (!interruption.shouldResume()) return;
     int idx = interruption.index();
     if (p.getCurrentMediaItemIndex() == idx) {     // still on the same chapter (the person did not navigate meanwhile)
       p.seekTo(idx, Interruption.rewindPosition(interruption.posMs()));   // 5 s back, but never before the chapter start
     }
+    interruptionOver();
     if (pausedByUs) {
       pausedByUs = false;
       if (!p.getPlayWhenReady()) p.play();
@@ -270,7 +324,7 @@ public class PlayerService extends MediaSessionService {
     MAIN.removeCallbacks(ALBUM_TICK);
     MAIN.removeCallbacks(ALBUM_RESUME);
     gapPending = false;
-    interruption.cancel(); pausedByUs = false; recovery.reset();
+    interruption.cancel(); pausedByUs = false; interruptionOver(); recovery.reset();
     sleepEndsAt = 0;
     sleepVol = 1f; albumVol = 1f;
     ExoPlayer p = player;
@@ -387,7 +441,7 @@ public class PlayerService extends MediaSessionService {
       @Override public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
         ExoPlayer p = player;
         // the person pressed play themselves (app, notification, headset): they decide, no automatic step back / resume
-        if (playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) { interruption.cancel(); pausedByUs = false; }
+        if (playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) { interruption.cancel(); pausedByUs = false; interruptionOver(); }
         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
           if (albumMode && !playWhenReady && p != null && !gapPending
               && p.getPlaybackState() != Player.STATE_ENDED
@@ -453,6 +507,7 @@ public class PlayerService extends MediaSessionService {
       public ListenableFuture<MediaSession.MediaItemsWithStartPosition> onPlaybackResumption(MediaSession s, MediaSession.ControllerInfo c) {
         QueueStore.Restored r = QueueStore.load(PlayerService.this);
         if (r == null) return Futures.immediateFailedFuture(new UnsupportedOperationException("nothing to resume"));
+        QueueStore.clearInterruption(PlayerService.this);     // consumed: the position above already includes the 5 s step back
         ExoPlayer p = player;
         albumMode = r.album;
         if (p != null) { p.setPlaybackSpeed(r.speed); p.setPauseAtEndOfMediaItems(r.album); }
@@ -497,6 +552,8 @@ public class PlayerService extends MediaSessionService {
     persistPosition();
     if (callWatcher != null) { callWatcher.stop(); callWatcher = null; }
     interruption.cancel();
+    // NOT cleared here on purpose: if the service is destroyed by the system in the middle of a call, the saved
+    // interruption is exactly what "Play" in the shade needs afterwards (onPlaybackResumption)
     live = null;
     if (session != null) {
       session.getPlayer().release();

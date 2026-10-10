@@ -8,6 +8,8 @@ package com.shelf.player;
  */
 final class Interruption {
   static final long REWIND_MS = 5000;
+  /** A saved interruption older than this is stale (the person came back much later): nothing is stepped back any more. */
+  static final long MAX_AGE_MS = 6L * 60 * 60 * 1000;
 
   private boolean active, focusLost, callMode;
   private int index;
@@ -19,6 +21,11 @@ final class Interruption {
     active = true;
     index = mediaItemIndex;
     posMs = positionMs;
+  }
+
+  /** True while a saved interruption (written at {@code savedAtMs}) is still worth honouring at {@code nowMs}. */
+  static boolean fresh(long savedAtMs, long nowMs) {
+    return savedAtMs > 0 && nowMs >= savedAtMs && nowMs - savedAtMs <= MAX_AGE_MS;
   }
 
   void setFocusLost(boolean v) { focusLost = v; }

@@ -1,5 +1,5 @@
 /* ui-utils.js — UI Utilities: Time formatting, DOM element templates, Toasts, Modals */
-import { icon, escapeHtml, modalRoot } from './state.js';
+import { icon, escapeHtml, modalRoot, isMusic } from './state.js';
 
 let toastTimer;
 
@@ -108,8 +108,7 @@ function albumPlaceholder(hidden=false){
 
 /** Nicely styled SVG placeholder (used when there is no cover file or it failed to load) */
 function coverPlaceholder(b, hidden=false){
-  const isAlbum = b?.type === 'album' || b?.type === 'music' || b?.mode === 'album';
-  return isAlbum ? albumPlaceholder(hidden) : bookPlaceholder(hidden);
+  return isMusic(b) ? albumPlaceholder(hidden) : bookPlaceholder(hidden);
 }
 
 export function bookCover(b, extra=''){
@@ -119,6 +118,12 @@ export function bookCover(b, extra=''){
       coverPlaceholder(b, true)
     : coverPlaceholder(b, false);
   return `<div class="cover-frame">${body}</div>`;
+}
+
+/** A tiny corner mark on a cover: a book or a vinyl record. Icon only — no words on covers. */
+export function kindBadge(b){
+  const music = isMusic(b);
+  return `<span class="kind-badge ${music ? 'kind-music' : 'kind-book'}" aria-label="${music ? 'Музыка' : 'Книга'}">${icon(music ? 'vinyl' : 'book', 'icon kind-ico')}</span>`;
 }
 
 // <img> "error" events do not bubble, but they can be caught in the capture phase: broken cover -> show the placeholder

@@ -38,6 +38,20 @@ ok(rafQ.length===0 && viz.at(-1)===false,'paused + settled: loop asleep, native 
 // play -> wakes
 state.playing=true; viz.length=0; sound.audio.dispatchEvent(new w.Event('play')); await new Promise(r=>setTimeout(r,20)); runFrames(2);
 ok(viz.at(-1)===true && rafQ.length===1,'play wakes it up again');
+// every visual draws without errors (a throw inside a frame would crash runFrames); the picture loop is cover -> ring -> bars -> wave -> cover
+{
+  w.document.body.insertAdjacentHTML('beforeend','<span id="visualizerName"></span>');
+  const nm = () => w.document.getElementById('visualizerName').textContent;
+  const names = ['Кольцо'];                             // the visual that was opened first (ring is the default)
+  for(let k = 1; k < V.VISUALS.length; k++){ V.stepPicture(1); runFrames(8); names.push(nm()); }
+  ok(V.picturePosition() === V.VISUALS.length, 'stepped to the last visual');
+  ok(names.every(Boolean) && new Set(names).size === names.length, 'each step shows a different visual: ' + names.join(', '));
+  V.stepPicture(1);
+  ok(V.picturePosition() === 0, 'after the last visual the cover is shown again (loop)');
+  ok(w.document.getElementById('visualizer').classList.contains('hidden'), 'overlay hidden on the cover');
+  V.openVisualizer(); await new Promise(r=>setTimeout(r,20)); runFrames(2);
+  state.playing = true;
+}
 // leaving the screen (canvas removed) -> stops by itself
 w.document.getElementById('visualizerCanvas').remove(); viz.length=0; runFrames(3);
 ok(rafQ.length===0 && viz.at(-1)===false,'canvas gone (other screen): loop and native FFT stopped');

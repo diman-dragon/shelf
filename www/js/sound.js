@@ -5,7 +5,7 @@
  *     audio pipeline (AudioFx.java), so playback does not depend on the WebView or on the screen being on.
  *   - WEB (browser / fallback): <audio> + Web Audio graph, with headroom compensation and a limiter.
  */
-import { state, icon, escapeHtml, $, isNative, plugin } from './state.js';
+import { state, icon, escapeHtml, $, isNative, plugin, isMusic } from './state.js';
 import { savePrefsSoon, loadCover } from './storage.js';
 import { closeModal } from './ui-utils.js';
 import CONFIG from '../config.js';
@@ -22,6 +22,9 @@ let lastFxSig = '', lastFxInfo = null, lastSkip = null;
 const DSP = CONFIG.dsp;
 const EQ_BANDS = DSP.bands;
 const SPECTRUM_BINS = 128;
+/** Book volume goes from 0 to 300 %. Above 100 % it is a real gain boost: the limiter (native AudioFx / web limiter + soft clipper) keeps the output below full scale. */
+export const MAX_VOLUME = 3;
+const clampVol = v => Math.max(0, Math.min(MAX_VOLUME, Number.isFinite(Number(v)) ? Number(v) : 1));
 
 const SOUND_PRESETS = {
   flat:{name:'Плоский',gain:0,eq:[0,0,0,0,0,0,0,0,0,0]},
@@ -40,6 +43,8 @@ function ensureBookSound(b){
   if(!b.sound || typeof b.sound !== 'object') b.sound = {};
   const s = b.sound, d = {preset:'flat', volume:1, gain:0, skipSilence:false};
   for(const k in d) if(s[k] === undefined) s[k] = d[k];
+  s.volume = clampVol(s.volume);
+  delete s.boost;                                 // the separate "booster" is gone: volume itself goes up to 300 %
   if(!Array.isArray(s.eq) || s.eq.length !== EQ_BANDS.length) s.eq = EQ_BANDS.map(() => 0);
   return s;
 }
@@ -236,7 +241,7 @@ class NativeAudio extends EventTarget {
  *  Shared helpers (same constants as AudioFx.java)
  * ===================================================================================== */
 const Q_PEAK = DSP.qPeak, HEADROOM = DSP.headroom;
-const isFlat = s => !s.eq.some(v => Number(v)) && !Number(s.gain) && Number(s.volume ?? 1) === 1;
+const isFlat = s => !s.eq.some(v => Number(v)) && !Number(s.gain);   // volume is applied by the gain stage in either route
 
 /**
  * Worst-case boost (dB) of the EQ cascade — used to lower the pre-gain so boosts never reach 0 dBFS.
@@ -291,22 +296,10 @@ let audioContext = null;
 let audioSource = null;
 let analyser = null;
 let gainNode = null;
-let preampGain = null;
 let limiter = null;
+let clipper = null;
 let eqFilters = [];
 let webFlat = null;
-
-export function setBoostLevel(val){
-  val = Math.max(1, Math.min(3, Number(val) || 1));
-  localStorage.setItem('boostLevel', val);
-  if(preampGain && audioContext){
-    preampGain.gain.setValueAtTime(val, audioContext.currentTime);
-  }
-}
-
-export function getBoostLevel(){
-  return Number(localStorage.getItem('boostLevel')) || 1;
-}
 
 export async function ensureAudioGraph(){
   if(NATIVE) return;                                   // the native engine has its own pipeline
@@ -316,9 +309,6 @@ export async function ensureAudioGraph(){
     // 'playback' = bigger buffers → no crackling/dropouts when the main thread is busy or throttled
     try { audioContext = new AC({latencyHint: 'playback'}); } catch { audioContext = new AC(); }
     audioSource = audioContext.createMediaElementSource(audio);
-    preampGain = audioContext.createGain();
-    preampGain.gain.value = getBoostLevel();
-
     gainNode = audioContext.createGain();
     eqFilters = EQ_BANDS.map((hz)=>{
       const f = audioContext.createBiquadFilter();
@@ -332,21 +322,25 @@ export async function ensureAudioGraph(){
     limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.1;
+    // soft clipper AFTER the limiter: whatever the compressor lets through (it is not a true brick wall) is rounded off
+    // instead of being cut flat by the output, so even +9.5 dB of boost cannot overflow
+    clipper = audioContext.createWaveShaper();
+    clipper.curve = softClipCurve();
+    clipper.oversample = '2x';
     audioContext.onstatechange = () => {
       if(audioContext && audioContext.state !== 'running' && !audio.paused && !audio.ended){
         audioContext.resume().catch(() => {});
       }
     };
     analyser = audioContext.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = .82;
-    // Chain: source -> preampGain -> EQ bands -> gain(headroom) -> limiter -> analyser -> destination
-    audioSource.connect(preampGain);
-    let node = preampGain;
-    node.connect(eqFilters[0]);
-    node = eqFilters[0];
+    // Chain: source -> EQ bands -> gain(headroom + volume) -> limiter -> soft clipper -> analyser -> destination
+    audioSource.connect(eqFilters[0]);
+    let node = eqFilters[0];
     eqFilters.slice(1).forEach(f => { node.connect(f); node = f; });
     node.connect(gainNode);
     gainNode.connect(limiter);
-    limiter.connect(analyser);
+    limiter.connect(clipper);
+    clipper.connect(analyser);
     analyser.connect(audioContext.destination);
     webFlat = null;
     applyCurrentFileSound();
@@ -355,31 +349,40 @@ export async function ensureAudioGraph(){
   if(audioContext.state === 'suspended') await audioContext.resume();
 }
 
+/** Identity up to 0.8, then a smooth knee that never exceeds the same ceiling as the native limiter (config.js) */
+function softClipCurve(){
+  const N = 2048, c = new Float32Array(N), K = 0.8, ceil = DSP.ceiling, span = ceil - K;
+  for(let i = 0; i < N; i++){
+    const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x);
+    const y = a <= K ? a : K + span * Math.tanh((a - K) / span);
+    c[i] = Math.sign(x) * y;
+  }
+  return c;
+}
+
 function routeWeb(flat){
   if(!audioSource || flat === webFlat) return;
   webFlat = flat;
   try { audioSource.disconnect(); } catch {}
-  audioSource.connect(preampGain);
-  // flat sound = path through preampGain and limiter to prevent clipping even without EQ
-  if(flat){
-    preampGain.connect(limiter);
-  } else {
-    preampGain.connect(eqFilters[0]);
-  }
+  // flat EQ = skip the ten filters, but keep the gain stage, the limiter and the clipper (volume above 100 % must not clip)
+  audioSource.connect(flat ? gainNode : eqFilters[0]);
 }
 
 export function applyCurrentFileSound(){
   const b = state.current;
   if(!b) return;
   const s = ensureBookSound(b);
-  const vol = Math.max(0, Math.min(1, Number(s.volume ?? 1)));
+  const vol = clampVol(s.volume);
 
   if(NATIVE){
     const fx = { eq: s.eq.map(v => Number(v) || 0), gain: Number(s.gain) || 0, volume: vol };
     const sig = JSON.stringify(fx);
     const showInfo = r => {
       const el = document.getElementById('fxInfo');
-      if(el && r) el.textContent = `Авто-запас громкости: −${(HEADROOM * Math.max(0, r.peakBoostDb || 0)).toFixed(1)} dB · лимитер включён`;
+      if(el && r){
+        const up = vol > 1 ? ` · усиление +${(20 * Math.log10(vol)).toFixed(1)} dB` : '';
+        el.textContent = `Авто-запас громкости: −${(HEADROOM * Math.max(0, r.peakBoostDb || 0)).toFixed(1)} dB${up} · лимитер включён`;
+      }
     };
     if(sig === lastFxSig){ showInfo(lastFxInfo); }          // unchanged: the native side already has exactly this
     else {
@@ -391,7 +394,7 @@ export function applyCurrentFileSound(){
   }
 
   audio.muted = false;
-  if(!gainNode){ audio.volume = vol; return; }
+  if(!gainNode){ audio.volume = Math.min(1, vol); return; }   // no graph yet: the element itself cannot go above 100 %
   audio.volume = 1;
   const now = audioContext.currentTime;
   eqFilters.forEach((filter, i) => filter.gain.setTargetAtTime(Number(s.eq[i]) || 0, now, .02));
@@ -443,19 +446,19 @@ export function openCurrentSound(){
   const s = ensureBookSound(b);
 
   const presets = Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(p.name)}</b><small>${p.eq.filter(x=>x>0).length?'объёмный':'нейтральный'}</small></button>`).join('');
-  const boostVal = getBoostLevel();
   const boostPresets = [
     {val: 1, label: '100%', desc: 'Норма'},
     {val: 1.5, label: '150%', desc: 'Тихо'},
     {val: 2, label: '200%', desc: 'Очень тихо'},
     {val: 3, label: '300%', desc: 'Максимум'}
   ];
-  const boostBtns = boostPresets.map(p => `<button class="sound-preset ${Math.abs(boostVal - p.val) < 0.05 ? 'active':''}" data-boost="${p.val}"><b>${p.label}</b><small>${p.desc}</small></button>`).join('');
+  const boostBtns = boostPresets.map(p => `<button class="sound-preset ${Math.abs(s.volume - p.val) < 0.02 ? 'active':''}" data-boost="${p.val}"><b>${p.label}</b><small>${p.desc}</small></button>`).join('');
+  const what = isMusic(b) ? 'альбома' : 'книги';
 
   const bands = EQ_BANDS.map((hz,i)=>`<div class="eq-band"><span>${eqLabel(hz)}</span><input type="range" min="-12" max="12" step="1" value="${Number(s.eq[i])||0}" data-eq="${i}" orient="vertical"><b id="eqv${i}">${(s.eq[i]>0?'+':'')}${s.eq[i]} dB</b></div>`).join('');
   const nativeRows = NATIVE ? `<div class="sound-setting"><div class="sound-head"><span>Пропуск тишины</span><input type="checkbox" id="skipSil" ${s.skipSilence?'checked':''}></div></div><div class="sound-setting"><div class="sound-head"><span>Работа с выключенным экраном</span><button class="secondary" id="batteryBtn" type="button">Настроить батарею</button></div></div>` : '';
 
-  document.getElementById('modalRoot').innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>Звук книги</h3><small>${escapeHtml(b.title)}</small></div><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="sound-label">Пресет</div><div class="preset-grid">${presets}</div><div class="sound-label">Усиление громкости (Booster)</div><div class="preset-grid" style="grid-template-columns: repeat(4, 1fr);">${boostBtns}</div><div class="sound-setting"><div class="sound-head"><span>Громкость книги</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="100" value="${Math.round(s.volume*100)}"></div>${nativeRows}<div class="eq-panel"><div class="sound-head"><span>10-полосный эквалайзер книги</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div><small id="fxInfo" style="display:block;margin-top:8px;opacity:.65"></small></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить эквалайзер</button></div></div></div>`;
+  document.getElementById('modalRoot').innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>Звук ${what}</h3><small>${escapeHtml(b.title)}</small></div><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="sound-label">Пресет</div><div class="preset-grid">${presets}</div><div class="sound-label">Усиление громкости</div><div class="preset-grid" style="grid-template-columns: repeat(4, 1fr);">${boostBtns}</div><div class="sound-setting"><div class="sound-head"><span>Громкость ${what}</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="300" step="5" value="${Math.round(s.volume*100)}"><small style="display:block;margin-top:4px;opacity:.65">Выше 100 % — усиление; лимитер не даёт звуку перегружаться.</small></div>${nativeRows}<div class="eq-panel"><div class="sound-head"><span>10-полосный эквалайзер</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div><small id="fxInfo" style="display:block;margin-top:8px;opacity:.65"></small></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить эквалайзер</button></div></div></div>`;
 
   $('soundBack').onclick = e => { if(e.target.id==='soundBack'||e.target.closest('[data-close]')) closeModal(); };
   document.querySelectorAll('[data-preset]').forEach(btn => btn.onclick = () => {
@@ -464,11 +467,8 @@ export function openCurrentSound(){
     applyCurrentFileSound(); persistSoon(); openCurrentSound();
   });
   document.querySelectorAll('[data-boost]').forEach(btn => btn.onclick = () => {
-    const val = Number(btn.dataset.boost);
-    setBoostLevel(val);
-    document.querySelectorAll('[data-boost]').forEach(x => x.classList.remove('active'));
-    btn.classList.add('active');
-    applyCurrentFileSound();
+    s.volume = clampVol(btn.dataset.boost);
+    applyCurrentFileSound(); persistSoon(); openCurrentSound();
   });
   $('fileVol').oninput = e => {
     s.preset = 'custom'; s.volume = Number(e.target.value)/100;

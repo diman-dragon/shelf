@@ -227,7 +227,7 @@ public class PlayerPlugin extends Plugin {
     final List<MediaItem> items;
     try {
       items = QueueStore.build(arr, bookId, bookTitle, author, art);
-    } catch (Exception e) { call.reject("Некорректный список глав", e); return; }
+    } catch (Exception e) { call.reject("Некорректный список", e); return; }
     // remembered natively: "play" on a paused notification must still work after the system killed the process
     QueueStore.save(getContext(), bookId, bookTitle, author, art, arr, speed);
 
@@ -273,7 +273,7 @@ public class PlayerPlugin extends Plugin {
     withController(call, new Op() { @Override public void run(MediaController c) { c.setPlaybackSpeed(speed); call.resolve(); }});
   }
 
-  /** eq[] dB (one per band), gain dB (preset trim), volume 0..1 — applied inside the native audio pipeline */
+  /** eq[] dB (one per band), gain dB (preset trim), volume 0..3 (above 1 = boost, limited by AudioFx) — applied inside the native audio pipeline */
   @PluginMethod
   public void setFx(PluginCall call) {
     JSArray a = call.getArray("eq");
