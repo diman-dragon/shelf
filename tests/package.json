@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "eslint": "^9.39.0",
-    "globals": "^16.0.0",
+    "globals": "^17.13.0",
     "jsdom": "^26.0.0"
   }
 }
