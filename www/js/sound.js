@@ -9,13 +9,14 @@ import { state, icon, escapeHtml, $, isNative, plugin, isMusic } from './state.j
 import { savePrefsSoon, loadCover } from './storage.js';
 import { closeModal } from './ui-utils.js';
 import CONFIG from '../config.js';
+import { t } from './i18n.js';
 
 const NativePlayer = isNative() ? plugin('Player') : null;
 export const NATIVE = !!NativePlayer;
 
 // What the native DSP already has: identical EQ/volume/skip-silence settings are NOT sent again. They used to be re-sent on
 // every "play" (start from the shade, return to the app, new chapter), forcing the audio thread to rebuild its filters.
-let lastFxSig = '', lastFxInfo = null, lastSkip = null;
+let lastFxSig = '', lastFxInfo = null;
 
 // DSP constants live in www/config.js. The SAME file generates DspConfig.java (android/app/build.gradle),
 // so the web graph and the native AudioFx can never drift apart. A plain static import: nothing is fetched at start-up.
@@ -41,7 +42,7 @@ function ensureBookSound(b){
   // IMPORTANT: update b.sound IN PLACE. Replacing the object (b.sound = {...}) left the handlers of the
   // sound modal holding a stale copy, so presets / reset / volume were written to an object the engine never read.
   if(!b.sound || typeof b.sound !== 'object') b.sound = {};
-  const s = b.sound, d = {preset:'flat', volume:1, gain:0, skipSilence:false};
+  const s = b.sound, d = {preset:'flat', volume:1, gain:0};
   for(const k in d) if(s[k] === undefined) s[k] = d[k];
   s.volume = clampVol(s.volume);
   delete s.boost;                                 // the separate "booster" is gone: volume itself goes up to 300 %
@@ -81,7 +82,7 @@ class NativeAudio extends EventTarget {
     P.addListener('closed', () => {
       this._pos = this.currentTime; this._ts = performance.now();   // freeze the REAL last position before anything is reset
       this.queueSig = ''; this._index = -1; this._bookId = ''; state.sleepEndsAt = 0;
-      lastFxSig = ''; lastSkip = null;               // the service is gone: whatever it had must be sent again next time
+      lastFxSig = '';               // the service is gone: whatever it had must be sent again next time
       const was = !this._paused;
       this._paused = true; this._playing = false;
       this.dispatchEvent(new Event('closed'));
@@ -188,12 +189,6 @@ class NativeAudio extends EventTarget {
   setSleep(minutes){
     this._sleepGuard = performance.now() + 1500;
     return this.P.setSleepTimer({minutes}).catch(() => {});
-  }
-  setSkipSilence(on){
-    on = !!on;
-    if(lastSkip === on) return Promise.resolve();
-    lastSkip = on;
-    return this.P.setSkipSilence({on}).catch(() => { lastSkip = null; });
   }
 
   _apply(s){
@@ -380,8 +375,8 @@ export function applyCurrentFileSound(){
     const showInfo = r => {
       const el = document.getElementById('fxInfo');
       if(el && r){
-        const up = vol > 1 ? ` · усиление +${(20 * Math.log10(vol)).toFixed(1)} dB` : '';
-        el.textContent = `Авто-запас громкости: −${(HEADROOM * Math.max(0, r.peakBoostDb || 0)).toFixed(1)} dB${up} · лимитер включён`;
+        const up = vol > 1 ? ` · ${t('усиление')} +${(20 * Math.log10(vol)).toFixed(1)} dB` : '';
+        el.textContent = `${t('Авто-запас громкости')}: −${(HEADROOM * Math.max(0, r.peakBoostDb || 0)).toFixed(1)} dB${up} · ${t('лимитер включён')}`;
       }
     };
     if(sig === lastFxSig){ showInfo(lastFxInfo); }          // unchanged: the native side already has exactly this
@@ -389,7 +384,6 @@ export function applyCurrentFileSound(){
       lastFxSig = sig;
       NativePlayer.setFx(fx).then(r => { lastFxInfo = r; showInfo(r); }).catch(() => { lastFxSig = ''; });
     }
-    audio.setSkipSilence(!!s.skipSilence);
     return;
   }
 
@@ -445,20 +439,20 @@ export function openCurrentSound(){
   if(!b) return;
   const s = ensureBookSound(b);
 
-  const presets = Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(p.name)}</b><small>${p.eq.filter(x=>x>0).length?'объёмный':'нейтральный'}</small></button>`).join('');
+  const presets = Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(t(p.name))}</b><small>${t(p.eq.filter(x=>x>0).length?'объёмный':'нейтральный')}</small></button>`).join('');
   const boostPresets = [
-    {val: 1, label: '100%', desc: 'Норма'},
-    {val: 1.5, label: '150%', desc: 'Тихо'},
-    {val: 2, label: '200%', desc: 'Очень тихо'},
-    {val: 3, label: '300%', desc: 'Максимум'}
+    {val: 1, label: '100%', desc: t('Норма')},
+    {val: 1.5, label: '150%', desc: t('Тихо')},
+    {val: 2, label: '200%', desc: t('Очень тихо')},
+    {val: 3, label: '300%', desc: t('Максимум')}
   ];
   const boostBtns = boostPresets.map(p => `<button class="sound-preset ${Math.abs(s.volume - p.val) < 0.02 ? 'active':''}" data-boost="${p.val}"><b>${p.label}</b><small>${p.desc}</small></button>`).join('');
-  const what = isMusic(b) ? 'альбома' : 'книги';
+  const music = isMusic(b);
 
   const bands = EQ_BANDS.map((hz,i)=>`<div class="eq-band"><span>${eqLabel(hz)}</span><input type="range" min="-12" max="12" step="1" value="${Number(s.eq[i])||0}" data-eq="${i}" orient="vertical"><b id="eqv${i}">${(s.eq[i]>0?'+':'')}${s.eq[i]} dB</b></div>`).join('');
-  const nativeRows = NATIVE ? `<div class="sound-setting"><div class="sound-head"><span>Пропуск тишины</span><input type="checkbox" id="skipSil" ${s.skipSilence?'checked':''}></div></div><div class="sound-setting"><div class="sound-head"><span>Работа с выключенным экраном</span><button class="secondary" id="batteryBtn" type="button">Настроить батарею</button></div></div>` : '';
+  const nativeRows = NATIVE ? `<div class="sound-setting"><div class="sound-head"><span>${t('Работа с выключенным экраном')}</span><button class="secondary" id="batteryBtn" type="button">${t('Настроить батарею')}</button></div></div>` : '';
 
-  document.getElementById('modalRoot').innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>Звук ${what}</h3><small>${escapeHtml(b.title)}</small></div><button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button></div><div class="sound-label">Пресет</div><div class="preset-grid">${presets}</div><div class="sound-label">Усиление громкости</div><div class="preset-grid" style="grid-template-columns: repeat(4, 1fr);">${boostBtns}</div><div class="sound-setting"><div class="sound-head"><span>Громкость ${what}</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="300" step="5" value="${Math.round(s.volume*100)}"><small style="display:block;margin-top:4px;opacity:.65">Выше 100 % — усиление; лимитер не даёт звуку перегружаться.</small></div>${nativeRows}<div class="eq-panel"><div class="sound-head"><span>10-полосный эквалайзер</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div><small id="fxInfo" style="display:block;margin-top:8px;opacity:.65"></small></div><div class="modal-actions"><button class="secondary" id="soundDefault">Сбросить эквалайзер</button></div></div></div>`;
+  document.getElementById('modalRoot').innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>${t(music ? 'Звук альбома' : 'Звук книги')}</h3><small>${escapeHtml(b.title)}</small></div><button class="icon-btn" data-close aria-label="${t('Закрыть')}">${icon('close')}</button></div><div class="sound-label">${t('Пресет')}</div><div class="preset-grid">${presets}</div><div class="sound-label">${t('Усиление громкости')}</div><div class="preset-grid" style="grid-template-columns: repeat(4, 1fr);">${boostBtns}</div><div class="sound-setting"><div class="sound-head"><span>${t(music ? 'Громкость альбома' : 'Громкость книги')}</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="300" step="5" value="${Math.round(s.volume*100)}"><small style="display:block;margin-top:4px;opacity:.65">${t('Выше 100 % — усиление; лимитер не даёт звуку перегружаться.')}</small></div>${nativeRows}<div class="eq-panel"><div class="sound-head"><span>${t('10-полосный эквалайзер')}</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div><small id="fxInfo" style="display:block;margin-top:8px;opacity:.65"></small></div><div class="modal-actions"><button class="secondary" id="soundDefault">${t('Сбросить эквалайзер')}</button></div></div></div>`;
 
   $('soundBack').onclick = e => { if(e.target.id==='soundBack'||e.target.closest('[data-close]')) closeModal(); };
   document.querySelectorAll('[data-preset]').forEach(btn => btn.onclick = () => {
@@ -488,7 +482,6 @@ export function openCurrentSound(){
     applyCurrentFileSound(); persistSoon(); openCurrentSound();
   };
   if(NATIVE){
-    $('skipSil').onchange = e => { s.skipSilence = e.target.checked; applyCurrentFileSound(); persistSoon(); };
     $('batteryBtn').onclick = () => NativePlayer.openBatterySettings().catch(() => {});
   }
   applyCurrentFileSound();   // also fills the "auto headroom" line

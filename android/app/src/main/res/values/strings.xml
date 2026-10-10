@@ -4,4 +4,15 @@
     <string name="title_activity_main">AudioShelf</string>
     <string name="package_name">com.shelf.player</string>
     <string name="custom_url_scheme">com.shelf.player</string>
+    <string name="scan_title">Scanning your library</string>
+    <string name="scan_progress">%1$d of %2$d audio files</string>
+    <string name="scan_counting">Counting files…</string>
+    <string name="scan_interrupted">Scan interrupted</string>
+    <string name="scan_error">Scan error</string>
+    <string name="close">Close</string>
+    <string name="widget_open_book">Open a book to start</string>
+    <string name="default_book">Book</string>
+    <string name="default_folder">Audiobooks</string>
+    <string name="pick_cancelled">Folder selection cancelled</string>
+    <string name="pick_none">No folder selected</string>
 </resources>

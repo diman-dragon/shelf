@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="scan_title">Сканирование библиотеки</string>
+    <string name="scan_progress">%1$d из %2$d аудиофайлов</string>
+    <string name="scan_counting">Подсчёт файлов…</string>
+    <string name="scan_interrupted">Сканирование прервано</string>
+    <string name="scan_error">Ошибка сканирования</string>
+    <string name="close">Закрыть</string>
+    <string name="widget_open_book">Откройте книгу</string>
+    <string name="default_book">Книга</string>
+    <string name="default_folder">Аудиокниги</string>
+    <string name="pick_cancelled">Выбор папки отменён</string>
+    <string name="pick_none">Папка не выбрана</string>
+</resources>

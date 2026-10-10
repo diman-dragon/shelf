@@ -71,6 +71,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // With the permanent key the CI APK is signed like the release one, so builds install over each other
+            // (otherwise every CI run gets a random debug key and Android says "conflicts with an existing package").
+            if (hasReleaseKey) signingConfig signingConfigs.release
+        }
         release {
             // Not shrunk on purpose: Capacitor plugins are found by reflection and the app is small. Turning R8 on
             // needs keep rules for com.shelf.player.* and a full device test (see store/RELEASE_CHECKLIST.md).

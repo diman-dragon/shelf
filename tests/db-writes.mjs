@@ -30,7 +30,7 @@ async function advance(ms) {
 }
 
 const html = fs.readFileSync(WWW + '/index.html', 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
-const dom = new JSDOM(html, { url: 'https://localhost/', pretendToBeVisual: true });
+const dom = new JSDOM(html, { url: 'https://localhost/', pretendToBeVisual: true }); dom.window.localStorage.setItem('lang','ru');
 const w = dom.window;
 for (const k of ['window','document','localStorage','navigator','HTMLImageElement','HTMLElement','Event','EventTarget','requestAnimationFrame','cancelAnimationFrame'])
   try { Object.defineProperty(globalThis, k, { value: k === 'window' ? w : w[k], configurable: true, writable: true }); } catch {}

@@ -5,7 +5,7 @@ import { pathToFileURL, fileURLToPath } from 'url';
 
 const WWW = fileURLToPath(new URL('../www', import.meta.url));
 const html = fs.readFileSync(WWW + '/index.html', 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
-const dom = new JSDOM(html, { url: 'https://localhost/', pretendToBeVisual: true });
+const dom = new JSDOM(html, { url: 'https://localhost/', pretendToBeVisual: true }); dom.window.localStorage.setItem('lang','ru');
 const w = dom.window;
 for (const k of ['window','document','localStorage','navigator','HTMLImageElement','HTMLElement','Event','EventTarget','requestAnimationFrame','cancelAnimationFrame']) {
   try { Object.defineProperty(globalThis, k, { value: k==='window'?w : w[k], configurable: true, writable: true }); } catch(e) {}
@@ -374,6 +374,41 @@ console.log('== music says "tracks", books say "chapters"');
   ok(!!w.document.querySelector('.library-book-item:not([data-id="b1"]) .kind-badge.kind-book'), 'book cover: small book mark');
   b.mode = 'book'; setScreen('player'); await new Promise(r => setTimeout(r, 40)); setScreen('shelf');
   ok(/глав/.test(w.document.querySelector('.library-book-item[data-id="b1"] .lib-meta').textContent), 'back to a book: chapters');
+}
+
+console.log('== English: no Russian is left on any screen, the language switch works, the picture loop runs both ways');
+{
+  const i18n = await import(pathToFileURL(WWW + '/js/i18n.js').href);
+  const { setScreen: go } = await import(pathToFileURL(WWW + '/js/router.js').href);
+  const sound = await import(pathToFileURL(WWW + '/js/sound.js').href);
+  const lib = await import(pathToFileURL(WWW + '/js/library.js').href);
+  const scn = await import(pathToFileURL(WWW + '/js/scanner.js').href);
+  const V = await import(pathToFileURL(WWW + '/js/visualizer.js').href);
+  i18n.setLangSetting('en');
+  ok(i18n.getLang() === 'en' && w.document.documentElement.lang === 'en', 'language switched to English');
+  const userData = /Книга (один|два)|Мастер и Маргарита\. Булгаков|Автор(?! не)/g;                     // titles come from the person's files, not from the app
+  const left = () => { const tt = w.document.getElementById('toast'); if(tt) tt.textContent = ''; return (w.document.body.textContent + ' ' + [...w.document.querySelectorAll('[aria-label],[placeholder]')].map(e => (e.getAttribute('aria-label')||'') + ' ' + (e.getAttribute('placeholder')||'')).join(' ')).replace(userData, '').match(/[А-Яа-яЁё]+/g); };
+  for (const name of ['shelf', 'discover', 'settings', 'player']) {
+    go(name); await new Promise(r => setTimeout(r, 60));
+    const l = left(); ok(!l, `screen "${name}" is English` + (l ? ': ' + l.slice(0, 6).join(', ') : ''));
+  }
+  for (const [label, open] of [['sound', () => sound.openCurrentSound()], ['sort', () => lib.openSort()], ['filter', () => lib.openLibraryFilter()], ['folders', () => scn.openFolderSheet()]]) {
+    go('player'); try { open(); } catch (e) { ok(false, label + ' threw ' + e.message); continue; }
+    await new Promise(r => setTimeout(r, 40));
+    const l = left(); ok(!l, `${label} window is English` + (l ? ': ' + l.slice(0, 6).join(', ') : ''));
+    w.document.querySelector('[data-close]')?.click(); w.document.getElementById('modalRoot').innerHTML = '';
+  }
+  go('player'); await new Promise(r => setTimeout(r, 40));
+  // the picture loop: cover -> ring -> bars -> wave -> cover, and the same backwards
+  while (V.picturePosition() !== 0) V.stepPicture(1);
+  V.stepPicture(-1);
+  ok(V.picturePosition() === V.VISUALS.length, 'swiping back from the cover goes round to the last picture');
+  V.stepPicture(1);
+  ok(V.picturePosition() === 0, 'and forward from the last picture goes round to the cover');
+  go('player'); V.closeVisualizer?.();
+  i18n.setLangSetting('ru');
+  go('settings'); await new Promise(r => setTimeout(r, 40));
+  ok(/Настройки/.test(w.document.body.textContent) && /Язык/.test(w.document.body.textContent), 'back to Russian');
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL OK');

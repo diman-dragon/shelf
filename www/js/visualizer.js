@@ -2,6 +2,7 @@
 import { state, $ } from './state.js';
 import { audio, ensureAudioGraph, hasSpectrum, spectrumSize, fillSpectrum, setSpectrumActive } from './sound.js';
 import { showToast } from './ui-utils.js';
+import { t } from './i18n.js';
 
 let visualizerFrame = 0;
 let visualizerOpen = false;
@@ -31,7 +32,7 @@ function setVisual(v){
   visual = v;
   try { localStorage.setItem('viz.style', v); } catch {}
   const name = $('visualizerName');
-  if(name) name.textContent = VISUAL_NAMES[v] || '';
+  if(name) name.textContent = t(VISUAL_NAMES[v] || '');
 }
 
 /** The little dots (one per picture) on the cover and on the visual: where you are in the loop */
@@ -53,7 +54,7 @@ export function openVisualizer(){
   syncPictureDots();
   el.classList.remove('hidden');
   el.setAttribute('aria-hidden', 'false');
-  ensureAudioGraph().then(() => { setSpectrumActive(true); startVisualizer(); }).catch(() => showToast('Визуализатор недоступен'));
+  ensureAudioGraph().then(() => { setSpectrumActive(true); startVisualizer(); }).catch(() => showToast(t('Визуализатор недоступен')));
 }
 
 export function closeVisualizer(){

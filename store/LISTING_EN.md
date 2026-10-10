@@ -29,7 +29,7 @@ MADE FOR THE ROAD
 • the player in the notification shade and on the lock screen, a home-screen widget;
 • a call or a notification sound stops playback instantly and it continues 5 seconds earlier, so no words are lost;
 • configurable seek step (±10 seconds by default);
-• sleep timer with a smooth fade, up to 2× speed, skip silence;
+• sleep timer with a smooth fade, up to 2× speed;
 • equalizer with automatic overload protection.
 
 PRIVACY

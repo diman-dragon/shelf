@@ -7,6 +7,7 @@ import { progress } from './progress.js';
 import { render, act } from './router.js';
 import { openFolderSheet, scanDock } from './scanner.js';
 import { hydrateLibraryCovers } from './meta.js';
+import { t, getLang } from './i18n.js';
 
 let libraryDisplayLimit = 50;
 
@@ -28,12 +29,12 @@ function shelfSubtitle(){
   const parts = [];
   if(books || !music) parts.push(`${books} ${plural(books,'книга','книги','книг')}`);
   if(music) parts.push(`${music} ${plural(music,'альбом','альбома','альбомов')}`);
-  return `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${parts.join(' &middot; ')} &middot; Общий прогресс: ${totalProg}%</span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:6px">${icon('book')} ${parts.join(' &middot; ')} &middot; ${t('Общий прогресс')}: ${totalProg}%</span>`;
 }
 
 function loadMoreHtml(total, shownCount){
   return shownCount < total
-    ? `<div id="loadMoreBooks" style="text-align:center;padding:16px;color:var(--gold2);cursor:pointer;font-size:13px">Загрузить ещё (${total - shownCount})...</div>`
+    ? `<div id="loadMoreBooks" style="text-align:center;padding:16px;color:var(--gold2);cursor:pointer;font-size:13px">${t('Загрузить ещё')} (${total - shownCount})...</div>`
     : '';
 }
 
@@ -46,21 +47,21 @@ export function renderShelf(){
   const { all, shown } = visibleBooks();
   const viewMode = localStorage.getItem('shelfViewMode') || 'list';
   const viewToggleIcon = viewMode === 'grid' ? 'list' : 'grid';
-  const viewToggleLabel = viewMode === 'grid' ? 'Список' : 'Плитка';
+  const viewToggleLabel = t(viewMode === 'grid' ? 'Список' : 'Плитка');
 
   let html = `<section class="screen shelf-screen library-screen">`;
-  html += header('Библиотека', shelfSubtitle(), `${iconBtn('filter','Фильтр','openLibraryFilter')}${iconBtn('sort','Сортировка','openSort')}${iconBtn(viewToggleIcon,viewToggleLabel,'toggleShelfView')}${iconBtn('folderPlus','Добавить в библиотеку','openAddSheet')}`);
+  html += header(t('Библиотека'), shelfSubtitle(), `${iconBtn('filter',t('Фильтр'),'openLibraryFilter')}${iconBtn('sort',t('Сортировка'),'openSort')}${iconBtn(viewToggleIcon,viewToggleLabel,'toggleShelfView')}${iconBtn('folderPlus',t('Добавить в библиотеку'),'openAddSheet')}`);
   if(state.query){
-    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:var(--muted)"><span>Результаты поиска: «<b>${escapeHtml(state.query)}</b>»</span><button id="clearSearch" style="background:none;border:none;color:var(--gold2);cursor:pointer">Сбросить</button></div>`;
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:var(--muted)"><span>${t('Результаты поиска')}: «<b>${escapeHtml(state.query)}</b>»</span><button id="clearSearch" style="background:none;border:none;color:var(--gold2);cursor:pointer">${t('Сбросить')}</button></div>`;
   }
   html += `<div class="library-filters-bar">` +
-    `<button type="button" class="filter-chip ${state.libraryFilterType==='all'?'active':''}" data-filter="all">Все (${state.books.length})</button>` +
-    `<button type="button" class="filter-chip ${state.libraryFilterType==='book'?'active':''}" data-filter="book">Книги</button>` +
-    `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">Музыка</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='all'?'active':''}" data-filter="all">${t('Все')} (${state.books.length})</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='book'?'active':''}" data-filter="book">${t('Книги')}</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">${t('Музыка')}</button>` +
   `</div>`;
   html += `<div class="${viewMode === 'grid' ? 'shelf-grid' : 'shelf-list'}">`;
   if(!all.length){
-    html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>Библиотека пока пуста</div><div style="font-size:12px;margin-top:5px">Добавьте папку с аудиокнигами или музыкой.</div><button id="emptyAdd">Добавить в библиотеку</button></div></div>`;
+    html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>${t('Библиотека пока пуста')}</div><div style="font-size:12px;margin-top:5px">${t('Добавьте папку с аудиокнигами или музыкой.')}</div><button id="emptyAdd">${t('Добавить в библиотеку')}</button></div></div>`;
   } else {
     html += shown.map(libraryBookRow).join('');
   }
@@ -158,8 +159,8 @@ function libraryBookRow(b, sig = rowSig(b)){
       <div class="lib-thumb">${bookCover(b)}${kindBadge(b)}</div>
       <div class="lib-info">
         <div class="lib-title">${escapeHtml(b.title)}</div>
-        <div class="lib-author">${escapeHtml(b.author||'Автор не указан')}</div>
-        <div class="lib-meta">${fileCount} ${partsCount(b, fileCount)} &middot; ${totalDuration > 0 ? fmt(totalDuration) : '—'}${b.finished ? ' &middot; <span class="lib-done">прослушано</span>' : ''}</div>
+        <div class="lib-author">${escapeHtml(b.author||t('Автор не указан'))}</div>
+        <div class="lib-meta">${fileCount} ${partsCount(b, fileCount)} &middot; ${totalDuration > 0 ? fmt(totalDuration) : '—'}${b.finished ? ` &middot; <span class="lib-done">${t('прослушано')}</span>` : ''}</div>
       </div>
     </div>
     <div class="lib-progress-line"><i style="width:${prog}%"></i></div>
@@ -181,15 +182,15 @@ function filterBooks(books){
 function sortBooks(books){
   const copy = [...books];
   const s = state.librarySort;
-  if(s === 'title') copy.sort((a,b) => (a.title||'').localeCompare(b.title||'', 'ru'));
-  else if(s === 'author') copy.sort((a,b) => (a.author||'').localeCompare(b.author||'', 'ru'));
+  if(s === 'title') copy.sort((a,b) => (a.title||'').localeCompare(b.title||'', getLang()));
+  else if(s === 'author') copy.sort((a,b) => (a.author||'').localeCompare(b.author||'', getLang()));
   else if(s === 'duration') copy.sort((a,b) => durationOfBook(b) - durationOfBook(a));
   else copy.sort((a,b) => (b.added||0) - (a.added||0));
   return copy;
 }
 
 export function openLibraryFilter(){
-  openModal(`<h3>Поиск и фильтр</h3><input class="field" id="libSearchInput" placeholder="Название или автор" value="${escapeHtml(state.query)}"><div class="modal-actions"><button class="secondary" data-close>Закрыть</button><button class="primary" id="libSearchBtn">Найти</button></div>`);
+  openModal(`<h3>${t('Поиск и фильтр')}</h3><input class="field" id="libSearchInput" placeholder="${t('Название или автор')}" value="${escapeHtml(state.query)}"><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button><button class="primary" id="libSearchBtn">${t('Найти')}</button></div>`);
   $('libSearchBtn').onclick = () => {
     state.query = $('libSearchInput').value;
     libraryDisplayLimit = 50;
@@ -199,8 +200,8 @@ export function openLibraryFilter(){
 }
 
 export function openSort(){
-  const sorts = [['recent','Сначала новые'],['title','По названию'],['author','По автору'],['duration','По длительности']];
-  openModal(`<h3>Сортировка</h3>${sorts.map(([id,name])=>`<div class="modal-row" data-sort="${id}"><span style="flex:1">${name}</span>${state.librarySort===id?'✓':''}</div>`).join('')}`);
+  const sorts = [['recent',t('Сначала новые')],['title',t('По названию')],['author',t('По автору')],['duration',t('По длительности')]];
+  openModal(`<h3>${t('Сортировка')}</h3>${sorts.map(([id,name])=>`<div class="modal-row" data-sort="${id}"><span style="flex:1">${name}</span>${state.librarySort===id?'✓':''}</div>`).join('')}`);
   document.querySelectorAll('[data-sort]').forEach(el => el.onclick = () => {
     state.librarySort = el.dataset.sort;
     libraryDisplayLimit = 50;
@@ -212,7 +213,7 @@ export function openSort(){
 export function openBookMenu(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
-  openModal(`<h3>${escapeHtml(b.title)}</h3><div class="modal-row" id="menuRename"><span>✏ Переименовать</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 Удалить из библиотеки</span></div><div class="modal-actions"><button class="secondary" data-close>Закрыть</button></div>`);
+  openModal(`<h3>${escapeHtml(b.title)}</h3><div class="modal-row" id="menuRename"><span>✏ ${t('Переименовать')}</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 ${t('Удалить из библиотеки')}</span></div><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
   $('menuRename').onclick = () => { closeModal(); renameBook(b.id); };
   $('menuDelete').onclick = () => { closeModal(); deleteBook(b.id); };
 }
@@ -220,20 +221,20 @@ export function openBookMenu(id){
 function renameBook(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
-  openModal(`<h3>Переименовать</h3><input class="field" id="renameInput" value="${escapeHtml(b.title)}"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="renameSave">Сохранить</button></div>`);
+  openModal(`<h3>${t('Переименовать')}</h3><input class="field" id="renameInput" value="${escapeHtml(b.title)}"><div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button><button class="primary" id="renameSave">${t('Сохранить')}</button></div>`);
   $('renameSave').onclick = async () => {
     const v = $('renameInput').value.trim();
-    if(!v) return showToast('Введите название');
+    if(!v) return showToast(t('Введите название'));
     b.title = v;
     await saveBooks();
     closeModal();
     render();
-    showToast('Переименовано');
+    showToast(t('Переименовано'));
   };
 }
 
 function deleteBook(id){
-  openModal(`<h3>Удалить из библиотеки?</h3><p style="color:var(--muted);font-size:13px">Запись будет удалена из библиотеки. Файлы на устройствах не удаляются.</p><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="bookDeleteConfirm" style="background:var(--danger);color:#fff">Удалить</button></div>`);
+  openModal(`<h3>${t('Удалить из библиотеки?')}</h3><p style="color:var(--muted);font-size:13px">${t('Запись будет удалена из библиотеки. Файлы на устройствах не удаляются.')}</p><div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button><button class="primary" id="bookDeleteConfirm" style="background:var(--danger);color:#fff">${t('Удалить')}</button></div>`);
   $('bookDeleteConfirm').onclick = async () => {
     // the deleted book must not keep playing: stops <audio>, the native service queue and its notification
     if(state.current?.id === id) act('unloadCurrent');
@@ -243,6 +244,6 @@ function deleteBook(id){
     await saveBooks();
     closeModal();
     render();
-    showToast('Удалено из библиотеки');
+    showToast(t('Удалено из библиотеки'));
   };
 }

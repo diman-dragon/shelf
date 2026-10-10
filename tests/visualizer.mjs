@@ -2,7 +2,7 @@
 import { JSDOM } from 'jsdom'; import fs from 'fs'; import { pathToFileURL, fileURLToPath } from 'url';
 const WWW = fileURLToPath(new URL('../www', import.meta.url));
 const html = fs.readFileSync(WWW+'/index.html','utf8').replace(/<script[\s\S]*?<\/script>/g,'');
-const dom = new JSDOM(html,{url:'https://localhost/',pretendToBeVisual:true}); const w=dom.window;
+const dom = new JSDOM(html,{url:'https://localhost/',pretendToBeVisual:true}); dom.window.localStorage.setItem('lang','ru'); const w=dom.window;
 for(const k of ['window','document','localStorage','navigator','HTMLImageElement','HTMLElement','Event','EventTarget']) try{Object.defineProperty(globalThis,k,{value:k==='window'?w:w[k],configurable:true,writable:true})}catch{}
 let rafQ=[]; globalThis.requestAnimationFrame=cb=>{rafQ.push(cb);return rafQ.length}; globalThis.cancelAnimationFrame=()=>{rafQ=[]};
 let T=0; const runFrames=n=>{for(let i=0;i<n;i++){const q=rafQ;rafQ=[];T+=34;q.forEach(f=>f(T));}};

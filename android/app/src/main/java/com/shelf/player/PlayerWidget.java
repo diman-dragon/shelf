@@ -16,7 +16,7 @@ import androidx.media3.common.util.UnstableApi;
  */
 @UnstableApi
 public class PlayerWidget extends AppWidgetProvider {
-  static String title = "AudioShelf", artist = "Откройте книгу";
+  static String title = "AudioShelf", artist = "";
   static boolean playing;
 
   private static PendingIntent broadcast(Context c, String a) {
@@ -48,7 +48,7 @@ public class PlayerWidget extends AppWidgetProvider {
     lastSig = sig;
     RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget);
     v.setTextViewText(R.id.wTitle, alive ? title : "AudioShelf");
-    v.setTextViewText(R.id.wArtist, alive ? artist : "Откройте книгу");
+    v.setTextViewText(R.id.wArtist, alive ? artist : c.getString(R.string.widget_open_book));
     v.setImageViewResource(R.id.wPlay, alive && playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
     PendingIntent open = openApp(c);
     final int[] ids = {R.id.wPrev, R.id.wBack, R.id.wPlay, R.id.wForward, R.id.wNext};

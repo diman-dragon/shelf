@@ -1,22 +1,40 @@
-# Keeps the packages current. Capacitor android / cli / core must move together: they are grouped into ONE pull request
+# Keeps the packages current, without noise: monthly, risky major jumps ignored.
+# Capacitor android / cli / core must move together: they are grouped into ONE pull request
 # (tests/versions.mjs fails the build if they ever differ).
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
     groups:
       capacitor:
         patterns: ["@capacitor/*"]
   - package-ecosystem: npm
     directory: /tests
     schedule: { interval: monthly }
+    groups:
+      dev-tools:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: gradle
     directory: /android
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    ignore:
+      # Gradle 9 does not work with the Android Gradle Plugin 8.x / Capacitor 8 template; media3 is bumped by hand after a device test
+      - dependency-name: "gradle-wrapper"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "androidx.media3:*"
+      - dependency-name: "media3Version"
   - package-ecosystem: gradle
     directory: /android/app
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "androidx.media3:*"
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
+    groups:
+      actions:
+        patterns: ["*"]

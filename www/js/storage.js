@@ -13,6 +13,7 @@
 import { state } from './state.js';
 import { dbGet, dbSet, dbDel } from './db.js';
 import { showToast } from './ui-utils.js';
+import { t } from './i18n.js';
 
 const LAST_PLAYBACK_KEY = 'shelf:lastPlayback';
 
@@ -62,7 +63,7 @@ let prefsTimer = 0, prefsJson = '';
 let prefsMigrate = false;                       // legacy library: sound/speed still live inside the book records
 
 function isDefaultSound(s){
-  return !s || (s.preset === 'flat' && Number(s.volume ?? 1) === 1 && !Number(s.gain) && !s.skipSilence && !(s.eq || []).some(v => Number(v)));
+  return !s || (s.preset === 'flat' && Number(s.volume ?? 1) === 1 && !Number(s.gain) && !(s.eq || []).some(v => Number(v)));
 }
 
 function collectPrefs(list){
@@ -158,7 +159,7 @@ export async function saveBooks(){
 let booksTimer = 0, booksFirstAt = 0, lastErrorToast = 0;
 function reportStorageError(e){
   const now = Date.now();
-  if(now - lastErrorToast > 30000){ lastErrorToast = now; showToast('Не удалось сохранить данные: ' + (e?.message || e)); }
+  if(now - lastErrorToast > 30000){ lastErrorToast = now; showToast(t('Не удалось сохранить данные: {e}', { e: e?.message || e })); }
 }
 
 /** Debounced saveBooks() with an upper bound, so a long scan still saves regularly instead of "after the last book" */

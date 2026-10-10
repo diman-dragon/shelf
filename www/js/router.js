@@ -6,6 +6,7 @@
  */
 import { state } from './state.js';
 import { showToast } from './ui-utils.js';
+import { t } from './i18n.js';
 
 const screens = {};     // name -> { render, onEnter?, onLeave? }
 const actions = {};     // name -> fn
@@ -32,7 +33,7 @@ export function render(){
 export function setScreen(screen){
   state.screen = screen;
   state.query = '';
-  if(screen === 'player' && !state.current){ showToast('Сначала выберите книгу в библиотеке'); state.screen = 'shelf'; }
+  if(screen === 'player' && !state.current){ showToast(t('Сначала выберите книгу в библиотеке')); state.screen = 'shelf'; }
   render();
   if(state.screen === 'player') screens.player?.onEnter?.();
 }

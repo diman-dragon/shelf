@@ -2,11 +2,12 @@
 import { state, escapeHtml, $ } from './state.js';
 import { bookCover, fmt } from './ui-utils.js';
 import { progress, bookElapsed, bookTotal } from './progress.js';
+import { t } from './i18n.js';
 
 function coverSig(b){ return `${b.id}:${b.cover ? b.cover.length : 0}`; }
 
 function nowPlayingTimeHtml(){
-  return `<span class="np-cur">${fmt(bookElapsed(state.current))}</span> из <span class="np-total">${fmt(bookTotal(state.current))}</span>`;
+  return `<span class="np-cur">${fmt(bookElapsed(state.current))}</span> ${t('из')} <span class="np-total">${fmt(bookTotal(state.current))}</span>`;
 }
 
 /** Whole-book progress 0–100 for the header bar */

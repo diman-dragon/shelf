@@ -11,6 +11,7 @@ import { openBookMenu } from './library.js';
 import { closeVisualizer, syncPictureDots } from './visualizer.js';
 import { hydrateBookMeta } from './meta.js';
 import { bindNativeEvents, stopNativePlayer } from './native-bridge.js';
+import { t } from './i18n.js';
 
 let progressSaveTimer = null;
 let lastSavedSecond = -1;
@@ -89,7 +90,7 @@ export async function ensureChapterLoaded(){
 export async function openPlayer(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
-  if(!b.files?.length){ showToast('В этой книге нет аудиофайлов'); return; }
+  if(!b.files?.length){ showToast(t('В этой книге нет аудиофайлов')); return; }
   if(state.current?.id !== b.id){
     if(state.current){ snapshotPosition(); await saveProgress(true); }
     audio.pause();
@@ -130,7 +131,7 @@ export function renderPlayer(){
   const b = state.current;
   if(!b) return;
   if(!b.files?.length){            // a book without files cannot be shown in the player (f.name used to throw here)
-    showToast('В этой книге нет аудиофайлов');
+    showToast(t('В этой книге нет аудиофайлов'));
     state.screen = 'shelf';
     render();
     return;
@@ -146,53 +147,53 @@ export function renderPlayer(){
     <div class="player-inner">
       <div class="topbar player-top">
         <div style="display:flex;align-items:center;gap:10px">
-          <button type="button" class="icon-btn" id="playerBack" aria-label="Назад">${icon('back')}</button>
-          <div><h2>Плеер</h2></div>
+          <button type="button" class="icon-btn" id="playerBack" aria-label="${t('Назад')}">${icon('back')}</button>
+          <div><h2>${t('Плеер')}</h2></div>
         </div>
         <div class="top-actions">
-          <button type="button" class="icon-btn" id="playerMark" aria-label="Закладка">${icon('bookmark')}</button>
-          <button type="button" class="icon-btn" id="playerMore" aria-label="Ещё">${icon('more')}</button>
+          <button type="button" class="icon-btn" id="playerMark" aria-label="${t('Закладка')}">${icon('bookmark')}</button>
+          <button type="button" class="icon-btn" id="playerMore" aria-label="${t('Ещё')}">${icon('more')}</button>
         </div>
       </div>
       <div class="player-cover" id="playerCover">${bookCover(b)}</div>
       <div class="pic-dots" aria-hidden="true"></div>
       <div class="player-title">${escapeHtml(b.title)}</div>
-      <div class="player-author">${escapeHtml(b.author||'Автор не указан')}</div>
-      <div class="chapter">${partName(b)} ${i+1} из ${b.files.length} · ${escapeHtml(f.name)}</div>
-      <div class="seek"><input id="seekCh" type="range" min="0" max="1000" value="0" aria-label="Позиция в ${isMusic(b) ? 'треке' : 'главе'}"></div>
+      <div class="player-author">${escapeHtml(b.author||t('Автор не указан'))}</div>
+      <div class="chapter">${partName(b)} ${i+1} ${t('из')} ${b.files.length} · ${escapeHtml(f.name)}</div>
+      <div class="seek"><input id="seekCh" type="range" min="0" max="1000" value="0" aria-label="${t(isMusic(b) ? 'Позиция в треке' : 'Позиция в главе')}"></div>
       <div class="time-row"><span id="chCur">0:00</span><span class="time-label" id="chLabel">${partName(b)}</span><span id="chDur">${fmt(Number(f.duration) || 0)}</span></div>
       <div class="book-progress" id="bookProgress"${isMusic(b) ? ' hidden' : ''}>
-        <div class="seek"><input id="seek" type="range" min="0" max="1000" value="${Math.round(pct*10)}" aria-label="Позиция в книге"></div>
-        <div class="time-row"><span id="curTime">${fmt(elapsed)}</span><span class="time-label">Вся книга</span><span id="durTime">${fmt(totalDur)}</span></div>
+        <div class="seek"><input id="seek" type="range" min="0" max="1000" value="${Math.round(pct*10)}" aria-label="${t('Позиция в книге')}"></div>
+        <div class="time-row"><span id="curTime">${fmt(elapsed)}</span><span class="time-label">${t('Вся книга')}</span><span id="durTime">${fmt(totalDur)}</span></div>
       </div>
       <div class="controls">
-        <button type="button" class="control" id="prevBtn" aria-label="${isMusic(b) ? 'Предыдущий трек' : 'Предыдущая глава'}">${icon('prev')}</button>
-        <button type="button" class="control" id="backBtn" aria-label="Назад ${seekStep()} секунд">${icon('rewind')}<small class="ctl-val" id="backVal">−${seekStep()}</small></button>
-        <button type="button" class="play-main" id="playBtn" aria-label="Воспроизведение">${icon(state.playing?'pause':'play')}</button>
-        <button type="button" class="control" id="forwardBtn" aria-label="Вперёд ${seekStep()} секунд">${icon('forward')}<small class="ctl-val" id="fwdVal">+${seekStep()}</small></button>
-        <button type="button" class="control" id="nextBtn" aria-label="${isMusic(b) ? 'Следующий трек' : 'Следующая глава'}">${icon('next')}</button>
+        <button type="button" class="control" id="prevBtn" aria-label="${t(isMusic(b) ? 'Предыдущий трек' : 'Предыдущая глава')}">${icon('prev')}</button>
+        <button type="button" class="control" id="backBtn" aria-label="${t('Назад {n} сек.', { n: seekStep() })}">${icon('rewind')}<small class="ctl-val" id="backVal">−${seekStep()}</small></button>
+        <button type="button" class="play-main" id="playBtn" aria-label="${t('Воспроизведение')}">${icon(state.playing?'pause':'play')}</button>
+        <button type="button" class="control" id="forwardBtn" aria-label="${t('Вперёд {n} сек.', { n: seekStep() })}">${icon('forward')}<small class="ctl-val" id="fwdVal">+${seekStep()}</small></button>
+        <button type="button" class="control" id="nextBtn" aria-label="${t(isMusic(b) ? 'Следующий трек' : 'Следующая глава')}">${icon('next')}</button>
       </div>
       <div class="player-tools">
-        <button type="button" class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>Скорость</button>
-        <button type="button" class="tool" id="sleepBtn"><strong id="sleepLabel">◷</strong>Таймер</button>
-        <button type="button" class="tool" id="queueBtn"><strong>☷</strong>Очередь</button>
-        <button type="button" class="tool" id="soundBtn"><strong>♫</strong>Звук</button>
-        <button type="button" class="tool" id="modeBtn" aria-label="Режим воспроизведения"><strong id="modeIcon">${b.mode === 'album' ? '♪' : '▤'}</strong><span id="modeLabel">${b.mode === 'album' ? 'Альбом' : 'Книга'}</span></button>
+        <button type="button" class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>${t('Скорость')}</button>
+        <button type="button" class="tool" id="sleepBtn"><strong id="sleepLabel">◷</strong>${t('Таймер')}</button>
+        <button type="button" class="tool" id="queueBtn"><strong>☷</strong>${t('Очередь')}</button>
+        <button type="button" class="tool" id="soundBtn"><strong>♫</strong>${t('Звук')}</button>
+        <button type="button" class="tool" id="modeBtn" aria-label="${t('Режим воспроизведения')}"><strong id="modeIcon">${b.mode === 'album' ? '♪' : '▤'}</strong><span id="modeLabel">${t(b.mode === 'album' ? 'Альбом' : 'Книга')}</span></button>
       </div>
-      <div class="swipe-hint">Свайп по обложке — визуализатор · по экрану — разделы</div>
+      <div class="swipe-hint">${t('Свайп по обложке — визуализатор · по экрану — разделы')}</div>
     </div>
     <div class="side-panel queue-panel hidden" id="queuePanel" aria-hidden="true">
       <div class="side-panel-head">
-        <button type="button" class="icon-btn" id="queueClose" aria-label="Закрыть">${icon('close')}</button>
-        <strong id="queueTitle">${isMusic(b) ? 'Треки' : 'Главы'}</strong>
+        <button type="button" class="icon-btn" id="queueClose" aria-label="${t('Закрыть')}">${icon('close')}</button>
+        <strong id="queueTitle">${t(isMusic(b) ? 'Треки' : 'Главы')}</strong>
       </div>
       <div class="side-panel-body chapter-list" id="chapterList">${chapterRows(b)}</div>
     </div>
     <div class="visualizer-overlay hidden" id="visualizer" aria-hidden="true">
       <canvas id="visualizerCanvas"></canvas>
       <div class="visualizer-head">
-        <button type="button" class="icon-btn visualizer-x" id="visualizerClose" aria-label="Закрыть">${icon('close')}</button>
-        <div><strong id="visualizerName">Визуализатор</strong><span>${escapeHtml(f.name)}</span></div>
+        <button type="button" class="icon-btn visualizer-x" id="visualizerClose" aria-label="${t('Закрыть')}">${icon('close')}</button>
+        <div><strong id="visualizerName">${t('Визуализатор')}</strong><span>${escapeHtml(f.name)}</span></div>
       </div>
       <div class="pic-dots pic-dots-viz" aria-hidden="true"></div>
     </div>
@@ -273,7 +274,7 @@ function bindChapterRows(){
 function chapterRows(b){
   let out = '';
   (b.marks || []).forEach((m,k)=>{
-    out += `<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||partName(b))} · ${fmt(m.t)}</span><button type="button" class="mark-del" data-mark-del="${k}" aria-label="Удалить закладку">✕</button></div>`;
+    out += `<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||partName(b))} · ${fmt(m.t)}</span><button type="button" class="mark-del" data-mark-del="${k}" aria-label="${t('Удалить закладку')}">✕</button></div>`;
   });
   b.files.forEach((f,i)=>{
     out += `<div class="chapter-row ${i===state.currentIndex?'current':''}" data-chapter="${i}"><span>${i+1}. ${escapeHtml(f.name)}</span><span>${i===state.currentIndex?(state.playing?'▶':'Ⅱ'):fmt(f.duration)}</span></div>`;
@@ -281,20 +282,20 @@ function chapterRows(b){
   return out;
 }
 
-async function loadChapter(i, t=0, autoplay=true){
+async function loadChapter(i, startAt=0, autoplay=true){
   const b = state.current;
   const f = b?.files?.[i];
   if(!f) return;
   const token = ++loadToken;
   state.currentIndex = i;
-  state.currentPos = Number(t) || 0;
+  state.currentPos = Number(startAt) || 0;
   pendingSeek = state.currentPos;
   restoring = true;            // until metadata is ready, audio.currentTime (0) must not overwrite the position
   loadedKey = `${b.id}:${i}`;
 
   if(NATIVE){
     // Whole book goes to the native playlist; chapter changes then happen natively (screen off is fine)
-    if(!f.uri){ restoring = false; loadedKey = ''; showToast('Файл недоступен'); return; }
+    if(!f.uri){ restoring = false; loadedKey = ''; showToast(t('Файл недоступен')); return; }
     const startAt = f.duration > 0 ? Math.min(state.currentPos, Math.max(0, f.duration - 0.5)) : state.currentPos;
     try {
       applyCurrentFileSound();
@@ -302,7 +303,7 @@ async function loadChapter(i, t=0, autoplay=true){
       await audio.loadNative(b, i, startAt);
     } catch(e) {
       if(token === loadToken){ restoring = false; loadedKey = ''; }
-      showToast('Не удалось открыть аудиофайл');
+      showToast(t('Не удалось открыть аудиофайл'));
       return;
     }
     if(token !== loadToken) return;
@@ -318,19 +319,19 @@ async function loadChapter(i, t=0, autoplay=true){
     if(f.key){
       const blob = await dbGet(f.key);
       if(token !== loadToken) return;
-      if(!blob){ restoring = false; loadedKey = ''; showToast('Файл недоступен'); return; }
+      if(!blob){ restoring = false; loadedKey = ''; showToast(t('Файл недоступен')); return; }
       newBlobUrl = URL.createObjectURL(blob);
       src = newBlobUrl;
     } else if(f.uri){
       src = isNative() ? window.Capacitor.convertFileSrc(f.uri) : f.uri;
     } else {
       restoring = false; loadedKey = '';
-      showToast('Файл недоступен');
+      showToast(t('Файл недоступен'));
       return;
     }
   } catch(e) {
     if(token === loadToken){ restoring = false; loadedKey = ''; }
-    showToast('Не удалось открыть аудиофайл');
+    showToast(t('Не удалось открыть аудиофайл'));
     return;
   }
   if(token !== loadToken){ if(newBlobUrl) URL.revokeObjectURL(newBlobUrl); return; }
@@ -403,7 +404,7 @@ async function togglePlay(forcePlay=false){
       audio.pause();
     }
   } catch(e) {
-    if(e?.name !== 'AbortError') showToast('Не удалось изменить воспроизведение');
+    if(e?.name !== 'AbortError') showToast(t('Не удалось изменить воспроизведение'));
   }
   syncPlaying();
   updatePlayerUI();
@@ -457,9 +458,9 @@ function toggleMode(){
   savePrefsSoon();                               // a few bytes in `bookprefs`, not the library
   const ic = $('modeIcon'), lb = $('modeLabel');
   if(ic) ic.textContent = album ? '♪' : '▤';
-  if(lb) lb.textContent = album ? 'Альбом' : 'Книга';
+  if(lb) lb.textContent = t(album ? 'Альбом' : 'Книга');
   updatePlayerUI();                              // album: only the track bar; book: chapter bar + whole-book bar
-  showToast(album ? 'Альбом: плавное затухание и пауза между треками' : 'Книга: без пауз между главами');
+  showToast(t(album ? 'Альбом: плавное затухание и пауза между треками' : 'Книга: без пауз между главами'));
 }
 
 function cycleSpeed(){
@@ -473,8 +474,8 @@ function cycleSpeed(){
   saveSettings().catch(() => {});                           // 1 small record
   savePrefsSoon();                                          // + the per-book speed (tiny), NOT the library
   const sb = $('speedBtn');
-  if(sb) sb.innerHTML = `<strong>${state.speed.toFixed(1)}×</strong>Скорость`;
-  showToast(`Скорость: ${state.speed.toFixed(1)}×`);
+  if(sb) sb.innerHTML = `<strong>${state.speed.toFixed(1)}×</strong>${t('Скорость')}`;
+  showToast(t('Скорость: {v}×', { v: state.speed.toFixed(1) }));
 }
 
 let sleepTicker = 0;
@@ -503,7 +504,7 @@ function startSleepTicker(){
 }
 
 function setSleep(){
-  openModal(`<h3>Таймер сна</h3><p style="color:var(--muted);font-size:13px">Введите время в минутах (0 — выключить)</p><input class="field" id="sleepInput" type="number" min="0" value="30"><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="sleepSave">Установить</button></div>`);
+  openModal(`<h3>${t('Таймер сна')}</h3><p style="color:var(--muted);font-size:13px">${t('Введите время в минутах (0 — выключить)')}</p><input class="field" id="sleepInput" type="number" min="0" value="30"><div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button><button class="primary" id="sleepSave">${t('Установить')}</button></div>`);
   $('sleepSave').onclick = () => {
     const v = $('sleepInput').value;
     closeModal();
@@ -515,11 +516,11 @@ function setSleep(){
       if(NATIVE) audio.setSleep(n);
       else state.sleepTimer = setTimeout(() => { audio.pause(); state.sleepEndsAt = 0; updateSleepLabel(); }, n * 60000);
       startSleepTicker();
-      showToast(`Таймер: ${n} мин`);
+      showToast(t('Таймер: {n} мин', { n }));
     } else {
       state.sleepEndsAt = 0;
       if(NATIVE) audio.setSleep(0);
-      showToast('Таймер выключен');
+      showToast(t('Таймер выключен'));
     }
     updateSleepLabel();
   };
@@ -540,7 +541,7 @@ async function addBookmark(){
   b.marks.push({i: state.currentIndex, t: Number(state.currentPos) || 0});
   await saveBooks();
   renderBookmarks();
-  showToast('Закладка добавлена');
+  showToast(t('Закладка добавлена'));
 }
 
 async function removeBookmark(k){
@@ -549,7 +550,7 @@ async function removeBookmark(k){
   b.marks.splice(k, 1);
   await saveBooks();
   renderBookmarks();
-  showToast('Закладка удалена');
+  showToast(t('Закладка удалена'));
 }
 
 /** Copy the live position onto the book object (never while audio.currentTime is not valid yet) */
@@ -652,12 +653,12 @@ function updatePlayerUI(){
     const pb = $('playBtn');
     if(pb) pb.innerHTML = icon(state.playing ? 'pause' : 'play');
     const ch = document.querySelector('.chapter');
-    if(ch) ch.textContent = `${partName(b)} ${state.currentIndex+1} из ${b.files.length} · ${f?.name||''}`;
+    if(ch) ch.textContent = `${partName(b)} ${state.currentIndex+1} ${t('из')} ${b.files.length} · ${f?.name||''}`;
     const qt = $('queueTitle');
-    if(qt) qt.textContent = album ? 'Треки' : 'Главы';
+    if(qt) qt.textContent = t(album ? 'Треки' : 'Главы');
     const pv = $('prevBtn'), nx = $('nextBtn');
-    if(pv) pv.setAttribute('aria-label', album ? 'Предыдущий трек' : 'Предыдущая глава');
-    if(nx) nx.setAttribute('aria-label', album ? 'Следующий трек' : 'Следующая глава');
+    if(pv) pv.setAttribute('aria-label', t(album ? 'Предыдущий трек' : 'Предыдущая глава'));
+    if(nx) nx.setAttribute('aria-label', t(album ? 'Следующий трек' : 'Следующая глава'));
     document.querySelectorAll('[data-chapter]').forEach(el => {
       el.classList.toggle('current', +el.dataset.chapter === state.currentIndex);
     });
@@ -743,7 +744,7 @@ document.addEventListener('visibilitychange', () => {
 // must not interrupt playback. The service stops itself when the app is swiped from recents.
 window.addEventListener('pagehide', () => { saveProgress(true); });
 window.addEventListener('beforeunload', () => { saveProgress(true); });
-audio.addEventListener('error', e => { restoring = false; showToast('Ошибка воспроизведения файла'); });
+audio.addEventListener('error', e => { restoring = false; showToast(t('Ошибка воспроизведения файла')); });
 
 function setMediaSession(){
   if(NATIVE || !('mediaSession' in navigator) || !state.current) return;   // native: Media3 session owns notification/lock screen

@@ -69,8 +69,8 @@ public class ScanService extends Service {
   private static Notification build(Context ctx, int done, int total) {
     NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.stat_notify_sync)
-        .setContentTitle("Сканирование библиотеки")
-        .setContentText(total > 0 ? done + " из " + total + " аудиофайлов" : "Подсчёт файлов…")
+        .setContentTitle(ctx.getString(R.string.scan_title))
+        .setContentText(total > 0 ? ctx.getString(R.string.scan_progress, done, total) : ctx.getString(R.string.scan_counting))
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setSilent(true)
@@ -95,7 +95,7 @@ public class ScanService extends Service {
       if (Build.VERSION.SDK_INT >= 26) {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
-          NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Сканирование библиотеки", NotificationManager.IMPORTANCE_LOW);
+          NotificationChannel ch = new NotificationChannel(CHANNEL_ID, getString(R.string.scan_title), NotificationManager.IMPORTANCE_LOW);
           ch.setShowBadge(false);
           nm.createNotificationChannel(ch);
         }

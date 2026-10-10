@@ -75,7 +75,7 @@ public class FilesPlugin extends Plugin {
     public void getMeta(final PluginCall call) {
         final String u = call.getString("uri", null);
         if (u == null || u.trim().isEmpty()) {
-            call.reject("Не передан URI файла");
+            call.reject("No file URI");
             return;
         }
         final boolean wantCover = Boolean.TRUE.equals(call.getBoolean("cover", false));
@@ -102,12 +102,12 @@ public class FilesPlugin extends Plugin {
     public void folderPickerResult(PluginCall call, ActivityResult result) {
         if (call == null) return;
         if (result == null || result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
-            call.reject("Выбор папки отменён");
+            call.reject(getContext().getString(R.string.pick_cancelled));
             return;
         }
         Uri treeUri = result.getData().getData();
         if (treeUri == null) {
-            call.reject("Папка не выбрана");
+            call.reject(getContext().getString(R.string.pick_none));
             return;
         }
         try {
@@ -126,7 +126,7 @@ public class FilesPlugin extends Plugin {
         final String folderId = call.getString("folderId", "");
         final String folderName = call.getString("folderName", "");
         if (uriString == null || uriString.trim().isEmpty()) {
-            call.reject("Не передан URI папки");
+            call.reject("No folder URI");
             return;
         }
         final Uri treeUri = Uri.parse(uriString);
@@ -164,9 +164,9 @@ public class FilesPlugin extends Plugin {
                 .put("firstError", state.firstError));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            emit("scanError", new JSObject().put("folderId", folderId).put("message", "Сканирование прервано"));
+            emit("scanError", new JSObject().put("folderId", folderId).put("message", getContext().getString(R.string.scan_interrupted)));
         } catch (Exception e) {
-            emit("scanError", new JSObject().put("folderId", folderId).put("message", e.getMessage() == null ? "Ошибка сканирования" : e.getMessage()));
+            emit("scanError", new JSObject().put("folderId", folderId).put("message", e.getMessage() == null ? getContext().getString(R.string.scan_error) : e.getMessage()));
         }
     }
 
@@ -183,7 +183,7 @@ public class FilesPlugin extends Plugin {
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId);
         Cursor c = getContext().getContentResolver().query(children, LIST_COLS, null, null,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME + " COLLATE NOCASE ASC");
-        if (c == null) throw new IllegalStateException("Провайдер файлов не вернул список папки");
+        if (c == null) throw new IllegalStateException("The file provider returned no folder listing");
         return c;
     }
 
@@ -317,7 +317,7 @@ public class FilesPlugin extends Plugin {
             String title;
             String author = "";
             if (relativeDir.isEmpty()) {
-                title = stripExt(audioHere.get(0).optString("name", "Книга"));
+                title = stripExt(audioHere.get(0).optString("name", getContext().getString(R.string.default_book)));
             } else {
                 int slash = relativeDir.lastIndexOf('/');
                 if (slash >= 0) {
@@ -533,6 +533,6 @@ public class FilesPlugin extends Plugin {
                 if (!name.isEmpty()) return name;
             }
         } catch (Exception ignored) { }
-        return "Аудиокниги";
+        return getContext().getString(R.string.default_folder);
     }
 }

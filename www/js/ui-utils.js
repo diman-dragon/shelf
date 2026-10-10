@@ -1,5 +1,6 @@
 /* ui-utils.js — UI Utilities: Time formatting, DOM element templates, Toasts, Modals */
 import { icon, escapeHtml, modalRoot, isMusic } from './state.js';
+import { t } from './i18n.js';
 
 let toastTimer;
 
@@ -123,7 +124,7 @@ export function bookCover(b, extra=''){
 /** A tiny corner mark on a cover: a book or a vinyl record. Icon only — no words on covers. */
 export function kindBadge(b){
   const music = isMusic(b);
-  return `<span class="kind-badge ${music ? 'kind-music' : 'kind-book'}" aria-label="${music ? 'Музыка' : 'Книга'}">${icon(music ? 'vinyl' : 'book', 'icon kind-ico')}</span>`;
+  return `<span class="kind-badge ${music ? 'kind-music' : 'kind-book'}" aria-label="${t(music ? 'Музыка' : 'Книга')}">${icon(music ? 'vinyl' : 'book', 'icon kind-ico')}</span>`;
 }
 
 // <img> "error" events do not bubble, but they can be caught in the capture phase: broken cover -> show the placeholder

@@ -51,7 +51,6 @@ public class PlayerService extends MediaSessionService {
 
   /** The running player (main thread only). Used by the plugin, the widget and the sleep timer. */
   static volatile ExoPlayer live;
-  static volatile boolean skipSilence;
 
   private MediaSession session;
   private ExoPlayer player;
@@ -274,16 +273,6 @@ public class PlayerService extends MediaSessionService {
     return sleepEndsAt == 0 ? 0 : Math.max(0, sleepEndsAt - SystemClock.elapsedRealtime());
   }
 
-  static void setSkipSilence(final boolean on) {
-    skipSilence = on;
-    MAIN.post(new Runnable() {
-      @Override public void run() {
-        ExoPlayer p = live;
-        if (p != null) p.setSkipSilenceEnabled(on);
-      }
-    });
-  }
-
   /** Widget buttons. Only wired while a book is loaded in the service (see PlayerWidget.push), even if the Activity/WebView is gone. */
   static void handleAction(final String a) {
     MAIN.post(new Runnable() {
@@ -305,7 +294,7 @@ public class PlayerService extends MediaSessionService {
 
   private CommandButton closeButton() {
     return new CommandButton.Builder()
-        .setDisplayName("Закрыть")
+        .setDisplayName(getString(R.string.close))
         .setIconResId(R.drawable.ic_notif_close)
         .setSessionCommand(CLOSE_COMMAND)
         .build();
@@ -381,7 +370,6 @@ public class PlayerService extends MediaSessionService {
         .setSeekBackIncrementMs(10000)        // the real step is chosen in the settings: see seekStepMs / the session wrapper below
         .setSeekForwardIncrementMs(10000)
         .build();
-    player.setSkipSilenceEnabled(skipSilence);
     player.setPauseAtEndOfMediaItems(albumMode);      // "album" mode: stop after every track (the gap is timed below)
     player.addListener(new Player.Listener() {
       @Override public void onIsPlayingChanged(boolean isPlaying) {

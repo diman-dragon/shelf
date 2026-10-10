@@ -1,10 +1,11 @@
 /* scanner.js — Folder picker, Native scan listener, file import */
-import { state, icon, escapeHtml, plugin, plural, isNative, $, uid, modalRoot, durationOfBook, cleanTitle, cleanFolderName } from './state.js';
+import { state, icon, escapeHtml, plugin, isNative, $, uid, modalRoot, durationOfBook, cleanTitle, cleanFolderName } from './state.js';
 import { saveBooks, saveFolders, savePlaylists, saveBooksSoon, flushBooks, evictCovers } from './storage.js';
 import { dbSet } from './db.js';
 import { openModal, closeModal, showToast } from './ui-utils.js';
 import { render, act } from './router.js';
 import CONFIG from '../config.js';
+import { t, plural } from './i18n.js';
 
 let nativeScanListenersReady = false;
 let scanRenderTimer = null;
@@ -15,12 +16,12 @@ const scanJobs = new Map();
 export function openFolderSheet(){
   const folders = state.folders;
   const selected = folders.filter(f => state.selectedFolderIds.includes(f.id));
-  modalRoot.innerHTML = `<div class="modal-back" id="folderBack"><div class="sheet" id="folderSheet"><div class="sheet-head"><button class="sheet-close" id="folderClose" aria-label="Закрыть">${icon('close')}</button><h2>Выбор папок</h2><span style="font-size:11px;color:var(--muted)">${selected.length} выбрано</span></div>
-    <div class="scan-hero"><strong>Папки с аудио</strong><p>Добавляйте несколько папок. Доступ к ним сохраняется на устройстве, а вложенные каталоги сканируются автоматически.</p></div>
-    <div id="folderList">${folders.length?folders.map(folderRow).join(''):`<div style="padding:25px 4px;text-align:center;color:var(--muted)">Папки ещё не выбраны.</div>`}</div>
-    <button class="primary" id="scanNow" style="margin-top:12px">${icon('refresh')} Сканировать выбранные</button>
-    <button class="secondary" id="addFolderNow" style="margin-top:8px">${icon('folderPlus')} Добавить папку</button>
-    <div class="section-title">Состояние</div><div id="scanInfo" class="scan-hero"><strong>${selected.length} ${plural(selected.length,'папка выбрана','папки выбрано','папок выбрано')}</strong><p>После сканирования приложение вернётся в библиотеку.</p></div>
+  modalRoot.innerHTML = `<div class="modal-back" id="folderBack"><div class="sheet" id="folderSheet"><div class="sheet-head"><button class="sheet-close" id="folderClose" aria-label="${t('Закрыть')}">${icon('close')}</button><h2>${t('Выбор папок')}</h2><span style="font-size:11px;color:var(--muted)">${t('{n} выбрано', { n: selected.length })}</span></div>
+    <div class="scan-hero"><strong>${t('Папки с аудио')}</strong><p>${t('Добавляйте несколько папок. Доступ к ним сохраняется на устройстве, а вложенные каталоги сканируются автоматически.')}</p></div>
+    <div id="folderList">${folders.length?folders.map(folderRow).join(''):`<div style="padding:25px 4px;text-align:center;color:var(--muted)">${t('Папки ещё не выбраны.')}</div>`}</div>
+    <button class="primary" id="scanNow" style="margin-top:12px">${icon('refresh')} ${t('Сканировать выбранные')}</button>
+    <button class="secondary" id="addFolderNow" style="margin-top:8px">${icon('folderPlus')} ${t('Добавить папку')}</button>
+    <div class="section-title">${t('Состояние')}</div><div id="scanInfo" class="scan-hero"><strong>${selected.length} ${plural(selected.length,'папка выбрана','папки выбрано','папок выбрано')}</strong><p>${t('После сканирования приложение вернётся в библиотеку.')}</p></div>
     <div id="scanProgress" class="scan-progress hidden"><div class="progress-bar"><i id="scanBar"></i></div><div class="scan-text" id="scanText"></div></div>
     <div id="scanFound"></div>
   </div></div>`;
@@ -42,7 +43,7 @@ export function openFolderSheet(){
 
 function folderRow(f){
   const on = state.selectedFolderIds.includes(f.id);
-  return `<div class="folder-card ${on?'selected':''}" data-folder="${escapeHtml(f.id)}"><div class="check"></div><div class="folder-info"><div class="folder-name">${escapeHtml(cleanFolderName(f.name))}</div><div class="folder-path">${escapeHtml(f.uri)}</div></div><button class="folder-delete" data-folder-delete="${escapeHtml(f.id)}" aria-label="Удалить папку">${icon('trash')}</button></div>`;
+  return `<div class="folder-card ${on?'selected':''}" data-folder="${escapeHtml(f.id)}"><div class="check"></div><div class="folder-info"><div class="folder-name">${escapeHtml(cleanFolderName(f.name))}</div><div class="folder-path">${escapeHtml(f.uri)}</div></div><button class="folder-delete" data-folder-delete="${escapeHtml(f.id)}" aria-label="${t('Удалить папку')}">${icon('trash')}</button></div>`;
 }
 
 async function toggleFolder(id){
@@ -54,7 +55,7 @@ async function toggleFolder(id){
 async function deleteFolder(id){
   const f = state.folders.find(x => x.id === id);
   if(!f) return;
-  openModal(`<h3>Удалить папку?</h3><p style="color:var(--muted);font-size:13px">Папка «${escapeHtml(f.name)}» перестанет сканироваться. Файлы на телефоне не удаляются.</p><div class="modal-actions"><button class="secondary" data-close>Отмена</button><button class="primary" id="folderDeleteConfirm" style="background:var(--danger);color:#fff">Удалить</button></div>`);
+  openModal(`<h3>${t('Удалить папку?')}</h3><p style="color:var(--muted);font-size:13px">${t('Папка «{name}» перестанет сканироваться. Файлы на телефоне не удаляются.', { name: escapeHtml(f.name) })}</p><div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button><button class="primary" id="folderDeleteConfirm" style="background:var(--danger);color:#fff">${t('Удалить')}</button></div>`);
   $('folderDeleteConfirm').onclick = async () => {
     state.folders = state.folders.filter(x => x.id !== id);
     state.selectedFolderIds = state.selectedFolderIds.filter(x => x !== id);
@@ -73,7 +74,7 @@ async function deleteFolder(id){
 
 export async function pickFolder(){
   const P = plugin('ShelfFiles');
-  if(!P){ showToast('Модуль доступа к папкам не загружен'); return; }
+  if(!P){ showToast(t('Модуль доступа к папкам не загружен')); return; }
   try {
     const f = await P.pickFolder();
     if(!f?.uri) return;
@@ -86,7 +87,7 @@ export async function pickFolder(){
     beginScan([old], old.name);
     render();
     await startFolderScan(old);
-  } catch(e) { showToast(e?.message || e?.errorMessage || 'Не удалось выбрать папку'); }
+  } catch(e) { showToast(e?.message || e?.errorMessage || t('Не удалось выбрать папку')); }
 }
 
 /* ---------------- scan progress model ---------------- */
@@ -103,7 +104,7 @@ function beginScan(folders, name, silent = false){
     const j = scanJobs.get(f.id);
     if(!j || j.done) scanJobs.set(f.id, {total:0, processed:0, done:false, started:false});
   });
-  state.scan.name = scanJobs.size > 1 ? 'Сканирование папок' : name;
+  state.scan.name = scanJobs.size > 1 ? t('Сканирование папок') : name;
   syncScan();
 }
 
@@ -135,7 +136,7 @@ async function finishIfAllDone(){
     await flushBooks();
     // the covers are on disk now: keep in memory only the current book and the first screens of the library
     evictCovers([state.current?.id, ...state.books.slice(0, 60).map(b => b.id)]);
-  } catch(e) { showToast('Не удалось сохранить библиотеку: ' + (e?.message || e)); }
+  } catch(e) { showToast(t('Не удалось сохранить библиотеку: {e}', { e: e?.message || e })); }
   dupIndex = null;
   syncScan();
   updateScanDock();
@@ -144,12 +145,12 @@ async function finishIfAllDone(){
     if(state.screen === 'shelf') act('renderShelf');
     // a silent (automatic) scan only speaks up when it actually found something or failed
     if(s.silent && !s.books && !s.errors) return;
-    const parts = [`Добавлено книг: ${s.books}`];
-    if(s.skipped) parts.push(`дубликатов пропущено: ${s.skipped}`);
+    const parts = [t('Добавлено книг: {n}', { n: s.books })];
+    if(s.skipped) parts.push(t('дубликатов пропущено: {n}', { n: s.skipped }));
     showToast(parts.join(' · '));
     // errors are never swallowed: the person sees them after the summary
-    if(s.errors) setTimeout(() => showToast(`Ошибки чтения: ${s.errors}${s.firstError ? ' — ' + s.firstError : ''}`), 2600);
-    else if(s.timeouts) setTimeout(() => showToast(`Не удалось сразу прочитать длительность у файлов: ${s.timeouts}. Догрузим позже`), 2600);
+    if(s.errors) setTimeout(() => showToast(t('Ошибки чтения: {n}', { n: s.errors }) + (s.firstError ? ' — ' + s.firstError : '')), 2600);
+    else if(s.timeouts) setTimeout(() => showToast(t('Не удалось сразу прочитать длительность у файлов: {n}. Догрузим позже', { n: s.timeouts })), 2600);
   }, 400);
 }
 
@@ -159,7 +160,7 @@ function scanView(p){
   return {
     known, pct,
     label: known ? `${Math.round(pct)}%` : '…',
-    foot: known ? `${p.processed} из ${p.total} аудиофайлов` : (p.counting ? 'Подсчёт файлов…' : `${p.processed} аудиофайлов`)
+    foot: known ? t('{a} из {b} аудиофайлов', { a: p.processed, b: p.total }) : (p.counting ? t('Подсчёт файлов…') : t('{a} аудиофайлов', { a: p.processed }))
   };
 }
 
@@ -167,7 +168,7 @@ export function scanDock(){
   const p = state.scan || {};
   const v = scanView(p);
   const bar = v.known ? `style="width:${v.pct}%"` : '';
-  return `<div class="scan-dock" id="scanDock"><div class="scan-dock-top"><span class="scan-spinner"></span><div><b>Добавляем книги</b><small>${escapeHtml(p.name||'Сканирование')} · ${p.books||0} книг</small></div><strong>${v.label}</strong></div><div class="scan-dock-bar"><i id="scanDockBar" class="${v.known?'':'indeterminate'}" ${bar}></i></div><div class="scan-dock-foot">${v.foot}</div></div>`;
+  return `<div class="scan-dock" id="scanDock"><div class="scan-dock-top"><span class="scan-spinner"></span><div><b>${t('Добавляем книги')}</b><small>${escapeHtml(p.name||t('Сканирование'))} · ${p.books||0} ${plural(p.books||0,'книга','книги','книг')}</small></div><strong>${v.label}</strong></div><div class="scan-dock-bar"><i id="scanDockBar" class="${v.known?'':'indeterminate'}" ${bar}></i></div><div class="scan-dock-foot">${v.foot}</div></div>`;
 }
 
 async function startFolderScan(folder, silent = false){
@@ -181,9 +182,9 @@ async function startFolderScan(folder, silent = false){
   catch(e) {
     job.done = true;
     state.scan.errors++;
-    state.scan.firstError = state.scan.firstError || (e?.message || 'Не удалось начать сканирование');
+    state.scan.firstError = state.scan.firstError || (e?.message || t('Не удалось начать сканирование'));
     syncScan();
-    showToast(e?.message || 'Не удалось начать сканирование');
+    showToast(e?.message || t('Не удалось начать сканирование'));
     await finishIfAllDone();
   }
 }
@@ -196,7 +197,7 @@ export async function scanAllFolders({silent = false, returnToShelf = false} = {
   const ids = [...state.selectedFolderIds], folders = state.folders.filter(f => ids.includes(f.id));
   if(!folders.length){
     if(silent) return;                                        // nothing selected: an automatic scan just does nothing
-    showToast('Сначала выберите папку');
+    showToast(t('Сначала выберите папку'));
     openFolderSheet();
     return;
   }
@@ -204,7 +205,7 @@ export async function scanAllFolders({silent = false, returnToShelf = false} = {
     closeModal();
     if(returnToShelf) state.screen = 'shelf';
   }
-  beginScan(folders, folders.length===1?folders[0].name:'Сканирование папок', silent);
+  beginScan(folders, folders.length===1?folders[0].name:t('Сканирование папок'), silent);
   if(!silent) render();
   for(const f of folders) await startFolderScan(f, silent);
 }
@@ -277,7 +278,7 @@ export function initNativeScanListeners(){
     j.total = Number(e.totalFiles) || 0;
     j.processed = 0;
     state.scan.active = true;
-    if(scanJobs.size === 1) state.scan.name = e.folderName || state.scan.name || 'Сканирование';
+    if(scanJobs.size === 1) state.scan.name = e.folderName || state.scan.name || t('Сканирование');
     syncScan();
     updateScanDock();
   });
@@ -358,7 +359,7 @@ export function initNativeScanListeners(){
     const j = jobFor(e.folderId);
     j.done = true;
     state.scan.errors++;
-    if(!state.scan.firstError) state.scan.firstError = e?.message || 'Ошибка сканирования';
+    if(!state.scan.firstError) state.scan.firstError = e?.message || t('Ошибка сканирования');
     syncScan();
     updateScanDock();
     await finishIfAllDone();
@@ -375,7 +376,7 @@ function updateScanDock(){
     bar.style.width = v.known ? v.pct + '%' : '';
   }
   const foot = el.querySelector('.scan-dock-foot'); if(foot) foot.textContent = v.foot;
-  const small = el.querySelector('small'); if(small) small.textContent = `${p.name||'Сканирование'} · ${p.books||0} книг`;
+  const small = el.querySelector('small'); if(small) small.textContent = `${p.name||t('Сканирование')} · ${p.books||0} ${plural(p.books||0,'книга','книги','книг')}`;
   const strong = el.querySelector('.scan-dock-top>strong'); if(strong) strong.textContent = v.label;
 }
 

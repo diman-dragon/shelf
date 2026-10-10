@@ -107,7 +107,7 @@ public class PlayerPlugin extends Plugin {
           controller.addListener(playerListener);
         } catch (Exception e) {
           controller = null;
-          for (Pending p : pending) if (p.call != null) p.call.reject("Не удалось подключиться к плееру", e);
+          for (Pending p : pending) if (p.call != null) p.call.reject("Could not connect to the player", e);
           pending.clear();
           return;
         }
@@ -123,13 +123,13 @@ public class PlayerPlugin extends Plugin {
   private final Runnable connectTimeout = new Runnable() { @Override public void run() {
     if (!connecting) return;
     connecting = false;
-    for (Pending p : pending) if (p.call != null) p.call.reject("Плеер не отвечает");
+    for (Pending p : pending) if (p.call != null) p.call.reject("The player is not responding");
     pending.clear();
   }};
 
   private void safe(PluginCall call, Op op, MediaController c) {
     try { op.run(c); }
-    catch (Exception e) { if (call != null) call.reject("Ошибка плеера: " + e.getMessage(), e); }
+    catch (Exception e) { if (call != null) call.reject("Player error: " + e.getMessage(), e); }
   }
 
   private final Player.Listener playerListener = new Player.Listener() {
@@ -214,7 +214,7 @@ public class PlayerPlugin extends Plugin {
   @PluginMethod
   public void setQueue(final PluginCall call) {
     JSArray arr = call.getArray("items");
-    if (arr == null || arr.length() == 0) { call.reject("Пустая очередь"); return; }
+    if (arr == null || arr.length() == 0) { call.reject("Empty queue"); return; }
     final String bookId = call.getString("bookId", "");
     final String bookTitle = call.getString("bookTitle", "");
     final String author = call.getString("author", "");
@@ -227,7 +227,7 @@ public class PlayerPlugin extends Plugin {
     final List<MediaItem> items;
     try {
       items = QueueStore.build(arr, bookId, bookTitle, author, art);
-    } catch (Exception e) { call.reject("Некорректный список", e); return; }
+    } catch (Exception e) { call.reject("Invalid list", e); return; }
     // remembered natively: "play" on a paused notification must still work after the system killed the process
     QueueStore.save(getContext(), bookId, bookTitle, author, art, arr, speed);
 
@@ -243,7 +243,7 @@ public class PlayerPlugin extends Plugin {
   @PluginMethod
   public void play(final PluginCall call) {
     withController(call, new Op() { @Override public void run(MediaController c) {
-      if (c.getMediaItemCount() == 0) { call.reject("Очередь пуста"); return; }
+      if (c.getMediaItemCount() == 0) { call.reject("Queue is empty"); return; }
       if (c.getPlaybackState() == Player.STATE_IDLE) c.prepare();
       c.play();
       call.resolve();
@@ -283,12 +283,6 @@ public class PlayerPlugin extends Plugin {
     JSObject r = new JSObject();
     r.put("peakBoostDb", AudioFx.shared.peakBoostDb(AudioFx.shared.currentRate()));
     call.resolve(r);
-  }
-
-  @PluginMethod
-  public void setSkipSilence(PluginCall call) {
-    PlayerService.setSkipSilence(call.getBoolean("on", false));
-    call.resolve();
   }
 
   @PluginMethod
@@ -364,7 +358,7 @@ public class PlayerPlugin extends Plugin {
       Intent i = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       getContext().startActivity(i);
       call.resolve();
-    } catch (Exception e) { call.reject("Не удалось открыть настройки", e); }
+    } catch (Exception e) { call.reject("Could not open the settings", e); }
   }
 
   // ------------------------------------------------------------------ cover → file (artworkUri keeps IPC small)

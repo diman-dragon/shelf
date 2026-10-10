@@ -13,6 +13,7 @@ import { closeVisualizer, stepPicture } from './js/visualizer.js';
 import { initNativeScanListeners, scanAllFolders, openFolderSheet } from './js/scanner.js';
 import { audio } from './js/sound.js';
 import { bindSwipe } from './js/player-swipe.js';
+import { t, applyDocumentLang } from './js/i18n.js';
 
 /**
  * Swipe rules (one place, one logic):
@@ -58,12 +59,12 @@ registerAction('unloadCurrent', unloadCurrent);
 // The error is shown to the person (toast, or the fallback banner when #toast is not in the DOM yet).
 function reportError(tag, err, fallbackText){
   const text = (err && err.message) || (typeof err === 'string' ? err : '') || fallbackText;
-  try { showToast(`Ошибка: ${text}`); }
+  try { showToast(t('Ошибка: {text}', { text })); }
   catch (e2) {
     // even showToast failed (e.g. the module graph is broken): plain DOM banner, no imports needed
     try {
       const d = document.createElement('div');
-      d.textContent = `Ошибка: ${text}`;
+      d.textContent = t('Ошибка: {text}', { text });
       d.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:9999;padding:10px 14px;border-radius:12px;background:#7a1f18;color:#fff;font:13px system-ui,sans-serif';
       (document.body || document.documentElement).appendChild(d);
     } catch {}
@@ -73,11 +74,11 @@ function reportError(tag, err, fallbackText){
 window.addEventListener('error', (event) => {
   // benign browser notification, not an app failure
   if(/ResizeObserver loop/i.test(event.message || '')) return;
-  reportError('Global Error', event.error || event.message, 'Неизвестная ошибка');
+  reportError('Global Error', event.error || event.message, t('Неизвестная ошибка'));
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  reportError('Unhandled Rejection', event.reason, 'Сбой операции');
+  reportError('Unhandled Rejection', event.reason, t('Сбой операции'));
 });
 
 // Native Android Back Button handling via window.Capacitor.Plugins
@@ -128,7 +129,7 @@ async function loadState(){
     const settings = await dbGet('settings');
     if(settings) state.settings = {...state.settings, ...settings};
   } catch (e) {
-    showToast('Ошибка загрузки данных: ' + (e?.message || e));
+    showToast(t('Ошибка загрузки данных: {e}', { e: e?.message || e }));
   }
 
   document.documentElement.dataset.theme = state.settings.theme || 'dark';
@@ -156,7 +157,7 @@ async function loadState(){
   try {
     render();
   } catch (e) {
-    showToast('Ошибка отображения интерфейса');
+    showToast(t('Ошибка отображения интерфейса'));
   }
 
   try {
@@ -175,6 +176,7 @@ async function initApp(){
   if(appInitialized) return;
   appInitialized = true;
   try {
+    applyDocumentLang();
     bindSwipe(document.body, handleGlobalSwipe);
     state.selectedFolderIds = (await dbGet('foldersSelected')) || [];
     document.querySelectorAll('.nav-ico').forEach(n => {
@@ -187,7 +189,7 @@ async function initApp(){
     await loadState();
     audio.setSeekStep?.(seekStep());           // native: the notification / lock screen / widget use the same step
   } catch (e) {
-    showToast(`Ошибка инициализации: ${e.message || 'Сбой старта'}`);
+    showToast(t('Ошибка инициализации: {e}', { e: e.message || t('Сбой старта') }));
   }
 }
 

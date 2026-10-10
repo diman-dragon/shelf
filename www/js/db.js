@@ -5,7 +5,7 @@
 function lib(){
   const l = window.idbKeyval;
   if(!l || typeof l.get !== 'function' || typeof l.set !== 'function' || typeof l.del !== 'function'){
-    throw new Error('Хранилище недоступно: не загрузилась lib/idb-keyval.js');
+    throw new Error('Storage unavailable: lib/idb-keyval.js did not load');
   }
   return l;
 }

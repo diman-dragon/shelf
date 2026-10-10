@@ -8,6 +8,7 @@ import { bookCover, kindBadge, iconBtn, showToast } from './ui-utils.js';
 import { progress, bookElapsed } from './progress.js';
 import { loadCover, hasStoredCover } from './storage.js';
 import { act } from './router.js';
+import { t } from './i18n.js';
 
 const QUICK_MAX_SEC = 2 * 3600;     // "one sitting": up to 2 hours
 const RAIL_MAX = 12;                // cards per shelf
@@ -17,9 +18,9 @@ const MARKS_MAX = 8;
 function fmtSpan(sec){
   sec = Math.max(0, Math.round(Number(sec) || 0));
   const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
-  if(h && m) return `${h} ч ${m} мин`;
-  if(h) return `${h} ч`;
-  return `${m} мин`;
+  if(h && m) return `${h} ${t('ч')} ${m} ${t('мин')}`;
+  if(h) return `${h} ${t('ч')}`;
+  return `${m} ${t('мин')}`;
 }
 
 const started = b => !b.finished && progress(b) > 0.5;
@@ -47,7 +48,7 @@ export function collect(books = state.books){
 function card(b){
   const p = progress(b);
   const n = b.files?.length || 0;
-  const sub = b.finished ? 'прослушано' : (p > 0.5 ? `${Math.round(p)}%` : `${n} ${partsCount(b, n)}`);
+  const sub = b.finished ? t('прослушано') : (p > 0.5 ? `${Math.round(p)}%` : `${n} ${partsCount(b, n)}`);
   return `<button type="button" class="dv-card" data-open="${escapeHtml(b.id)}">
     <div class="dv-cover" data-cover-for="${escapeHtml(b.id)}">${bookCover(b)}${kindBadge(b)}</div>
     <div class="dv-title">${escapeHtml(b.title)}</div>
@@ -71,19 +72,19 @@ function hero(b){
   return `<div class="dv-hero" data-open="${escapeHtml(b.id)}">
     <div class="dv-hero-cover" data-cover-for="${escapeHtml(b.id)}">${bookCover(b)}${kindBadge(b)}</div>
     <div class="dv-hero-body">
-      <small>Продолжить</small>
+      <small>${t('Продолжить')}</small>
       <div class="dv-hero-title">${escapeHtml(b.title)}</div>
-      <div class="dv-hero-sub">${partName(b)} ${i + 1} из ${b.files.length}${left > 0 ? ` · осталось ${fmtSpan(left)}` : ''}</div>
+      <div class="dv-hero-sub">${partName(b)} ${i + 1} ${t('из')} ${b.files.length}${left > 0 ? ` · ${t('осталось')} ${fmtSpan(left)}` : ''}</div>
       <div class="dv-prog"><i style="width:${p}%"></i></div>
     </div>
-    <button type="button" class="dv-play" data-play="${escapeHtml(b.id)}" aria-label="Слушать дальше">${icon('play')}</button>
+    <button type="button" class="dv-play" data-play="${escapeHtml(b.id)}" aria-label="${t('Слушать дальше')}">${icon('play')}</button>
   </div>`;
 }
 
 function stats(c){
   const tiles = [
-    [fmtSpan(c.listened), 'прослушано всего'],
-    [`${c.done.length}<i> из ${c.live.length}</i>`, plural(c.done.length, 'завершена', 'завершены', 'завершено')],
+    [fmtSpan(c.listened), t('прослушано всего')],
+    [`${c.done.length}<i> ${t('из')} ${c.live.length}</i>`, plural(c.done.length, 'завершена', 'завершены', 'завершено')],
     [String(c.marks.length), plural(c.marks.length, 'закладка', 'закладки', 'закладок')]
   ];
   return `<div class="dv-stats">${tiles.map(([v, l]) => `<div class="dv-stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>`;
@@ -93,36 +94,36 @@ function marksBlock(c){
   if(!c.marks.length) return '';
   const rows = c.marks.slice(0, MARKS_MAX).map(({b, m}) => {
     const f = b.files[m.i];
-    const t = Math.round(Number(m.t) || 0);
-    const clock = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-    return `<div class="dv-mark" data-mark-book="${escapeHtml(b.id)}" data-mark-i="${m.i}" data-mark-t="${t}">
+    const sec = Math.round(Number(m.t) || 0);
+    const clock = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    return `<div class="dv-mark" data-mark-book="${escapeHtml(b.id)}" data-mark-i="${m.i}" data-mark-t="${sec}">
       <span class="dv-mark-ico">${icon('bookmark')}</span>
       <div><b>${escapeHtml(b.title)}</b><small>${partName(b)} ${m.i + 1}${f?.name ? ' · ' + escapeHtml(f.name) : ''} · ${clock}</small></div>
       ${icon('chevron')}
     </div>`;
   }).join('');
   const more = c.marks.length - MARKS_MAX;
-  return `<div class="dv-section"><div class="dv-head"><h3>Ваши закладки</h3><span>из всех книг</span></div>${rows}${more > 0 ? `<div class="dv-more">и ещё ${more}</div>` : ''}</div>`;
+  return `<div class="dv-section"><div class="dv-head"><h3>${t('Ваши закладки')}</h3><span>${t('из всех книг')}</span></div>${rows}${more > 0 ? `<div class="dv-more">${t('и ещё {n}', { n: more })}</div>` : ''}</div>`;
 }
 
 export function renderDiscover(){
   const c = collect();
   let html = `<section class="screen discover-screen">`;
-  html += header('Для вас', 'Подборки из вашей библиотеки', c.live.length ? iconBtn('shuffle', 'Что послушать? Случайный выбор', 'randomPick') : '');
+  html += header(t('Для вас'), t('Подборки из вашей библиотеки'), c.live.length ? iconBtn('shuffle', t('Что послушать? Случайный выбор'), 'randomPick') : '');
   if(!c.live.length){
-    html += `<div class="dv-empty">${icon('spark')}<div>Здесь появятся подборки</div><small>Добавьте книги или музыку — продолжить, новинки, короткое на один присест, статистика и закладки соберутся сами.</small><button type="button" class="dv-btn" data-action="openAddSheet">Добавить в библиотеку</button></div></section>`;
+    html += `<div class="dv-empty">${icon('spark')}<div>${t('Здесь появятся подборки')}</div><small>${t('Добавьте книги или музыку — продолжить, новинки, короткое на один присест, статистика и закладки соберутся сами.')}</small><button type="button" class="dv-btn" data-action="openAddSheet">${t('Добавить в библиотеку')}</button></div></section>`;
     main.innerHTML = html;
     return;
   }
   html += hero(c.cur);
   html += stats(c);
-  html += `<button type="button" class="dv-surprise" data-surprise>${icon('shuffle')}<span><b>Удиви меня</b><small>случайный выбор из того, что ещё не слушали</small></span></button>`;
-  html += rail('В процессе', 'вы остановились здесь', c.inProgress.filter(b => b !== c.cur));
-  html += rail('Ещё не слушали', 'новые в библиотеке', c.fresh);
-  html += rail('На один присест', 'до 2 часов', c.quick);
-  html += rail('Музыка', 'ваши альбомы', c.music);
+  html += `<button type="button" class="dv-surprise" data-surprise>${icon('shuffle')}<span><b>${t('Удиви меня')}</b><small>${t('случайный выбор из того, что ещё не слушали')}</small></span></button>`;
+  html += rail(t('В процессе'), t('вы остановились здесь'), c.inProgress.filter(b => b !== c.cur));
+  html += rail(t('Ещё не слушали'), t('новые в библиотеке'), c.fresh);
+  html += rail(t('На один присест'), t('до 2 часов'), c.quick);
+  html += rail(t('Музыка'), t('ваши альбомы'), c.music);
   html += marksBlock(c);
-  html += rail('Прослушано', 'можно начать заново', c.done);
+  html += rail(t('Прослушано'), t('можно начать заново'), c.done);
   html += `</section>`;
   main.innerHTML = html;
   bind(c);
@@ -161,7 +162,7 @@ function fillCovers(c){
 /** "Удиви меня": prefers something never started, never the book that is already open */
 export function randomPick(){
   const live = state.books.filter(b => b.files?.length);
-  if(!live.length){ showToast('Библиотека пуста'); return; }
+  if(!live.length){ showToast(t('Библиотека пуста')); return; }
   const pools = [
     live.filter(b => !b.finished && !started(b) && b !== state.current),
     live.filter(b => !b.finished && b !== state.current),
@@ -170,6 +171,6 @@ export function randomPick(){
   ];
   const pool = pools.find(p => p.length) || live;
   const b = pool[Math.floor(Math.random() * pool.length)];
-  showToast(`Случайный выбор: «${b.title}»`);
+  showToast(t('Случайный выбор: «{title}»', { title: b.title }));
   act('openPlayer', b.id);
 }

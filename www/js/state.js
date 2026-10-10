@@ -1,4 +1,5 @@
 /* state.js — Application State, Constants & Helpers */
+import { t, plural } from './i18n.js';
 export const $ = id => document.getElementById(id);
 export const main = $('main');
 export const modalRoot = $('modalRoot');
@@ -52,7 +53,7 @@ export function icon(name, cls='icon'){return `<span class="${cls}"><svg viewBox
 /** Music = an album: its parts are TRACKS. Everything else is a book: its parts are CHAPTERS. */
 export function isMusic(b){ return !!b && (b.type === 'album' || b.type === 'music' || b.mode === 'album'); }
 /** "Трек" for music, "Глава" for books (singular, capitalised) */
-export function partName(b){ return isMusic(b) ? 'Трек' : 'Глава'; }
+export function partName(b){ return t(isMusic(b) ? 'Трек' : 'Глава'); }
 /** "3 трека" / "5 глав": the counted noun only, for a number n */
 export function partsCount(b, n){ return isMusic(b) ? plural(n, 'трек', 'трека', 'треков') : plural(n, 'глава', 'главы', 'глав'); }
 export function escapeHtml(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -69,9 +70,9 @@ export function cleanFolderName(s=''){
   const colon = n.indexOf(':');
   if(colon >= 0 && !n.slice(0, colon).includes('/')) n = n.slice(colon + 1);
   n = n.split('/').filter(Boolean).pop() || '';
-  return n.trim() || 'Аудиокниги';
+  return n.trim() || t('Аудиокниги');
 }
 export function uid(){return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
-export function plural(n,a,b,c){const x=n%10,y=n%100;return x===1&&y!==11?a:x>=2&&x<=4&&(y<10||y>=20)?b:c}
+export { plural };
 export function isNative(){return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())}
 export function plugin(name){return window.Capacitor?.Plugins?.[name] || null}
