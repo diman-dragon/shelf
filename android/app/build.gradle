@@ -1,6 +1,6 @@
 apply plugin: 'com.android.application'
 
-def media3Version = '1.4.1'
+def media3Version = '1.11.1'
 
 // ---- single source of truth: package.json -> versionName / versionCode (2.2.0 -> 20200) ----
 def pkg = new groovy.json.JsonSlurper().parse(file("$rootDir/../package.json"))
