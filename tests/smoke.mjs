@@ -288,19 +288,22 @@ console.log('== store requirements inside the app');
 console.log('== swipes: the picture changes on the player cover, everywhere else the screens move');
 {
   w.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, { get: (t, k) => (k === 'createLinearGradient' || k === 'createRadialGradient') ? () => ({ addColorStop(){} }) : () => {}, set: () => true });
-  const swipe = async (el, dir) => {
+  const swipe = async (el, dir, during) => {
     const x0 = dir === 'left' ? 500 : 300, x1 = dir === 'left' ? 300 : 500;
     const mk = (type, x, key) => { const e = new w.Event(type, { bubbles: true, cancelable: true }); const t = { clientX: x, clientY: 300 }; e[key] = [t]; if(key !== 'touches') e.touches = []; return e; };
     el.dispatchEvent(mk('touchstart', x0, 'touches'));
     el.dispatchEvent(mk('touchmove', (x0 + x1) / 2, 'touches'));
+    if(during) during();
     el.dispatchEvent(mk('touchend', x1, 'changedTouches'));
     await new Promise(r => setTimeout(r, 60));
   };
   const hidden = () => { const v = w.document.getElementById('visualizer'); return !v || v.classList.contains('hidden'); };
   state.current = state.books.find(b => b.id === 'b1'); state.currentIndex = 0; state.currentPos = 0;
   setScreen('shelf'); await new Promise(r => setTimeout(r, 40));
-  await swipe(w.document.querySelector('.library-filters-bar'), 'left');
-  ok(state.screen === 'shelf', 'a swipe on a sideways-scrolling row does not change the screen');
+  const bar = w.document.querySelector('.library-filters-bar');
+  Object.defineProperty(bar, 'scrollWidth', { value: 700, configurable: true }); Object.defineProperty(bar, 'clientWidth', { value: 360, configurable: true });
+  await swipe(bar.firstElementChild, 'left', () => { bar.scrollLeft = 90; });
+  ok(state.screen === 'shelf', 'a swipe that scrolled a sideways-scrolling row does not change the screen');
   await swipe(w.document.querySelector('.shelf-list, .shelf-grid'), 'left');
   ok(state.screen === 'player', 'library: swipe left -> player');
   await swipe(w.document.querySelector('.player-title'), 'left');
@@ -313,6 +316,22 @@ console.log('== swipes: the picture changes on the player cover, everywhere else
   ok(state.screen === 'settings', 'the order is a loop: library <- settings');
   await swipe(w.document.querySelector('.settings-group'), 'left');
   ok(state.screen === 'shelf', 'settings -> library (loop)');
+  // «Для вас»: shelves that fit / sit at their end must not swallow the swipe; a shelf that really scrolls keeps it
+  setScreen('discover'); await new Promise(r => setTimeout(r, 40));
+  const rail = w.document.querySelector('.dv-rail');
+  ok(!!rail, 'discover has a shelf row');
+  await swipe(rail.firstElementChild, 'left');
+  ok(state.screen === 'settings', 'a shelf that fits the screen: swipe on its cards moves to the next screen');
+  setScreen('discover'); await new Promise(r => setTimeout(r, 40));
+  const rail2 = w.document.querySelector('.dv-rail');
+  Object.defineProperty(rail2, 'scrollWidth', { value: 900, configurable: true }); Object.defineProperty(rail2, 'clientWidth', { value: 360, configurable: true });
+  await swipe(rail2.firstElementChild, 'left');
+  ok(state.screen === 'settings', 'a long shelf already at its end: the swipe is not lost');
+  setScreen('discover'); await new Promise(r => setTimeout(r, 40));
+  const rail3 = w.document.querySelector('.dv-rail');
+  Object.defineProperty(rail3, 'scrollWidth', { value: 900, configurable: true }); Object.defineProperty(rail3, 'clientWidth', { value: 360, configurable: true });
+  await swipe(rail3.firstElementChild, 'left', () => { rail3.scrollLeft = 120; });
+  ok(state.screen === 'discover', 'a long shelf that scrolled: the swipe belongs to the shelf');
   setScreen('player'); await new Promise(r => setTimeout(r, 60));
   ok(hidden(), 'cover shown');
   await swipe(w.document.getElementById('playerCover'), 'left');
