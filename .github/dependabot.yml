@@ -1,0 +1,22 @@
+# Keeps the packages current. Capacitor android / cli / core must move together: they are grouped into ONE pull request
+# (tests/versions.mjs fails the build if they ever differ).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      capacitor:
+        patterns: ["@capacitor/*"]
+  - package-ecosystem: npm
+    directory: /tests
+    schedule: { interval: monthly }
+  - package-ecosystem: gradle
+    directory: /android
+    schedule: { interval: weekly }
+  - package-ecosystem: gradle
+    directory: /android/app
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }

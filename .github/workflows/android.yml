@@ -37,7 +37,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Web tests and lint
+      - name: Known vulnerabilities in the packages (information, does not stop the build)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+      - name: Version consistency, web tests and lint
         working-directory: tests
         run: |
           npm ci --no-audit --no-fund

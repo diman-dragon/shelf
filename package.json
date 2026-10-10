@@ -1,12 +1,12 @@
 {
   "name": "shelf-player",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "private": true,
   "description": "AudioShelf — local audiobook and album player. The version here is the single source for Android versionName/versionCode.",
   "dependencies": {
-    "@capacitor/android": "8.5.2",
+    "@capacitor/android": "8.5.3",
     "@capacitor/app": "8.1.2",
-    "@capacitor/cli": "8.5.2",
+    "@capacitor/cli": "8.5.3",
     "@capacitor/core": "8.5.3"
   },
   "scripts": {

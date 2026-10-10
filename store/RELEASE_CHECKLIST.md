@@ -10,7 +10,7 @@
 4. Опубликуйте политику конфиденциальности (`store/PRIVACY_POLICY.md`) по ссылке: GitHub Pages, Gist или свой сайт. Подставьте дату и e-mail.
 
 ## 1. Перед каждым релизом
-1. Поднимите `version` в `package.json` (например, `2.3.0`). Из неё берутся `versionName` и `versionCode` (2.3.0 → 20300), код всегда должен расти.
+1. Поднимите `version` в `package.json` (например, `2.4.0`). Из неё берутся `versionName` и `versionCode` (2.4.0 → 20300), код всегда должен расти.
 2. Проверки: `cd tests && npm ci && npm run lint && npm test`, затем `cd ../android && ./gradlew testDebugUnitTest`.
 3. Ручная проверка на **реальном телефоне** (минимум Android 15 или 16, лучше ещё один старый), список ниже.
 
@@ -25,7 +25,7 @@ cd android
 Файл: `android/app/build/outputs/bundle/release/app-release.aab`.
 
 **Через GitHub Actions** (`release.yml`): добавьте секреты репозитория
-`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, затем отправьте тег `v2.3.0` или запустите вручную. Base64 из PowerShell:
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, затем отправьте тег `v2.4.0` или запустите вручную. Base64 из PowerShell:
 ```
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("upload.jks")) | Set-Clipboard
 ```

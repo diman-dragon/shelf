@@ -750,3 +750,8 @@ button, .icon-btn, .tool, .control, .play-main, .nav-item, [data-action], [data-
 .dv-empty div { font-size: 15px; color: var(--text); }
 .dv-empty small { display: block; margin: 8px auto 18px; max-width: 280px; font-size: 12px; line-height: 1.45; }
 .dv-btn { padding: 11px 20px; border-radius: 14px; background: var(--gold2); color: #24170b; font-weight: 700; }
+
+/* Gestures: vertical scroll is native, horizontal belongs to the swipe logic (player-swipe.js).
+   Without this the browser may claim a sideways drag and cancel it, so swipes "sometimes don't work". */
+html, body, #app, #main, .screen { touch-action: pan-y; }
+.dv-rail, .library-filters-bar, [data-noswipe] { touch-action: pan-x pan-y; }

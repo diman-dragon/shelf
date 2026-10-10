@@ -1,6 +1,6 @@
 name: Release (signed AAB for Google Play)
 
-# Runs on a version tag (v2.2.0) or by hand. Needs four repository secrets:
+# Runs on a version tag (v2.4.0) or by hand. Needs four repository secrets:
 #   ANDROID_KEYSTORE_BASE64   the upload keystore, base64 (see store/RELEASE_CHECKLIST.md)
 #   ANDROID_KEYSTORE_PASSWORD
 #   ANDROID_KEY_ALIAS
@@ -28,6 +28,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+
+      - name: The tag must match the version in package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          V="v$(node -p "require('./package.json').version")"
+          if [ "$V" != "$GITHUB_REF_NAME" ]; then echo "::error::Tag $GITHUB_REF_NAME does not match package.json ($V): versionCode would be wrong"; exit 1; fi
 
       - name: Check the signing secrets
         env:

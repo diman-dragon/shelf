@@ -2,11 +2,13 @@
  * Vertical scroll is never blocked; only a locked horizontal gesture is captured.
  * Usage: bindSwipe(rootElement, (dir, target) => { ... })   dir = 'left' | 'right'
  */
-const MIN_DX = 70;      // px the finger must travel horizontally
-const LOCK_PX = 12;     // movement needed before the gesture direction is decided
-const RATIO = 1.8;      // |dx| must dominate |dy| by this factor
-const MAX_MS = 900;     // slower drags are not swipes
-const EDGE = 22;        // keep Android system back-gesture zones free
+const MIN_DX = 48;      // px the finger must travel horizontally (a fast flick may be shorter, see FLICK_*)
+const FLICK_DX = 28;    // …a quick flick needs only this much
+const FLICK_MS = 260;
+const LOCK_PX = 9;      // movement needed before the gesture direction is decided
+const RATIO = 1.3;      // |dx| must dominate |dy| by this factor
+const MAX_MS = 1400;    // slower drags are not swipes
+const EDGE = 14;        // keep Android system back-gesture zones free
 
 export function bindSwipe(root, onSwipe){
   if(!root || root.dataset.swipeBound) return;
@@ -49,8 +51,10 @@ export function bindSwipe(root, onSwipe){
     const t = e.changedTouches[0];
     if(!t) return;
     const dx = t.clientX - x0, dy = t.clientY - y0;
-    if(Math.abs(dx) < MIN_DX || Math.abs(dx) < Math.abs(dy) * RATIO) return;
-    if(Date.now() - t0 > MAX_MS) return;
+    const dt = Date.now() - t0;
+    if(Math.abs(dx) < Math.abs(dy) * RATIO) return;
+    if(Math.abs(dx) < (dt <= FLICK_MS ? FLICK_DX : MIN_DX)) return;
+    if(dt > MAX_MS) return;
     onSwipe(dx > 0 ? 'right' : 'left', e.target);
   }, {passive:true});
 
