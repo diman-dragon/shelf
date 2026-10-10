@@ -69,7 +69,7 @@ jobs:
         run: bash ./gradlew testDebugUnitTest bundleRelease --no-daemon --console=plain
 
       - name: Upload the bundle
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: audioshelf-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
