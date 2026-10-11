@@ -10,6 +10,8 @@ AudioShelf uses the following open-source software. Full license texts: `license
 | Google Play Billing Library (`com.android.billingclient:billing`) | Apache License 2.0 | Google LLC |
 | Guava (pulled in by Media3 and Play Billing) | Apache License 2.0 | Google LLC |
 | idb-keyval (`www/lib/idb-keyval.js`, note in `www/lib/LICENSE-idb-keyval.txt`) | Apache License 2.0 | Jake Archibald |
+| Literata (website only: `store/graphics/fonts`) | SIL Open Font License 1.1 (`licenses/OFL-Literata.txt`) | The Literata Project Authors |
+| Fira Sans Extra Condensed (website only) | SIL Open Font License 1.1 (`licenses/OFL-FiraSansExtraCondensed.txt`) | see the licence file |
 
 Development tools (not shipped): ESLint, jsdom, globals.
 

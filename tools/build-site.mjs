@@ -64,105 +64,138 @@ const bi = (ru, en) => `<div lang="ru" data-l="ru">${ru}</div><div lang="en" dat
 const bis = (ru, en) => `<span data-l="ru">${ru}</span><span data-l="en">${en}</span>`;
 
 const CSS = `
-:root{--bg:#000;--panel:#0c0b0a;--card:#100e0c;--ink:#f5f2ec;--mute:#9c958a;--line:#26211b;--acc:#e8b66d;--on:#24170b;--glow:rgba(232,182,109,.16);--shadow:0 24px 60px rgba(0,0,0,.6)}
-:root[data-theme=light]{--bg:#e9dcc2;--panel:#f2e8d3;--card:#f4ebd8;--ink:#2c2015;--mute:#6c5d47;--line:#d3c19d;--acc:#9a5f1e;--on:#fff7e8;--glow:rgba(154,95,30,.18);--shadow:0 24px 60px rgba(80,55,25,.28)}
+@font-face{font-family:Literata;font-style:normal;font-weight:200 900;font-display:swap;src:url(fonts/literata-cyrillic-wght-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:Literata;font-style:normal;font-weight:200 900;font-display:swap;src:url(fonts/literata-latin-wght-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:Literata;font-style:italic;font-weight:200 900;font-display:swap;src:url(fonts/literata-cyrillic-wght-italic.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:Literata;font-style:italic;font-weight:200 900;font-display:swap;src:url(fonts/literata-latin-wght-italic.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Fira Extra";font-weight:600;font-display:swap;src:url(fonts/fira-sans-extra-condensed-cyrillic-600-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Fira Extra";font-weight:600;font-display:swap;src:url(fonts/fira-sans-extra-condensed-latin-600-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+:root{--wall:#d5dbcf;--ink:#16211f;--mute:#4b5955;--rule:rgba(22,33,31,.24);--plank:#46301f;--plank2:#2f1f13;--paper:#eef0e8;--on-ink:#e9eee4;--gold:#e8b66d;--serif:Literata,Georgia,"Times New Roman",serif;--spine:"Fira Extra","Arial Narrow",sans-serif}
+:root[data-theme=dark]{--wall:#111614;--ink:#e6eae2;--mute:#97a39d;--rule:rgba(230,234,226,.22);--plank:#2d2118;--plank2:#1a130d;--paper:#1a211f;--on-ink:#111614}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--wall);color:var(--ink);font:400 17px/1.7 var(--serif);font-optical-sizing:auto;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 body[data-lang=ru] [data-l=en],body[data-lang=en] [data-l=ru]{display:none!important}
-a{color:var(--acc)}.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
-h1,h2,h3{font-family:Georgia,"Times New Roman",serif;letter-spacing:-.01em}
-header.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-header.top .wrap{display:flex;align-items:center;gap:10px;height:60px}
-.brand{display:flex;align-items:center;gap:10px;font:700 18px Georgia,serif;color:var(--ink);text-decoration:none}
-.brand img{width:32px;height:32px;border-radius:9px}
-nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}
-nav a{color:var(--mute);text-decoration:none;padding:7px 11px;border-radius:9px;font-size:14px}
-nav a:hover,nav a[aria-current]{color:var(--ink);background:var(--panel)}
-.ctl{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:9px;min-width:36px;height:34px;padding:0 10px;font:inherit;font-size:13px;cursor:pointer}
-.ctl:hover{border-color:var(--acc)}
-@media(max-width:760px){nav{display:none}header.top .wrap{justify-content:space-between}.ctls{display:flex;gap:8px}}
-.ctls{display:flex;gap:8px;margin-left:8px}@media(max-width:760px){.ctls{margin-left:0}}
-.hero{position:relative;overflow:hidden;padding:64px 0 24px;background:radial-gradient(70% 90% at 80% 20%,var(--glow),transparent 70%)}
-.hero .wrap{display:grid;gap:36px;grid-template-columns:1.05fr .95fr;align-items:center}
-@media(max-width:820px){.hero .wrap{grid-template-columns:1fr}.hero{padding-top:36px}}
-.eyebrow{display:inline-block;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--acc);border:1px solid var(--line);background:var(--panel);padding:5px 12px;border-radius:99px;margin-bottom:18px}
-.hero h1{font-size:clamp(34px,6vw,58px);line-height:1.08;margin:0 0 18px}
-.hero p.lead{font-size:19px;color:var(--mute);margin:0 0 28px;max-width:34ch}
-.btn{display:inline-flex;align-items:center;gap:8px;background:var(--acc);color:var(--on);font-weight:700;text-decoration:none;padding:14px 26px;border-radius:14px;box-shadow:0 8px 24px var(--glow)}
-.btn.off{opacity:.85;cursor:default;box-shadow:none}
-.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none;margin-left:10px}
-.sub{font-size:14px;color:var(--mute);margin-top:14px}
-.phones{position:relative;height:520px;display:flex;justify-content:center}
-.phone{position:absolute;width:236px;border-radius:30px;border:7px solid #1a1713;background:#000;box-shadow:var(--shadow);overflow:hidden}
-:root[data-theme=light] .phone{border-color:#3a2c1a}
-.phone img{display:block;width:100%;height:auto}
-.phone.a{left:50%;top:0;transform:translateX(-86%) rotate(-5deg)}
-.phone.b{left:50%;top:44px;transform:translateX(-6%) rotate(4deg);z-index:2}
-@media(max-width:820px){.phones{height:450px}.phone{width:190px}.phone.a{transform:translateX(-94%) rotate(-5deg)}.phone.b{transform:translateX(-4%) rotate(4deg)}.btn.ghost{margin:10px 0 0}}
-section{padding:60px 0}section h2{font-size:clamp(26px,4vw,36px);margin:0 0 10px;line-height:1.15}
-.sec-sub{color:var(--mute);margin:0 0 30px;max-width:56ch}
-.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px}
-.card .ico{width:42px;height:42px;border-radius:12px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;color:var(--acc);margin-bottom:14px}
-.card .ico svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.card h3{margin:0 0 6px;font-size:19px}.card p{margin:0;color:var(--mute);font-size:15px}
-.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;justify-items:center}
-.shots figure{margin:0;text-align:center;max-width:270px}.shots .phone{position:static;width:100%;border-radius:28px}
-.shots figcaption{margin-top:14px;color:var(--mute);font-size:14px}
-@media(max-width:760px){.shots{grid-template-columns:1fr}}
-.modes{display:grid;gap:16px;grid-template-columns:1fr 1fr}@media(max-width:700px){.modes{grid-template-columns:1fr}}
-.modes .card h3{font-size:22px}.tag{display:inline-block;font-size:12px;color:var(--acc);border:1px solid var(--line);border-radius:99px;padding:2px 10px;margin:0 6px 10px 0}
-.plans{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
-.plan .price{font:700 34px Georgia,serif;margin:2px 0 8px}.plan.hl{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
-.plan ul{margin:10px 0 0;padding-left:20px;color:var(--mute);font-size:15px}
-.apps{display:grid;gap:16px;grid-template-columns:repeat(5,1fr)}@media(max-width:900px){.apps{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
-.app{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:6px}
-.app .ico{width:46px;height:46px;border-radius:13px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;color:var(--acc);margin-bottom:6px}
-.app .ico svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.app .ico img{width:46px;height:46px;border-radius:13px}.app.live{border-color:var(--acc)}
-.app b{font-size:17px}.app span{color:var(--mute);font-size:14px}.app em{font-style:normal;font-size:12px;color:var(--acc);margin-top:auto;padding-top:8px}
-.band{border:1px solid var(--line);background:linear-gradient(135deg,var(--panel),var(--card));border-radius:22px;padding:34px;display:grid;gap:18px;grid-template-columns:1.3fr 1fr;align-items:center}
-@media(max-width:760px){.band{grid-template-columns:1fr;padding:24px}}
-.band h2{margin-bottom:8px}.swatches{display:flex;gap:10px;flex-wrap:wrap}
-.sw{width:54px;height:54px;border-radius:14px;border:1px solid var(--line)}
-article{padding:40px 0 70px}article .wrap{max-width:820px}article h1{font-size:34px;margin:0 0 8px}
-article h2{font-size:22px;margin:30px 0 8px}article h3{font-size:17px}article ul{padding-left:22px}
-article code{background:var(--card);border:1px solid var(--line);padding:1px 6px;border-radius:6px;font-size:.9em}
-.tbl{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}
-th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
-pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap}
-details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin:10px 0}
-summary{cursor:pointer;font-weight:600}details p{margin:10px 0 0;color:var(--mute)}
-footer{border-top:1px solid var(--line);padding:32px 0;color:var(--mute);font-size:14px}
-footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}footer a{color:var(--mute)}
+a{color:inherit;text-decoration-thickness:1px;text-underline-offset:.22em}a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:2px}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+header.top .wrap{display:flex;align-items:baseline;gap:22px;padding-top:20px;padding-bottom:6px;flex-wrap:wrap}
+.brand{font:600 21px/1 var(--serif);text-decoration:none;display:flex;align-items:center;gap:10px;margin-right:auto}
+.brand img{width:28px;height:28px;border-radius:7px;align-self:center}
+nav{display:flex;gap:20px;flex-wrap:wrap;font-size:15px}
+nav a{text-decoration:none;color:var(--mute)}nav a:hover,nav a[aria-current]{color:var(--ink);text-decoration:underline}
+.ctls{display:flex;gap:14px;font-size:15px}
+.ctl{background:none;border:0;border-bottom:1px solid var(--rule);color:var(--mute);font:inherit;padding:0;cursor:pointer}.ctl:hover{color:var(--ink);border-color:var(--ink)}
+@media(max-width:700px){nav{order:3;width:100%}}
+
+/* ---- the shelf ---- */
+.intro{padding:46px 0 0}
+.intro h1{font:600 clamp(38px,6.4vw,78px)/1.04 var(--serif);letter-spacing:-.022em;margin:0 0 22px;max-width:15ch;font-variation-settings:"opsz" 72}
+.intro p.lead{font-size:clamp(18px,2vw,21px);max-width:34em;margin:0 0 26px;color:var(--mute)}
+.get{display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.btn{display:inline-block;background:var(--ink);color:var(--on-ink);padding:13px 24px;border-radius:3px;font:600 17px/1.2 var(--serif);text-decoration:none}
+.btn.off{opacity:.88}
+.get small{color:var(--mute);font-size:15px}
+.shelf{position:relative;margin:48px 0 0;padding-top:20px}
+.shelf .books{display:flex;align-items:flex-end;gap:3px;height:300px;padding:0 max(24px,calc((100vw - 1060px)/2 + 24px));overflow:hidden}
+.plank{height:22px;background:linear-gradient(var(--plank),var(--plank2));box-shadow:0 14px 22px -10px rgba(0,0,0,.45)}
+.spine{flex:none;border:0;padding:0;margin:0;cursor:pointer;color:#f0e9d8;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;font:600 15px/1 var(--spine);letter-spacing:.03em;position:relative;transition:transform .18s ease-out;background:var(--c);box-shadow:inset -3px 0 0 rgba(0,0,0,.18),inset 3px 0 0 rgba(255,255,255,.08);border-radius:2px 2px 0 0}
+.spine::before,.spine::after{content:"";position:absolute;left:0;right:0;height:5px;border-block:1px solid rgba(240,233,216,.45)}
+.spine::before{top:14px}.spine::after{bottom:14px}
+.spine span{padding:26px 0;max-height:100%;overflow:hidden;white-space:nowrap}
+.spine:hover,.spine.out{transform:translateY(-14px)}
+.spine.lean{transform-origin:bottom left;transform:rotate(-7deg)}
+.spine.lean:hover{transform:rotate(-7deg) translateY(-8px)}
+.note{margin:14px 0 0;min-height:3.4em;color:var(--mute);font-size:16px}
+.note b{color:var(--ink);font-weight:600}
+
+/* the album and the book that are playing: the same animation as the cover in the app */
+.stage{flex:none;display:flex;align-items:flex-end;gap:34px;margin:0 16px;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.album{position:relative;width:min(392px,66vw);height:min(280px,47vw);flex:none}
+.sleeve{position:absolute;left:0;top:0;width:71.43%;height:100%;z-index:2;background:#1f4563;border-radius:3px;box-shadow:0 6px 16px rgba(0,0,0,.4);display:grid;place-items:center;color:#f0e9d8;font:italic 600 clamp(17px,2.6vw,25px)/1.12 var(--serif);text-align:center;padding:14px}
+.sleeve::before{content:"";position:absolute;inset:12px;border:1px solid rgba(240,233,216,.5)}
+.sleeve span{position:relative}
+.vinyl{position:absolute;right:0;top:4%;height:92%;aspect-ratio:1;z-index:1;transform:translateX(-30%);transition:transform 1.4s cubic-bezier(.3,.7,.2,1)}
+.playing .vinyl{transform:none}
+.record{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle,transparent 0 30%,rgba(255,255,255,.06) 30.5%,transparent 31.5%,transparent 44%,rgba(255,255,255,.06) 44.5%,transparent 45.5%,transparent 58%,rgba(255,255,255,.06) 58.5%,transparent 59.5%),conic-gradient(from 20deg,#141210,#2e2a25 12%,#141210 25%,#141210 50%,#2e2a25 62%,#141210 75%);box-shadow:0 6px 18px rgba(0,0,0,.45);animation:spin 3.4s linear infinite;animation-play-state:paused;position:relative}
+.record i{position:absolute;inset:35%;border-radius:50%;background:radial-gradient(circle,#0b0a09 0 7%,var(--gold) 8%)}
+.playing .record{animation-play-state:running}
+@keyframes spin{to{transform:rotate(360deg)}}
+.arm{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;overflow:visible}
+.arm g{transform-box:view-box;transform-origin:128px 10px;transform:rotate(50deg);transition:transform 1.3s cubic-bezier(.4,0,.2,1) .5s}
+.playing .arm g{transform:none}
+.arm circle{fill:#4a4237;stroke:var(--gold)}.arm path{stroke:#b9b2a5;stroke-width:2.4;stroke-linecap:round;fill:none}.arm rect{fill:var(--gold)}
+.tome{position:relative;width:min(188px,32vw);height:min(272px,46vw);flex:none}
+.tome .cover{position:absolute;inset:0;z-index:2;background:#7a2230;border-radius:3px 6px 6px 3px;box-shadow:0 6px 16px rgba(0,0,0,.4),inset 5px 0 0 rgba(0,0,0,.2);color:#f0e9d8;display:grid;align-content:center;justify-items:center;gap:10px;padding:18px;text-align:center;font:600 clamp(20px,3vw,28px)/1.08 var(--serif)}
+.tome .cover::before{content:"";position:absolute;inset:12px 12px 12px 18px;border:1px solid rgba(240,233,216,.5)}
+.tome .cover small{font:italic 400 14px/1.2 var(--serif);position:relative;opacity:.9}.tome .cover b{position:relative;font-weight:600}
+.sheets{position:absolute;inset:0;z-index:1;opacity:0;transition:opacity .8s}
+.playing .sheets{opacity:1}
+.sheets i{position:absolute;left:18%;top:20%;width:64%;height:58%;border-radius:2px;background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(90,70,40,.22) 9px 10px),#f2ead6;border:1px solid rgba(90,70,40,.35);box-shadow:0 3px 8px rgba(0,0,0,.3);opacity:0;animation:leaf 12s ease-in-out infinite;animation-play-state:paused}
+.playing .sheets i{animation-play-state:running}
+.sheets i:nth-child(1){--dx:46%;--r:9deg}.sheets i:nth-child(2){--dx:-46%;--r:-8deg;animation-delay:-9s}.sheets i:nth-child(3){--dx:40%;--r:14deg;animation-delay:-6s}.sheets i:nth-child(4){--dx:-40%;--r:-13deg;animation-delay:-3s}
+@keyframes leaf{0%{opacity:0;transform:none}10%{opacity:1}60%{opacity:1;transform:translate(var(--dx),6%) rotate(var(--r))}100%{opacity:0;transform:translate(calc(var(--dx)*1.25),12%) rotate(calc(var(--r)*1.3))}}
+@media(max-width:700px){.shelf .books{height:250px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.shelf .books::-webkit-scrollbar{display:none}.spine.hide-s{display:none}.stage{gap:22px;margin:0 8px}}
+@media(prefers-reduced-motion:reduce){.record,.sheets i{animation:none!important}.vinyl,.arm g,.spine{transition:none!important}}
+
+/* ---- the text ---- */
+section{padding:72px 0 0}
+h2{font:600 clamp(26px,3.4vw,38px)/1.15 var(--serif);letter-spacing:-.015em;margin:0 0 26px;max-width:22ch}
+.defs{margin:0;border-top:1px solid var(--rule)}
+.defs div{display:grid;grid-template-columns:minmax(150px,230px) 1fr;gap:6px 36px;padding:20px 0;border-bottom:1px solid var(--rule)}
+.defs dt{font:italic 600 21px/1.3 var(--serif)}.defs dd{margin:0;max-width:40em}
+@media(max-width:700px){.defs div{grid-template-columns:1fr}}
+.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;align-items:start}
+.shots figure{margin:0}.shots figure:nth-child(2){margin-top:56px}.shots figure:nth-child(3){margin-top:18px}
+.shots img{display:block;width:100%;height:auto;border-radius:14px;outline:1px solid var(--rule);outline-offset:-1px}
+.shots figcaption{margin-top:12px;font-size:15px;color:var(--mute);max-width:24em}
+@media(max-width:700px){.shots{grid-template-columns:1fr;max-width:320px}.shots figure:nth-child(n){margin-top:0}}
+table.plans{border-collapse:collapse;width:100%;font-size:16px}
+.plans caption{text-align:left;color:var(--mute);padding-bottom:12px}
+.plans th,.plans td{padding:12px 14px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
+.plans thead th{border-bottom:2px solid var(--ink);font-weight:600;vertical-align:bottom}
+.plans td:not(:first-child),.plans th:not(:first-child){width:19%}
+.plans th[scope=row]{font-weight:400}
+.plans .prem{background:var(--paper)}
+.plans .price{display:block;font:600 26px/1.1 var(--serif);margin-top:2px}
+@media(max-width:700px){.plans{font-size:13px}.plans th,.plans td{padding:10px 4px}.plans td:not(:first-child),.plans th:not(:first-child){width:auto}.plans th:first-child{width:36%}.plans .price{font-size:14px;white-space:normal}}
+.fine{color:var(--mute);font-size:16px;max-width:40em;margin:18px 0 0}
+.family .books{height:230px;padding:0;margin-top:30px;display:flex;align-items:flex-end;gap:3px}
+.family .shelf{margin:0}.family .plank{margin:0 -24px}
+.spine.am{--c:#1f4563}
+.spine.soon{opacity:.62}
+.about{max-width:none}.about>*{max-width:40em}
+footer{margin-top:88px;border-top:1px solid var(--rule);padding:26px 0 40px;color:var(--mute);font-size:15px}
+footer .wrap{display:flex;gap:10px 28px;flex-wrap:wrap}footer .wrap>span:first-child{margin-right:auto}
+article{padding:44px 0 70px}article .wrap{max-width:780px}
+article h1{font:600 clamp(30px,4.4vw,46px)/1.1 var(--serif);letter-spacing:-.02em;margin:0 0 10px}
+article h2{font-size:23px;margin:34px 0 8px;max-width:none}article h3{font-size:18px;margin:22px 0 6px}article ul{padding-left:22px}
+article code{background:var(--paper);padding:1px 6px;border-radius:4px;font-size:.88em}
+.tbl{overflow-x:auto;max-width:100%}table{border-collapse:collapse;width:100%;font-size:15px}
+article th,article td{border-bottom:1px solid var(--rule);padding:8px 10px;text-align:left;vertical-align:top}
+pre{background:var(--paper);border-radius:6px;padding:14px;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap}
+details{border-top:1px solid var(--rule);padding:14px 0}details:last-of-type{border-bottom:1px solid var(--rule)}
+summary{cursor:pointer;font-weight:600}details p{margin:10px 0 0;color:var(--mute);max-width:40em}
 `;
 const JS = `(function(){var d=document.body,r=document.documentElement,l,th;
 try{l=localStorage.getItem('lang');th=localStorage.getItem('theme')}catch(e){}
 if(l!=='ru'&&l!=='en')l=/^(ru|uk|be|kk)/i.test(navigator.language||'')?'ru':'en';
-if(th!=='dark'&&th!=='light')th=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+if(th!=='dark'&&th!=='light')th=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
 function paint(){d.dataset.lang=l;r.lang=l;r.dataset.theme=th;
- var b=document.getElementById('lb');if(b)b.textContent=l==='ru'?'EN':'RU';
- var m=document.getElementById('tb');if(m)m.textContent=th==='dark'?'☾':'☀';
+ var b=document.getElementById('lb');if(b)b.textContent=l==='ru'?'English':'Русский';
+ var m=document.getElementById('tb');if(m)m.textContent=th==='dark'?(l==='ru'?'Светлая тема':'Light theme'):(l==='ru'?'Тёмная тема':'Dark theme');
  var t=document.querySelector('title');if(t&&t.dataset[l])t.textContent=t.dataset[l];
  document.querySelectorAll('img[data-shot]').forEach(function(i){i.src='shots/'+i.dataset.shot+'-'+th+(l==='en'?'-en':'')+'.webp'})}
 paint();
 document.getElementById('lb').onclick=function(){l=l==='ru'?'en':'ru';try{localStorage.setItem('lang',l)}catch(e){}paint()};
-document.getElementById('tb').onclick=function(){th=th==='dark'?'light':'dark';try{localStorage.setItem('theme',th)}catch(e){}paint()}})();`;
-const ico = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
-const I = {
-  mem: ico('<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/>'),
-  book: ico('<path d="M4 5a2 2 0 0 1 2-2h13v17H6a2 2 0 0 0-2 2z"/><path d="M4 5v17"/>'),
-  lock: ico('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
-  road: ico('<path d="M3 17l3-10h12l3 10"/><path d="M12 7v2m0 3v2m0 3v1"/>'),
-  eq: ico('<path d="M5 20V10m7 10V4m7 16v-7"/><circle cx="5" cy="8" r="2"/><circle cx="12" cy="14" r="2"/><circle cx="19" cy="11" r="2"/>'),
-  lang: ico('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>'),
-  catalog: ico('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3M8.5 11h5M11 8.5v5"/>'),
-  tool: ico('<path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.4 2.4-2.6-.6-.6-2.6z"/>'),
-  folder: ico('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
-  pdf: ico('<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 14h6M9 17h4"/>'),
-  scan: ico('<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M4 12h16"/>')
-};
-const shot = (n, cls = '') => `<div class="phone ${cls}"><img data-shot="${n}" src="shots/${n}-dark.webp" alt="AudioShelf" loading="lazy" width="390" height="780"></div>`;
+document.getElementById('tb').onclick=function(){th=th==='dark'?'light':'dark';try{localStorage.setItem('theme',th)}catch(e){}paint()};
+var sh=document.querySelector('.shelf'),st=document.getElementById('stage');
+if(sh){var note=document.getElementById('note');
+ sh.addEventListener('click',function(e){var s=e.target.closest('.spine');if(!s)return;
+  sh.querySelectorAll('.spine.out').forEach(function(x){x.classList.remove('out')});s.classList.add('out');
+  if(note&&s.dataset.ru){note.querySelector('[data-l=ru]').innerHTML=s.dataset.ru;note.querySelector('[data-l=en]').innerHTML=s.dataset.en}});
+ if(st){var go=function(){st.classList.toggle('playing')};
+  st.addEventListener('click',go);
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches)setTimeout(function(){st.classList.add('playing')},500);else st.classList.add('playing')}}})();`;
 
 function page(file, titles, body, { hero = '' } = {}){
   const nav = ['home', 'privacy', 'terms', 'support', 'licenses'].map(k => {
@@ -170,15 +203,15 @@ function page(file, titles, body, { hero = '' } = {}){
     return `<a href="${href}"${href === file ? ' aria-current="page"' : ''}>${bis(T.ru[k], T.en[k])}</a>`;
   }).join('');
   const year = new Date().getFullYear();
-  return `<!doctype html><html lang="ru" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="ru" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title data-ru="${esc(titles.ru)}" data-en="${esc(titles.en)}">${esc(titles.ru)}</title>
-<meta name="description" content="${esc(titles.desc || '')}"><meta name="theme-color" content="#000000">
+<meta name="description" content="${esc(titles.desc || '')}"><meta name="theme-color" content="#d5dbcf">
 <meta property="og:title" content="${esc(titles.en)}"><meta property="og:description" content="${esc(titles.desc || '')}"><meta property="og:image" content="feature.png">
-<link rel="icon" href="icon.png"><style>${CSS}</style></head><body data-lang="ru">
+<link rel="icon" href="icon.png"><link rel="preload" href="fonts/literata-cyrillic-wght-normal.woff2" as="font" type="font/woff2" crossorigin><style>${CSS}</style></head><body data-lang="ru">
 <header class="top"><div class="wrap"><a class="brand" href="index.html"><img src="icon.png" alt="">AudioShelf</a><nav>${nav}</nav>
-<div class="ctls"><button class="ctl" id="tb" type="button" aria-label="Theme">☾</button><button class="ctl" id="lb" type="button" aria-label="Language">EN</button></div></div></header>
+<div class="ctls"><button class="ctl" id="tb" type="button">Тёмная тема</button><button class="ctl" id="lb" type="button">English</button></div></div></header>
 ${hero}${body}
-<footer><div class="wrap"><span>© ${year} DataLaw · DataLaw Design. ${bis(T.ru.rights, T.en.rights)}</span><span><a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a> · <a href="${esc(cfg.repoUrl)}" rel="noopener">GitHub</a></span></div></footer>
+<footer><div class="wrap"><span>© ${year} DataLaw. ${bis(T.ru.rights, T.en.rights)}</span><a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a><a href="${esc(cfg.repoUrl)}" rel="noopener">GitHub</a></div></footer>
 <script>${JS}</script></body></html>`;
 }
 
@@ -186,63 +219,80 @@ fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(out, { recursive:
 fs.copyFileSync(path.join(root, 'store/graphics/icon-512.png'), path.join(out, 'icon.png'));
 fs.copyFileSync(path.join(root, 'store/graphics/feature-graphic-1024x500.png'), path.join(out, 'feature.png'));
 fs.cpSync(path.join(root, 'store/graphics/shots'), path.join(out, 'shots'), { recursive: true });
+fs.cpSync(path.join(root, 'store/graphics/fonts'), path.join(out, 'fonts'), { recursive: true });
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 
 // ---- landing ----
-const features = [
-  ['mem', 'Память по каждой книге', 'A memory for every book', 'Позиция запоминается точно, у каждой книги свои скорость, эквалайзер и громкость. Закладки в любом месте.', 'The exact position is remembered, and every book keeps its own speed, equalizer and volume. Bookmarks anywhere.'],
-  ['book', 'Книга и альбом', 'Book and album modes', 'Книга: главы идут подряд, видны два прогресса. Альбом: плавные переходы между треками и свой порядок.', 'Book: chapters flow on, with two progress bars. Album: gentle fades between tracks and your own play order.'],
-  ['catalog', 'Бесплатный каталог', 'A free catalog', 'Аудиокниги в общественном достоянии (LibriVox): ищите и слушайте онлайн бесплатно, а в Премиуме скачивайте в свою папку навсегда.', 'Public-domain audiobooks (LibriVox): search and listen online for free, and download them to your own folder for good with Premium.'],
-  ['road', 'Удобно в дороге', 'Made for the road', 'Плеер в шторке и на экране блокировки, виджет, таймер сна с затуханием, перемотка с настраиваемым шагом.', 'Notification and lock-screen player, a widget, a fading sleep timer and a configurable skip step.'],
-  ['eq', 'Живой звук', 'Better sound', 'Эквалайзер, усиление и выравнивание громкости по файлам в фоне, красивые визуализаторы.', 'Equalizer, gain and background loudness normalization, plus visualizers.'],
-  ['lock', 'Библиотека на телефоне', 'Your library stays on your phone', 'Без аккаунтов, аналитики и рекламы. Приложение читает только выбранные вами папки; интернет нужен лишь для каталога.', 'No accounts, analytics or ads. The app only reads the folders you pick; the internet is used only for the catalog.']
+// public-domain books that really exist in the LibriVox catalog: the spines are the catalog, drawn
+const SPINES = [
+  ['Идиот', 'Ф. Достоевский', 'Idiot', 'F. Dostoyevsky', '#7a2230', 250], ['Война и мир', 'Л. Толстой', 'War and Peace', 'L. Tolstoy', '#1f4563', 285],
+  ['Анна Каренина', 'Л. Толстой', 'Anna Karenina', 'L. Tolstoy', '#5c6b2f', 240], ['Мёртвые души', 'Н. Гоголь', 'Dead Souls', 'N. Gogol', '#c99a2e', 215],
+  ['Отцы и дети', 'И. Тургенев', 'Fathers and Sons', 'I. Turgenev', '#4c2b57', 260], ['Дубровский', 'А. Пушкин', 'Dubrovsky', 'A. Pushkin', '#3b4750', 200],
+  null,
+  ['Pride and Prejudice', 'Jane Austen', 'Pride and Prejudice', 'Jane Austen', '#1f4563', 255], ['Dracula', 'Bram Stoker', 'Dracula', 'Bram Stoker', '#7a2230', 270],
+  ['Frankenstein', 'Mary Shelley', 'Frankenstein', 'Mary Shelley', '#3b4750', 230], ['Moby Dick', 'Herman Melville', 'Moby Dick', 'Herman Melville', '#5c6b2f', 280],
+  ['The Time Machine', 'H. G. Wells', 'The Time Machine', 'H. G. Wells', '#c99a2e', 205], ['Wuthering Heights', 'Emily Brontë', 'Wuthering Heights', 'Emily Brontë', '#4c2b57', 245]
 ];
+const spine = (s, i) => {
+  const w = 34 + (i * 7) % 15;
+  const note = (a, b) => `<b>${esc(a)}</b>, ${esc(b)}. `;
+  const ru = note(s[0], s[1]) + 'Свободная запись LibriVox, общественное достояние.';
+  const en = note(s[2], s[3]) + 'Free LibriVox recording, public domain.';
+  return `<button type="button" class="spine${i % 5 === 3 ? ' hide-s' : ''}" style="--c:${s[4]};height:${s[5]}px;width:${w}px" data-ru="${esc(ru)}" data-en="${esc(en)}" aria-label="${esc(s[0])}"><span>${esc(s[0])}</span></button>`;
+};
+const half = (list) => list.map(spine).join('');
+const left = SPINES.slice(0, 6), right = SPINES.slice(7);
+const stage = `<div class="stage" id="stage" role="button" tabindex="0" aria-label="${esc('Пластинка и книга: нажмите, чтобы остановить или запустить')}">
+<div class="album"><div class="sleeve"><span>${bis('Вечерний альбом', 'Evening album')}</span></div><div class="vinyl"><div class="record"><i></i></div></div>
+<svg class="arm" viewBox="0 0 140 100" aria-hidden="true"><g><circle cx="128" cy="10" r="6.5"/><path d="M128 10 L108 24"/><rect x="102" y="21" width="9" height="5.5" rx="1.5" transform="rotate(35 106 24)"/></g></svg></div>
+<div class="tome"><div class="sheets" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="cover"><b>${bis('Идиот', 'The Idiot')}</b><small>${bis('Ф. Достоевский', 'F. Dostoyevsky')}</small></div></div></div>`;
 const play = cfg.playUrl
   ? `<a class="btn" href="${esc(cfg.playUrl)}" rel="noopener">${bis('Скачать в Google Play', 'Get it on Google Play')}</a>`
   : `<span class="btn off">${bis('Скоро в Google Play', 'Coming soon to Google Play')}</span>`;
-const hero = `<div class="hero"><div class="wrap"><div>
-<span class="eyebrow">${bis('Аудиокниги · музыка · Android', 'Audiobooks · music · Android')}</span>
-<h1>${bis('Тёплый плеер для аудиокниг и альбомов', 'A warm player for audiobooks and albums')}</h1>
-<p class="lead">${bis('Простой и быстрый, без рекламы и аккаунтов. Библиотека хранится на вашем телефоне, а бесплатный каталог книг всегда под рукой.', 'Simple and fast, with no ads and no accounts. Your library stays on your phone, and a free book catalog is always at hand.')}</p>
-${play}<a class="btn ghost" href="#features">${bis('Возможности', 'Features')}</a>
-<div class="sub">${bis('Android 7.0 и новее · бесплатно, Премиум по желанию · тёмная и светлая темы', 'Android 7.0 and newer · free, Premium optional · dark and light themes')}</div></div>
-<div class="phones">${shot('shelf', 'a')}${shot('player', 'b')}</div></div></div>`;
-const apps = [
-  [`<img src="icon.png" alt="">`, 'AudioShelf', 'Аудиокниги и музыка', 'Audiobooks and music', 'live'],
-  [I.tool, 'Мультитул', 'Набор мелких инструментов', 'A kit of small tools', ''],
-  [I.folder, 'Файл-менеджер', 'Файлы без лишнего', 'Files without the clutter', ''],
-  [I.pdf, 'PDF-читалка', 'Читать и отмечать', 'Read and annotate', ''],
-  [I.scan, 'PDF-сканер', 'Бумага в PDF', 'Paper to PDF', '']
+const hero = `<div class="intro"><div class="wrap"><h1>${bis('Аудиокниги и альбомы на одной полке', 'Audiobooks and albums on one shelf')}</h1>
+<p class="lead">${bis('AudioShelf для Android запоминает, где вы остановились, не показывает рекламу и не просит аккаунт.', 'AudioShelf for Android remembers where you stopped, shows no ads and asks for no account.')}</p>
+<div class="get">${play}<small>${bis('Android 7.0 и новее. Бесплатно, Premium по желанию.', 'Android 7.0 and newer. Free, Premium is optional.')}</small></div></div>
+<div class="shelf"><div class="books">${half(left)}${stage}${half(right)}</div><div class="plank"></div>
+<div class="wrap"><p class="note" id="note" aria-live="polite"><span data-l="ru">Нажмите на корешок, чтобы вытащить книгу. Пластинку и книгу рядом можно остановить нажатием: так выглядит обложка в плеере.</span><span data-l="en">Tap a spine to pull the book out. Tap the record and the book to stop them: this is how the cover looks in the player.</span></p></div></div></div>`;
+
+const defs = [
+  ['Помнит место', 'Remembers the place', 'Позиция сохраняется с точностью до секунды, даже если телефон перезагрузился. У каждой книги свои скорость, эквалайзер и громкость. Закладки ставятся в любом месте.', 'The position is saved to the second, even after a restart. Every book keeps its own speed, equalizer and volume. Bookmarks go anywhere.'],
+  ['Книга и альбом', 'Book and album', 'Книга играет главы подряд и показывает два прогресса: главы и всей книги. Альбом плавно гасит конец трека, делает паузу и включает следующий. Порядок на выбор: подряд, повтор одного, повтор всех, вперемешку. Лишний трек можно убрать из списка или удалить с диска.', 'A book plays chapters back to back and shows two progress bars. An album fades out the end of a track, pauses and starts the next. Order is yours: in sequence, repeat one, repeat all, shuffle. A track you do not want can leave the list or be deleted from the disk.'],
+  ['Каталог', 'Catalog', 'Книги в общественном достоянии из коллекции LibriVox. Ищите по названию и автору, слушайте онлайн бесплатно. Скачанные в Premium книги лежат в вашей папке и остаются у вас навсегда. У каждой книги указаны лицензия и источник.', 'Public-domain books from the LibriVox collection. Search by title and author and listen online for free. Books downloaded with Premium live in your folder and stay with you for good. Every book shows its licence and source.'],
+  ['В дороге', 'On the road', 'Плеер в шторке и на экране блокировки, виджет, таймер сна с затуханием, шаг перемотки на ваш выбор. Звонок или уведомление останавливают звук, и воспроизведение возвращается на пять секунд назад.', 'A player in the notification shade and on the lock screen, a widget, a sleep timer that fades out, a skip step of your choice. A call or a notification pauses the sound, and playback comes back five seconds earlier.'],
+  ['Звук', 'Sound', 'Эквалайзер на десять полос, усиление до 300 %, выравнивание громкости между файлами и визуализаторы. Это Premium.', 'A ten-band equalizer, boost up to 300 %, loudness leveling between files and visualizers. This is Premium.'],
+  ['Данные', 'Data', 'Библиотека, позиции и закладки хранятся только на телефоне. Нет аккаунтов, аналитики и рекламы. Интернет нужен лишь каталогу.', 'Your library, positions and bookmarks live only on the phone. No accounts, analytics or ads. The internet is used only by the catalog.']
 ];
-const landing = `<section id="features"><div class="wrap"><h2>${bis('Что внутри', "What's inside")}</h2>
-<p class="sec-sub">${bis('Всё, что нужно для долгого слушания, и ничего лишнего.', 'Everything you need for long listening, and nothing more.')}</p>
-<div class="grid">${features.map(f => `<div class="card"><div class="ico">${I[f[0]]}</div><h3>${bis(f[1], f[2])}</h3><p>${bis(f[3], f[4])}</p></div>`).join('')}</div></div></section>
-<section><div class="wrap"><h2>${bis('Как это выглядит', 'How it looks')}</h2>
-<p class="sec-sub">${bis('Библиотека, плеер и звук. Тема переключается кнопкой вверху страницы.', 'Library, player and sound. Switch the theme with the button at the top.')}</p>
-<div class="shots">
-<figure>${shot('shelf')}<figcaption>${bis('Библиотека: книги и музыка', 'Library: books and music')}</figcaption></figure>
-<figure>${shot('player')}<figcaption>${bis('Плеер с двумя прогрессами', 'Player with two progress bars')}</figcaption></figure>
-<figure>${shot('sound')}<figcaption>${bis('Звук книги: пресеты и эквалайзер', 'Book sound: presets and equalizer')}</figcaption></figure></div></div></section>
-<section><div class="wrap"><h2>${bis('Два режима', 'Two modes')}</h2><div class="modes">
-<div class="card"><span class="tag">${bis('Книга', 'Book')}</span><h3>${bis('Слушайте, как читаете', 'Listen like you read')}</h3><p>${bis('Главы идут встык. Прогресс главы и всей книги, закладки, возобновление с точного места и перемотка с настраиваемым шагом.', 'Chapters run back to back. Chapter and whole-book progress, bookmarks, exact resume and a configurable skip step.')}</p></div>
-<div class="card"><span class="tag">${bis('Альбом', 'Album')}</span><h3>${bis('Музыка без обрывов', 'Music without hard cuts')}</h3><p>${bis('Плавное затухание и вход следующего трека. Порядок: подряд, повтор одного, повтор альбома или случайно. Ненужный трек можно убрать из списка или удалить с диска.', 'Gentle fades between tracks. Order: in sequence, repeat one, repeat album or shuffle. Drop a track from the list or delete it from disk.')}</p></div></div></div></section>
-<section><div class="wrap"><h2>${bis('Бесплатно и Премиум', 'Free and Premium')}</h2>
-<p class="sec-sub">${bis('Без подписок: платите один раз или не платите вовсе.', 'No subscriptions: pay once or not at all.')}</p><div class="plans">
-<div class="card plan"><span class="tag">${bis('Сначала', 'First')}</span><h3>${bis('30 дней — всё открыто', '30 days — everything unlocked')}</h3><p>${bis('Попробуйте все функции сразу после установки.', 'Try every feature right after installing.')}</p></div>
-<div class="card plan"><span class="tag">${bis('Навсегда', 'Forever')}</span><div class="price">${bis('Бесплатно', 'Free')}</div><p>${bis('Воспроизведение, библиотека, закладки, таймер сна, режимы «Книга» и «Альбом», каталог бесплатных книг с прослушиванием онлайн.', 'Playback, library, bookmarks, sleep timer, Book and Album modes, the free catalog with online listening.')}</p></div>
-<div class="card plan hl"><span class="tag">Premium</span><div class="price">4,99 € / $</div><p>${bis('Один раз и навсегда: эквалайзер, усиление, выравнивание громкости, визуализаторы и скачивание книг из каталога.', 'Once and for life: equalizer, gain, loudness normalization, visualizers and downloading catalog books.')}</p></div></div>
-<p class="sec-sub" style="margin:18px 0 0">${bis('Можно угостить автора чашкой чая или порадовать котика — это необязательно и ничего не открывает.', 'You can buy the author a cup of tea or treat the cat — optional, and it unlocks nothing.')}</p></div></section>
-<section><div class="wrap"><div class="band"><div><h2>${bis('Приватность по умолчанию', 'Private by default')}</h2>
-<p class="sec-sub" style="margin:0">${bis('У приложения нет аккаунтов, аналитики и собственных серверов. Библиотека и прослушивание остаются на устройстве; интернет используется только когда вы сами ищете, слушаете или скачиваете книгу из каталога. Подробнее: ', 'The app has no accounts, analytics or servers of its own. Your library and listening stay on your device; the internet is used only when you search, listen to or download a catalog book yourself. Details: ')}<a href="privacy.html">${bis('политика конфиденциальности', 'privacy policy')}</a>.</p></div>
-<div><a class="btn" href="support.html">${bis('Вопросы и поддержка', 'Questions and support')}</a></div></div></div></section>
-<section><div class="wrap"><h2>${bis('Семейство приложений', 'The app family')}</h2>
-<p class="sec-sub">${bis('DataLaw Design задаёт единый вид и поведение всех наших приложений: те же темы, жесты и порядок настроек. AudioShelf уже здесь, остальные в работе.', 'DataLaw Design defines one look and behaviour for all our apps: the same themes, gestures and settings order. AudioShelf is here; the rest are in the works.')}</p>
-<div class="apps">${apps.map(a => `<div class="app${a[4] ? ' live' : ''}"><div class="ico">${a[0]}</div><b>${a[1]}</b><span>${bis(a[2], a[3])}</span><em>${a[4] ? bis('Доступно', 'Available') : bis('Скоро', 'Coming soon')}</em></div>`).join('')}</div></div></section>
-<section><div class="wrap"><div class="band"><div><h2>DataLaw</h2>
-<p class="sec-sub" style="margin:0">${bis('DataLaw — приложение для юридических фирм с локальным ИИ, данные остаются у вас. Сейчас в разработке. DataLaw Design отвечает за дизайн продуктов и берёт заказы на интерфейсы и фирменный стиль.', 'DataLaw is an app for law firms with a local AI, so your data stays with you. It is in development. DataLaw Design looks after product design and takes commissions for interfaces and brand identity.')}</p></div>
-<div><a class="btn" href="mailto:${esc(cfg.email)}">${bis('Написать нам', 'Contact us')}</a></div></div></div></section>`;
+const rows = [
+  ['Библиотека, воспроизведение, закладки, таймер сна', 'Library, playback, bookmarks, sleep timer', 1, 1, 1],
+  ['Режимы «Книга» и «Альбом»', 'Book and Album modes', 1, 1, 1],
+  ['Каталог и прослушивание онлайн', 'Catalog and listening online', 1, 1, 1],
+  ['Эквалайзер, усиление, выравнивание громкости, визуализаторы', 'Equalizer, boost, loudness leveling, visualizers', 1, 0, 1],
+  ['Скачивание книг из каталога', 'Downloading catalog books', 1, 0, 1]
+];
+const yn = v => v ? bis('да', 'yes') : '<span aria-label="no">—</span>';
+const famSpines = [['Мультитул', 'Multitool', 210, '#3b4750'], ['Файловый менеджер', 'File manager', 235, '#5c6b2f'], ['PDF-читалка', 'PDF reader', 200, '#4c2b57'], ['PDF-сканер', 'PDF scanner', 225, '#7a2230']];
+const fam = `<div class="shelf"><div class="books"><button type="button" class="spine am" style="height:262px;width:46px" aria-label="AudioShelf"><span>AudioShelf</span></button>${
+  famSpines.map((s, i) => `<span class="spine soon${i === 3 ? ' lean' : ''}" style="--c:${s[3]};height:${s[2]}px;width:${40 + i * 3}px"><span>${bis(s[0], s[1])}</span></span>`).join('')}</div><div class="plank"></div></div>`;
+const shot = (n, ru, en) => `<figure><img data-shot="${n}" src="shots/${n}-light.webp" alt="" loading="lazy" width="390" height="780"><figcaption>${bis(ru, en)}</figcaption></figure>`;
+
+const landing = `<section id="features"><div class="wrap"><h2>${bis('Что умеет', 'What it does')}</h2>
+<dl class="defs">${defs.map(d => `<div><dt>${bis(d[0], d[1])}</dt><dd>${bis(d[2], d[3])}</dd></div>`).join('')}</dl></div></section>
+<section><div class="wrap"><h2>${bis('Экраны', 'Screens')}</h2><div class="shots">
+${shot('shelf', 'Библиотека: книги и музыка, вкладки «Скачанные» и «Онлайн».', 'Library: books and music, with Downloaded and Online tabs.')}
+${shot('player', 'Плеер: два прогресса у книги, один у альбома.', 'Player: two progress bars for a book, one for an album.')}
+${shot('catalog', 'Каталог: поиск, лицензия и источник у каждой книги.', 'Catalog: search, with the licence and source of every book.')}</div></div></section>
+<section><div class="wrap"><h2>${bis('Бесплатно и Premium', 'Free and Premium')}</h2>
+<div class="tbl"><table class="plans"><caption>${bis('Первые 30 дней открыто всё. Дальше остаётся бесплатная часть, а Premium покупается один раз, без подписки.', 'Everything is open for the first 30 days. After that the free part stays, and Premium is bought once, with no subscription.')}</caption>
+<thead><tr><th scope="col"></th><th scope="col">${bis('30 дней', '30 days')}</th><th scope="col">${bis('Бесплатно', 'Free')}</th><th scope="col" class="prem">Premium<span class="price">4,99 € / $</span></th></tr></thead>
+<tbody>${rows.map(r => `<tr><th scope="row">${bis(r[0], r[1])}</th><td>${yn(r[2])}</td><td>${yn(r[3])}</td><td class="prem">${yn(r[4])}</td></tr>`).join('')}</tbody></table></div>
+<p class="fine">${bis('Скачанные книги остаются в вашей папке и в библиотеке и после пробного периода: приложение их не удаляет и не прячет. Автора можно угостить чашкой чая или порадовать котика, это необязательно и ничего не открывает.', 'Downloaded books stay in your folder and in the library after the trial: the app never deletes or hides them. You can buy the author a cup of tea or treat the cat; it is optional and unlocks nothing.')}</p></div></section>
+<section class="family"><div class="wrap"><h2>${bis('Остальные приложения', 'The other apps')}</h2>
+<p class="about">${bis('DataLaw Design задаёт для всех наших приложений один вид и одно поведение: те же темы, жесты и порядок настроек. AudioShelf уже на полке, остальные в работе.', 'DataLaw Design gives all our apps one look and one behaviour: the same themes, gestures and settings order. AudioShelf is on the shelf already; the rest are in the works.')}</p>${fam}</div></section>
+<section><div class="wrap about"><h2>DataLaw</h2><p>${bis('DataLaw — приложение для юридических фирм с локальным ИИ: данные остаются у вас. Оно в разработке. DataLaw Design берёт заказы на интерфейсы и фирменный стиль. Пишите: ', 'DataLaw is an app for law firms with a local AI, so your data stays with you. It is in development. DataLaw Design takes commissions for interfaces and brand identity. Write to ')}<a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a>.</p></div></section>`;
 fs.writeFileSync(path.join(out, 'index.html'), page('index.html',
-  { ru: 'AudioShelf — плеер аудиокниг и альбомов', en: 'AudioShelf — audiobook and album player', desc: 'AudioShelf: audiobook and album player for Android. No ads, no accounts, everything stays on your phone.' }, landing, { hero }));
+  { ru: 'AudioShelf — аудиокниги и альбомы на одной полке', en: 'AudioShelf — audiobooks and albums on one shelf', desc: 'AudioShelf: audiobook and album player for Android. No ads, no accounts, a free catalog of public-domain books.' }, landing, { hero }));
+
 // ---- legal pages from store/*.md ----
 function legal(file, src, titles){
   const b = split(read(src));
