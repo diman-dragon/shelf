@@ -64,6 +64,10 @@ function hashStr(str){
 }
 const sigOf = b => `${b.id}|${b.files.length}|${hashStr(b.files.map(f => f.uri || '').join('\n'))}`;
 
+export const ORDERS = ['order', 'one', 'all', 'shuffle'];
+/** The native order number of a book: only an album can have anything but "in order". */
+export function orderIndex(b){ return b && b.mode === 'album' ? Math.max(0, ORDERS.indexOf(b.order || 'order')) : 0; }
+
 class NativeAudio extends EventTarget {
   constructor(P){
     super();
@@ -159,6 +163,7 @@ class NativeAudio extends EventTarget {
       }
       this._bookId = b.id; this._index = index; this._pos = pos; this._ts = performance.now(); this._ended = false;
       this.setAlbumMode(b.mode === 'album');     // per-book playback mode: "book" (gapless) or "album" (fade + short pause)
+      this.setOrderMode(orderIndex(b));          // album: in order / one track / all / shuffle
       const st = await this.P.getState();
       this._applyNow(st);
       // the controller may not have caught up with setMediaItems() yet and still report position 0: trust what we just asked for
@@ -174,6 +179,7 @@ class NativeAudio extends EventTarget {
     this.queueSig = sigOf(b); this._bookId = b.id; this._index = st.index;
     this._applyNow(st);
     this.setAlbumMode(b.mode === 'album');       // the service may have been restarted: tell it this book's mode again
+    this.setOrderMode(orderIndex(b));
     return st;
   }
 
@@ -189,6 +195,11 @@ class NativeAudio extends EventTarget {
 
   /** "album": the last seconds of every track fade out, a short pause, the next one fades in. "book": gapless. */
   setAlbumMode(on){ return this.P.setAlbumMode({on: !!on}).catch(() => {}); }
+
+  /** Album track order: 0 in order, 1 one track on repeat, 2 all on repeat, 3 shuffle (a book is always 0). */
+  setOrderMode(mode){ return Promise.resolve(this.P.setOrderMode?.({mode})).catch(() => {}); }
+  /** Next / previous track in the player's own order (shuffle and repeat included). */
+  skip(forward){ return Promise.resolve(this.P.skip?.({forward: !!forward})).catch(() => {}); }
 
   setSleep(minutes){
     this._sleepGuard = performance.now() + 1500;

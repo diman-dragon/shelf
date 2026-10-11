@@ -22,7 +22,7 @@ import org.json.JSONObject;
  */
 @UnstableApi
 final class QueueStore {
-  private static final String KEY_QUEUE = "queue", KEY_SPEED = "speed", KEY_ALBUM = "album", KEY_SEEK = "seekMs";
+  private static final String KEY_QUEUE = "queue", KEY_SPEED = "speed", KEY_ALBUM = "album", KEY_SEEK = "seekMs", KEY_ORDER = "order";
   // an interruption (call / audio focus loss) in progress: kept on disk, because the process can be killed during a long call
   private static final String KEY_INT_BOOK = "intBook", KEY_INT_IDX = "intIdx", KEY_INT_POS = "intPos", KEY_INT_TS = "intTs";
 
@@ -71,6 +71,11 @@ final class QueueStore {
   static void saveSpeed(Context c, float speed) { prefs(c).edit().putFloat(KEY_SPEED, speed).apply(); }
 
   static void saveAlbum(Context c, boolean on) { prefs(c).edit().putBoolean(KEY_ALBUM, on).apply(); }
+
+  /** Album track order: 0 in order, 1 repeat one track, 2 repeat all, 3 shuffle (JS remembers it per album). */
+  static void saveOrder(Context c, int mode) { prefs(c).edit().putInt(KEY_ORDER, mode).apply(); }
+
+  static int loadOrder(Context c) { return prefs(c).getInt(KEY_ORDER, 0); }
 
   /** Seek step of the notification / lock screen / widget buttons (chosen in the app's settings, default 10 s). */
   static void saveSeekMs(Context c, long ms) { prefs(c).edit().putLong(KEY_SEEK, ms).apply(); }

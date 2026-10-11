@@ -36,7 +36,7 @@ const Player = {
   getState: async () => ({ saved: nativeState.saved, loaded: !!queue, ...(queue ? queue.state : {}) }),
   setQueue: async (o) => { queue = { o, state: { bookId:o.bookId, index:o.index, count:o.items.length, pos:o.pos, dur:100, playWhenReady:false, playing:false, state:3, speed:o.speed, sleepLeft:0 } }; calls.push(['setQueue', o.index, o.pos]); },
   play: async()=>{ queue.state.playWhenReady=true; queue.state.playing=true; }, pause: async()=>{ queue.state.playWhenReady=false; queue.state.playing=false; },
-  seekTo: async()=>{}, setSpeed: async()=>{}, setFx: async(o)=>{ calls.push(['setFx', o]); return {peakBoostDb:0}; }, setSkipSilence: async(o)=>{ calls.push(['skip', o.on]); }, setSleepTimer: async(o)=>{ calls.push(['sleep', o.minutes]); }, setAlbumMode: async(o)=>{ calls.push(['album', o.on]); }, setSeekStep: async(o)=>{ calls.push(['seek', o.sec]); }, setVisualizer: async()=>{}, stop: async()=>{ calls.push(['stop']); queue=null; }, openBatterySettings: async()=>{}
+  seekTo: async()=>{}, setSpeed: async()=>{}, setFx: async(o)=>{ calls.push(['setFx', o]); return {peakBoostDb:0}; }, setSkipSilence: async(o)=>{ calls.push(['skip', o.on]); }, setSleepTimer: async(o)=>{ calls.push(['sleep', o.minutes]); }, setAlbumMode: async(o)=>{ calls.push(['album', o.on]); }, setOrderMode: async(o)=>{ calls.push(['order', o.mode]); }, skip: async(o)=>{ calls.push(['skip', o.forward]); }, setSeekStep: async(o)=>{ calls.push(['seek', o.sec]); }, setVisualizer: async()=>{}, stop: async()=>{ calls.push(['stop']); queue=null; }, openBatterySettings: async()=>{}
 };
 const scanCalls = [];
 const ShelfFiles = { addListener: mkListen('ShelfFiles'), pickFolder: async()=>({uri:'content://tree/primary%3AAudiobooks', name:'primary:Audiobooks'}),
@@ -202,6 +202,31 @@ console.log('== album mode: per-book, remembered, sent to the native player');
   calls.length = 0;
   w.document.getElementById('modeBtn').click(); await new Promise(r=>setTimeout(r,60));
   ok(b.mode === 'book' && calls.some(c => c[0]==='album' && c[1]===false), 'toggle back -> book');
+}
+
+console.log('== album track order: in order / one / all / shuffle, album only');
+{
+  const b = state.books.find(x => x.id === 'b1');
+  state.current = b; state.currentIndex = 0; state.currentPos = 0; b.mode = 'book'; b.order = undefined;
+  setScreen('player'); await new Promise(r=>setTimeout(r,80));
+  const ob = () => w.document.getElementById('orderBtn');
+  ok(!!ob() && ob().hidden, 'a book has no order button');
+  w.document.getElementById('modeBtn').click(); await new Promise(r=>setTimeout(r,60));
+  ok(!ob().hidden && /Подряд/.test(ob().textContent), 'an album shows it, default = in order');
+  const seen = [];
+  for(let k = 0; k < 4; k++){ calls.length = 0; ob().click(); await new Promise(r=>setTimeout(r,40)); seen.push([b.order, calls.find(c => c[0]==='order')?.[1], ob().textContent.trim()]); }
+  ok(JSON.stringify(seen.map(x => x.slice(0,2))) === JSON.stringify([['one',1],['all',2],['shuffle',3],['order',0]]), 'cycle one -> all -> shuffle -> in order, the service gets 1, 2, 3, 0: ' + JSON.stringify(seen));
+  ob().click(); ob().click(); await new Promise(r=>setTimeout(r,1200));
+  ok(store.get('bookprefs')?.b1?.order === 'all', 'order stored in bookprefs: ' + JSON.stringify(store.get('bookprefs')?.b1));
+  calls.length = 0;
+  w.document.getElementById('modeBtn').click(); await new Promise(r=>setTimeout(r,60));
+  ok(b.mode === 'book' && ob().hidden && calls.some(c => c[0]==='order' && c[1]===0), 'back to a book: button hidden, the service plays in order');
+  w.document.getElementById('modeBtn').click(); await new Promise(r=>setTimeout(r,60));
+  ok(b.mode === 'album' && /Повтор/.test(ob().textContent), 'the album remembers its order');
+  calls.length = 0;
+  w.document.getElementById('nextBtn').click(); await new Promise(r=>setTimeout(r,60));
+  ok(calls.some(c => c[0]==='skip' && c[1]===true), 'next in a non-"in order" album is the player\'s own skip (shuffle / repeat aware)');
+  b.order = 'order'; b.mode = 'book';
 }
 
 console.log('== play / pause from the notification shade: no redundant work, no flicker');

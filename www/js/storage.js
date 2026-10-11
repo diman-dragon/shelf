@@ -5,7 +5,7 @@
  *                  (scan, rename, delete, bookmarks, metadata) — it is the biggest record (megabytes on a big library)
  *   cover:<id>     the cover (base64) of one book, written only when it actually changed
  *   progress       { bookId: {i, t, ts, finished} } — playback positions, tiny, written on every play/pause/seek
- *   bookprefs      { bookId: {sound?, speed?, mode?} } — per-book EQ/volume/speed and playback mode (book/album). Tiny:
+ *   bookprefs      { bookId: {sound?, speed?, mode?, order?} } — per-book EQ/volume/speed and playback mode (book/album). Tiny:
  *                  only books that differ from the defaults.
  *                  (They used to live inside `books`, so every EQ slider move or speed click rewrote the whole library.)
  *   folders / playlists / settings / foldersSelected — each saved on its own, only when it changes
@@ -22,7 +22,7 @@ const coverIds = new Set();        // ids that HAVE a cover:<id> record — cove
 const coverLoading = new Map();    // bookId -> pending read, so one cover is never read twice at the same time
 let progressMap = {};
 
-const stripPersisted = b => { const { cover, sound, speed, mode, ...rest } = b; rest.hasCover = !!cover || coverIds.has(b.id); return rest; };
+const stripPersisted = b => { const { cover, sound, speed, mode, order, ...rest } = b; rest.hasCover = !!cover || coverIds.has(b.id); return rest; };
 
 /**
  * Covers are NOT read at start-up any more (1000 books x ~30 KB used to be read into memory before the first screen).
@@ -73,6 +73,7 @@ function collectPrefs(list){
     if(!isDefaultSound(b.sound)) o.sound = b.sound;
     if(Number(b.speed) > 0) o.speed = Number(b.speed);
     if(b.mode === 'album') o.mode = 'album';
+    if(b.mode === 'album' && b.order && b.order !== 'order') o.order = b.order;     // album track order: one / all / shuffle
     if(o.sound || o.speed || o.mode) map[b.id] = o;
   }
   return map;
@@ -114,7 +115,7 @@ export async function loadBooks(){
   try { prefs = await dbGet('bookprefs'); } catch { prefs = null; }
   for(const b of list){
     const p = prefs?.[b.id];
-    if(p){ if(p.sound) b.sound = p.sound; if(p.speed) b.speed = p.speed; if(p.mode) b.mode = p.mode; }
+    if(p){ if(p.sound) b.sound = p.sound; if(p.speed) b.speed = p.speed; if(p.mode) b.mode = p.mode; if(p.order) b.order = p.order; }
     else if(!prefs && (b.sound || b.speed)) prefsMigrate = true;
   }
   if(prefs) prefsJson = JSON.stringify(collectPrefs(list));

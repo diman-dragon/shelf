@@ -317,6 +317,22 @@ public class PlayerPlugin extends Plugin {
     call.resolve();
   }
 
+  /** Album track order: 0 in order, 1 one track on repeat, 2 all on repeat, 3 shuffle (JS remembers it per album). */
+  @PluginMethod
+  public void setOrderMode(PluginCall call) {
+    int mode = Math.max(0, Math.min(3, call.getInt("mode", 0)));
+    QueueStore.saveOrder(getContext(), mode);
+    PlayerService.setOrderMode(mode);
+    call.resolve();
+  }
+
+  /** The app's next / previous buttons: the player decides the track (shuffle and repeat are respected). */
+  @PluginMethod
+  public void skip(PluginCall call) {
+    PlayerService.skip(call.getBoolean("forward", true));
+    call.resolve();
+  }
+
   @PluginMethod
   public void setVisualizer(PluginCall call) {
     final boolean on = call.getBoolean("on", false);

@@ -6,7 +6,7 @@ import { showToast, closeModal, openModal, bookCover, fmt } from './ui-utils.js'
 import { render } from './router.js';
 import { updateHeaderNowPlaying } from './header.js';
 import { progress, bookTotal, bookElapsed } from './progress.js';
-import { audio, NATIVE, ensureAudioGraph, applyCurrentFileSound, openCurrentSound, ensureAudible } from './sound.js';
+import { audio, NATIVE, ensureAudioGraph, applyCurrentFileSound, openCurrentSound, ensureAudible, ORDERS, orderIndex } from './sound.js';
 import { openBookMenu } from './library.js';
 import { closeVisualizer, syncPictureDots } from './visualizer.js';
 import { hydrateBookMeta } from './meta.js';
@@ -173,12 +173,13 @@ export function renderPlayer(){
         <button type="button" class="control" id="forwardBtn" aria-label="${t('Вперёд {n} сек.', { n: seekStep() })}">${icon('forward')}<small class="ctl-val" id="fwdVal">+${seekStep()}</small></button>
         <button type="button" class="control" id="nextBtn" aria-label="${t(isMusic(b) ? 'Следующий трек' : 'Следующая глава')}">${icon('next')}</button>
       </div>
-      <div class="player-tools">
+      <div class="player-tools${b.mode === 'album' ? ' has-order' : ''}">
         <button type="button" class="tool" id="speedBtn"><strong>${state.speed.toFixed(1)}×</strong>${t('Скорость')}</button>
         <button type="button" class="tool" id="sleepBtn"><strong id="sleepLabel">◷</strong>${t('Таймер')}</button>
         <button type="button" class="tool" id="queueBtn"><strong>☷</strong>${t('Очередь')}</button>
         <button type="button" class="tool" id="soundBtn"><strong>♫</strong>${t('Звук')}</button>
         <button type="button" class="tool" id="modeBtn" aria-label="${t('Режим воспроизведения')}"><strong id="modeIcon">${b.mode === 'album' ? '♪' : '▤'}</strong><span id="modeLabel">${t(b.mode === 'album' ? 'Альбом' : 'Книга')}</span></button>
+        <button type="button" class="tool" id="orderBtn" aria-label="${t('Порядок треков')}"${b.mode === 'album' ? '' : ' hidden'}><strong id="orderIcon">${orderIconHtml(b)}</strong><span id="orderLabel">${t(ORDER_NAMES[orderOf(b)])}</span></button>
       </div>
       <div class="swipe-hint">${t('Свайп по обложке — визуализатор · по экрану — разделы')}</div>
     </div>
@@ -240,6 +241,7 @@ export function renderPlayer(){
   on('sleepBtn', setSleep);
   on('soundBtn', openCurrentSound);
   on('modeBtn', toggleMode);
+  on('orderBtn', toggleOrder);
   on('playerMark', addBookmark);
   on('queueBtn', openQueuePanel);
   on('queueClose', closeQueuePanel);
@@ -366,10 +368,11 @@ async function loadChapter(i, startAt=0, autoplay=true){
   };
   audio.onended = () => {
     if(token !== loadToken) return;
-    if(i < b.files.length - 1){
+    const j = orderOf(b) === 'one' ? i : neighbour(i, 1);
+    if(j >= 0){
       // browser fallback of the "album" mode: a short pause between tracks (the native player also fades; see PlayerService)
-      if(b.mode === 'album') setTimeout(() => { if(token === loadToken && state.current === b) loadChapter(i + 1, 0, true); }, 2000);
-      else loadChapter(i + 1, 0, true);
+      if(b.mode === 'album') setTimeout(() => { if(token === loadToken && state.current === b) loadChapter(j, 0, true); }, 2000);
+      else loadChapter(j, 0, true);
     } else finishBook();
   };
 
@@ -437,13 +440,59 @@ function seekBy(n){
   updatePlayerUI();
 }
 
+// ---- album track order: in order / one track / all on repeat / shuffle (a book always plays chapter after chapter) ----
+const ORDER_NAMES = { order: 'Подряд', one: 'Повтор 1', all: 'Повтор', shuffle: 'Случайно' };
+const ORDER_TOASTS = { order: 'Порядок: по порядку', one: 'Порядок: один трек по кругу', all: 'Порядок: все треки по кругу', shuffle: 'Порядок: случайно' };
+const orderOf = b => (b && b.mode === 'album' && ORDERS.includes(b.order)) ? b.order : 'order';
+function orderIconHtml(b){
+  const o = orderOf(b);
+  return o === 'shuffle' ? icon('shuffle') : o === 'all' ? '↻' : o === 'one' ? '↻<sup>1</sup>' : '→';
+}
+function syncOrderBtn(){
+  const b = state.current, btn = $('orderBtn');
+  if(!b || !btn) return;
+  const album = b.mode === 'album';
+  btn.hidden = !album;
+  const tools = btn.parentElement;
+  if(tools) tools.classList.toggle('has-order', album);
+  const ic = $('orderIcon'), lb = $('orderLabel');
+  if(ic) ic.innerHTML = orderIconHtml(b);
+  if(lb) lb.textContent = t(ORDER_NAMES[orderOf(b)]);
+}
+function toggleOrder(){
+  const b = state.current;
+  if(!b || b.mode !== 'album') return;
+  const next = ORDERS[(ORDERS.indexOf(orderOf(b)) + 1) % ORDERS.length];
+  b.order = next;
+  audio.setOrderMode?.(orderIndex(b));          // native: repeat / shuffle live in the player itself
+  savePrefsSoon();
+  syncOrderBtn();
+  showToast(t(ORDER_TOASTS[next]));
+}
+/** Browser fallback (and the plain "in order" case): which track comes next / before, or -1 when the album is over */
+function neighbour(i, dir){
+  const b = state.current, n = b.files.length, o = orderOf(b);
+  if(o === 'shuffle'){
+    if(n < 2) return i;
+    let j; do { j = Math.floor(Math.random() * n); } while(j === i);
+    return j;
+  }
+  const k = i + dir;
+  if(k >= 0 && k < n) return k;
+  return o === 'all' ? (k < 0 ? n - 1 : 0) : -1;
+}
+
 function prevTrack(){
-  if(!restoring && audio.currentTime > 6){ audio.currentTime = 0; state.currentPos = 0; updatePlayerUI(); }
-  else if(state.currentIndex > 0) loadChapter(state.currentIndex - 1, 0, true);
+  if(!restoring && audio.currentTime > 6){ audio.currentTime = 0; state.currentPos = 0; updatePlayerUI(); return; }
+  if(NATIVE && orderOf(state.current) !== 'order'){ audio.skip(false); audio.play().catch(() => {}); return; }   // the player knows the shuffle order
+  const j = neighbour(state.currentIndex, -1);
+  if(j >= 0) loadChapter(j, 0, true);
 }
 
 function nextTrack(){
-  if(state.currentIndex < state.current.files.length - 1) loadChapter(state.currentIndex + 1, 0, true);
+  if(NATIVE && orderOf(state.current) !== 'order'){ audio.skip(true); audio.play().catch(() => {}); return; }
+  const j = neighbour(state.currentIndex, 1);
+  if(j >= 0) loadChapter(j, 0, true);
 }
 
 const SPEEDS = [.8, 1, 1.2, 1.5, 1.8, 2];
@@ -459,6 +508,8 @@ function toggleMode(){
   const ic = $('modeIcon'), lb = $('modeLabel');
   if(ic) ic.textContent = album ? '♪' : '▤';
   if(lb) lb.textContent = t(album ? 'Альбом' : 'Книга');
+  audio.setOrderMode?.(orderIndex(b));            // a book always plays in order; an album keeps its own order
+  syncOrderBtn();
   updatePlayerUI();                              // album: only the track bar; book: chapter bar + whole-book bar
   showToast(t(album ? 'Альбом: плавное затухание и пауза между треками' : 'Книга: без пауз между главами'));
 }

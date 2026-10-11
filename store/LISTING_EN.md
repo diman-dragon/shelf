@@ -23,6 +23,7 @@ MEMORY FOR EVERY BOOK
 BOOK AND ALBUM MODES
 • Book: chapters play back to back with no gaps; two progress bars: the chapter and the whole book.
 • Album: a smooth fade-out at the end of a track, a short pause, then a smooth start of the next one.
+Album order: in order, repeat one track, repeat all, shuffle.
 The mode is remembered separately for each book.
 
 MADE FOR THE ROAD

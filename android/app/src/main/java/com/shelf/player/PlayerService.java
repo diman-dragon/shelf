@@ -252,6 +252,33 @@ public class PlayerService extends MediaSessionService {
     MAIN.postDelayed(ALBUM_TICK, left == Long.MAX_VALUE ? 1000 : AlbumFade.nextCheckMs(left, fadingIn));
   }
 
+  // ---------------- album track order: 0 in order, 1 one track on repeat, 2 all on repeat, 3 shuffle ----------------
+  private static volatile int orderMode;
+
+  /** Only an album has an order other than "in order": a book always plays chapter after chapter. */
+  private static void applyOrder(ExoPlayer p) {
+    if (p == null) return;
+    int m = albumMode ? orderMode : 0;
+    p.setRepeatMode(m == 1 ? Player.REPEAT_MODE_ONE : m >= 2 ? Player.REPEAT_MODE_ALL : Player.REPEAT_MODE_OFF);
+    p.setShuffleModeEnabled(m == 3);
+  }
+
+  static void setOrderMode(final int mode) {
+    orderMode = Math.max(0, Math.min(3, mode));
+    MAIN.post(new Runnable() { @Override public void run() { applyOrder(live); } });
+  }
+
+  /** Next / previous track in the CURRENT order (shuffle and repeat included), used by the app's buttons. */
+  static void skip(final boolean forward) {
+    MAIN.post(new Runnable() {
+      @Override public void run() {
+        ExoPlayer p = live;
+        if (p == null) return;
+        if (forward) p.seekToNextMediaItem(); else p.seekToPreviousMediaItem();
+      }
+    });
+  }
+
   static void setAlbumMode(final boolean on) {
     albumMode = on;
     MAIN.post(new Runnable() {
@@ -262,6 +289,7 @@ public class PlayerService extends MediaSessionService {
         albumVol = 1f;
         if (p != null) {
           p.setPauseAtEndOfMediaItems(on);
+          applyOrder(p);
           applyVolume(p);
           if (on) albumStep();
         }
@@ -423,6 +451,7 @@ public class PlayerService extends MediaSessionService {
         .setSeekForwardIncrementMs(10000)
         .build();
     player.setPauseAtEndOfMediaItems(albumMode);      // "album" mode: stop after every track (the gap is timed below)
+    applyOrder(player);
     player.addListener(new Player.Listener() {
       @Override public void onIsPlayingChanged(boolean isPlaying) {
         MAIN.removeCallbacks(persistTick);
@@ -551,7 +580,8 @@ public class PlayerService extends MediaSessionService {
         QueueStore.clearInterruption(PlayerService.this);     // consumed: the position above already includes the 5 s step back
         ExoPlayer p = player;
         albumMode = r.album;
-        if (p != null) { p.setPlaybackSpeed(r.speed); p.setPauseAtEndOfMediaItems(r.album); }
+        orderMode = QueueStore.loadOrder(PlayerService.this);
+        if (p != null) { p.setPlaybackSpeed(r.speed); p.setPauseAtEndOfMediaItems(r.album); applyOrder(p); }
         return Futures.immediateFuture(new MediaSession.MediaItemsWithStartPosition(r.items, r.index, r.posMs));
       }
       // Controllers send items by value; make sure the playable URI survives the trip
