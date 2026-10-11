@@ -11,7 +11,7 @@ const DAY = 86400000;
 export const TRIAL_DAYS = Number(CONFIG.premium?.trialDays) || 30;
 export const PRODUCTS = CONFIG.premium.products;
 /** Everything that asks for Premium. The key is used for the sheet's wording and for tests. */
-export const FEATURES = ['sound', 'boost', 'normalize', 'visualizer'];
+export const FEATURES = ['sound', 'boost', 'normalize', 'visualizer', 'download'];
 
 let rec = load();
 const listeners = new Set();

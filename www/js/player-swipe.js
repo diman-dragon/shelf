@@ -25,8 +25,8 @@ export function bindSwipe(root, onSwipe){
     if(t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return;
     // sliders handle their own drag; rows that scroll sideways, open modals and side panels keep their own gestures
     if(e.target.closest('input[type="range"], #modalRoot, .side-panel')) return;
-    // A row that really scrolls sideways (shelves on «Для вас», filter chips) keeps its own gesture — but only while it scrolls:
-    // a row that fits on the screen, or one already at its end, must not swallow the swipe (that made «Для вас» dead in places).
+    // A row that really scrolls sideways (filter chips) keeps its own gesture — but only while it scrolls:
+    // a row that fits on the screen, or one already at its end, must not swallow the swipe.
     const r = e.target.closest('[data-noswipe], .library-filters-bar');
     if(r && r.scrollWidth > r.clientWidth + 1){ rail = r; railLeft = r.scrollLeft; }
     x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); active = true;

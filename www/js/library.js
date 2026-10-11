@@ -4,9 +4,10 @@ import { saveBooks } from './storage.js';
 import { showToast, closeModal, openModal, iconBtn, bookCover, kindBadge, fmt } from './ui-utils.js';
 import { header } from './header.js';
 import { progress } from './progress.js';
-import { render, act } from './router.js';
+import { render, act, setScreen } from './router.js';
 import { openFolderSheet, scanDock } from './scanner.js';
 import { hydrateLibraryCovers } from './meta.js';
+import { openSourceInfo, sourceLine, downloads, cancelDownload } from './catalog.js';
 import { t, getLang } from './i18n.js';
 
 let libraryDisplayLimit = 50;
@@ -43,6 +44,8 @@ function bindLoadMore(){
   if(btn) btn.onclick = () => { libraryDisplayLimit += 50; renderShelf(); };
 }
 
+const catalogTab = () => state.libraryFilterType === 'saved' || state.libraryFilterType === 'online';
+
 export function renderShelf(){
   const { all, shown } = visibleBooks();
   const viewMode = localStorage.getItem('shelfViewMode') || 'list';
@@ -58,16 +61,18 @@ export function renderShelf(){
     `<button type="button" class="filter-chip ${state.libraryFilterType==='all'?'active':''}" data-filter="all">${t('Все')} (${state.books.length})</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='book'?'active':''}" data-filter="book">${t('Книги')}</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">${t('Музыка')}</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='saved'?'active':''}" data-filter="saved">${t('Скачанные')}</button>` +
+    `<button type="button" class="filter-chip ${state.libraryFilterType==='online'?'active':''}" data-filter="online">${t('Онлайн')}</button>` +
   `</div>`;
   html += `<div class="${viewMode === 'grid' ? 'shelf-grid' : 'shelf-list'}">`;
   if(!all.length){
-    html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>${t('Библиотека пока пуста')}</div><div style="font-size:12px;margin-top:5px">${t('Добавьте папку с аудиокнигами или музыкой.')}</div><button id="emptyAdd">${t('Добавить в библиотеку')}</button></div></div>`;
+    html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>${t(catalogTab() ? 'Здесь пока ничего нет' : 'Библиотека пока пуста')}</div><div style="font-size:12px;margin-top:5px">${t(catalogTab() ? 'Книги из каталога появятся здесь.' : 'Добавьте папку с аудиокнигами или музыкой.')}</div><button id="emptyAdd">${t(catalogTab() ? 'Открыть каталог' : 'Добавить в библиотеку')}</button></div></div>`;
   } else {
     html += shown.map(libraryBookRow).join('');
   }
   html += `</div><div id="loadMoreHost">${loadMoreHtml(all.length, shown.length)}</div>${state.scan?.active ? scanDock() : ''}</section>`;
   main.innerHTML = html;
-  $('emptyAdd')?.addEventListener('click', openFolderSheet);
+  $('emptyAdd')?.addEventListener('click', () => { if(catalogTab()) setScreen('catalog'); else openFolderSheet(); });
   $('clearSearch')?.addEventListener('click', () => { state.query = ''; libraryDisplayLimit = 50; render(); });
   bindLoadMore();
   bindShelfList();
@@ -104,7 +109,7 @@ function bindShelfList(){
 
 /** What a row looks like — if this string is unchanged, the row's DOM is left alone */
 function rowSig(b){
-  return [b.title, b.author, b.files?.length || 0, durationOfBook(b), b.cover ? b.cover.length : 0, Math.round(progress(b) * 10), b.finished ? 1 : 0, isMusic(b) ? 1 : 0].join('|');
+  return [b.title, b.author, b.files?.length || 0, durationOfBook(b), b.cover ? b.cover.length : 0, Math.round(progress(b) * 10), b.finished ? 1 : 0, isMusic(b) ? 1 : 0, b.source ? (b.online ? 'o' : 'd') : '', downloads.has(b.id) ? 'dl' : ''].join('|');
 }
 
 function rowEl(b, sig){
@@ -161,6 +166,7 @@ function libraryBookRow(b, sig = rowSig(b)){
         <div class="lib-title">${escapeHtml(b.title)}</div>
         <div class="lib-author">${escapeHtml(b.author||t('Автор не указан'))}</div>
         <div class="lib-meta">${fileCount} ${partsCount(b, fileCount)} &middot; ${totalDuration > 0 ? fmt(totalDuration) : '—'}${b.finished ? ` &middot; <span class="lib-done">${t('прослушано')}</span>` : ''}</div>
+        ${b.source ? `<div class="lib-meta lib-lic">${escapeHtml(sourceLine(b))}${downloads.has(b.id) ? ` &middot; ${t('скачивается')}…` : ''}</div>` : ''}
       </div>
     </div>
     <div class="lib-progress-line"><i style="width:${prog}%"></i></div>
@@ -174,6 +180,10 @@ function filterBooks(books){
     filtered = filtered.filter(b => !isMusic(b));
   } else if(state.libraryFilterType === 'album'){
     filtered = filtered.filter(isMusic);
+  } else if(state.libraryFilterType === 'saved'){            // downloaded from the catalog: kept on the device for good
+    filtered = filtered.filter(b => b.source && !b.online);
+  } else if(state.libraryFilterType === 'online'){           // catalog books that are listened to over the internet
+    filtered = filtered.filter(b => b.source && b.online);
   }
   if(!q) return filtered;
   return filtered.filter(b => (b.title||'').toLowerCase().includes(q) || (b.author||'').toLowerCase().includes(q));
@@ -213,7 +223,10 @@ export function openSort(){
 export function openBookMenu(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
-  openModal(`<h3>${escapeHtml(b.title)}</h3><div class="modal-row" id="menuRename"><span>✏ ${t('Переименовать')}</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 ${t('Удалить из библиотеки')}</span></div><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
+  const dl = downloads.has(b.id);
+  openModal(`<h3>${escapeHtml(b.title)}</h3>${b.source ? `<div class="modal-row" id="menuSource"><span>ⓘ ${t('Источник и лицензия')}</span></div>` : ''}${dl ? `<div class="modal-row" id="menuStop"><span>⏹ ${t('Остановить скачивание')}</span></div>` : ''}<div class="modal-row" id="menuRename"><span>✏ ${t('Переименовать')}</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 ${t('Удалить из библиотеки')}</span></div><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
+  $('menuSource')?.addEventListener('click', () => { closeModal(); openSourceInfo(b.id); });
+  $('menuStop')?.addEventListener('click', () => { closeModal(); cancelDownload(b.id); });
   $('menuRename').onclick = () => { closeModal(); renameBook(b.id); };
   $('menuDelete').onclick = () => { closeModal(); deleteBook(b.id); };
 }

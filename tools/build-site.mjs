@@ -156,6 +156,7 @@ const I = {
   road: ico('<path d="M3 17l3-10h12l3 10"/><path d="M12 7v2m0 3v2m0 3v1"/>'),
   eq: ico('<path d="M5 20V10m7 10V4m7 16v-7"/><circle cx="5" cy="8" r="2"/><circle cx="12" cy="14" r="2"/><circle cx="19" cy="11" r="2"/>'),
   lang: ico('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>'),
+  catalog: ico('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3M8.5 11h5M11 8.5v5"/>'),
   tool: ico('<path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.4 2.4-2.6-.6-.6-2.6z"/>'),
   folder: ico('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
   pdf: ico('<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 14h6M9 17h4"/>'),
@@ -191,10 +192,10 @@ fs.writeFileSync(path.join(out, '.nojekyll'), '');
 const features = [
   ['mem', 'Память по каждой книге', 'A memory for every book', 'Позиция запоминается точно, у каждой книги свои скорость, эквалайзер и громкость. Закладки в любом месте.', 'The exact position is remembered, and every book keeps its own speed, equalizer and volume. Bookmarks anywhere.'],
   ['book', 'Книга и альбом', 'Book and album modes', 'Книга: главы идут подряд, видны два прогресса. Альбом: плавные переходы между треками и свой порядок.', 'Book: chapters flow on, with two progress bars. Album: gentle fades between tracks and your own play order.'],
-  ['lock', 'Всё на телефоне', 'Everything on your phone', 'Без аккаунтов, аналитики и рекламы. Приложение читает только выбранные вами папки и ничего не отправляет.', 'No accounts, analytics or ads. The app only reads the folders you pick and sends nothing anywhere.'],
+  ['catalog', 'Бесплатный каталог', 'A free catalog', 'Аудиокниги в общественном достоянии (LibriVox): ищите и слушайте онлайн бесплатно, а в Премиуме скачивайте в свою папку навсегда.', 'Public-domain audiobooks (LibriVox): search and listen online for free, and download them to your own folder for good with Premium.'],
   ['road', 'Удобно в дороге', 'Made for the road', 'Плеер в шторке и на экране блокировки, виджет, таймер сна с затуханием, перемотка с настраиваемым шагом.', 'Notification and lock-screen player, a widget, a fading sleep timer and a configurable skip step.'],
   ['eq', 'Живой звук', 'Better sound', 'Эквалайзер, усиление и выравнивание громкости по файлам в фоне, красивые визуализаторы.', 'Equalizer, gain and background loudness normalization, plus visualizers.'],
-  ['lang', 'Две темы, два языка', 'Two themes, two languages', 'Чёрный AMOLED и тёплая «Бумага». Русский и English: автоматически или в настройках.', 'True-black AMOLED and warm Paper. English and Russian: automatic or in Settings.']
+  ['lock', 'Библиотека на телефоне', 'Your library stays on your phone', 'Без аккаунтов, аналитики и рекламы. Приложение читает только выбранные вами папки; интернет нужен лишь для каталога.', 'No accounts, analytics or ads. The app only reads the folders you pick; the internet is used only for the catalog.']
 ];
 const play = cfg.playUrl
   ? `<a class="btn" href="${esc(cfg.playUrl)}" rel="noopener">${bis('Скачать в Google Play', 'Get it on Google Play')}</a>`
@@ -202,9 +203,9 @@ const play = cfg.playUrl
 const hero = `<div class="hero"><div class="wrap"><div>
 <span class="eyebrow">${bis('Аудиокниги · музыка · Android', 'Audiobooks · music · Android')}</span>
 <h1>${bis('Тёплый плеер для аудиокниг и альбомов', 'A warm player for audiobooks and albums')}</h1>
-<p class="lead">${bis('Простой, быстрый, без интернета и рекламы. Всё хранится на вашем телефоне.', 'Simple and fast, with no internet and no ads. Everything stays on your phone.')}</p>
+<p class="lead">${bis('Простой и быстрый, без рекламы и аккаунтов. Библиотека хранится на вашем телефоне, а бесплатный каталог книг всегда под рукой.', 'Simple and fast, with no ads and no accounts. Your library stays on your phone, and a free book catalog is always at hand.')}</p>
 ${play}<a class="btn ghost" href="#features">${bis('Возможности', 'Features')}</a>
-<div class="sub">${bis('Android 7.0 и новее · бесплатно, Премиум по желанию', 'Android 7.0 and newer · free, Premium optional')}</div></div>
+<div class="sub">${bis('Android 7.0 и новее · бесплатно, Премиум по желанию · тёмная и светлая темы', 'Android 7.0 and newer · free, Premium optional · dark and light themes')}</div></div>
 <div class="phones">${shot('shelf', 'a')}${shot('player', 'b')}</div></div></div>`;
 const apps = [
   [`<img src="icon.png" alt="">`, 'AudioShelf', 'Аудиокниги и музыка', 'Audiobooks and music', 'live'],
@@ -228,11 +229,11 @@ const landing = `<section id="features"><div class="wrap"><h2>${bis('Что вн
 <section><div class="wrap"><h2>${bis('Бесплатно и Премиум', 'Free and Premium')}</h2>
 <p class="sec-sub">${bis('Без подписок: платите один раз или не платите вовсе.', 'No subscriptions: pay once or not at all.')}</p><div class="plans">
 <div class="card plan"><span class="tag">${bis('Сначала', 'First')}</span><h3>${bis('30 дней — всё открыто', '30 days — everything unlocked')}</h3><p>${bis('Попробуйте все функции сразу после установки.', 'Try every feature right after installing.')}</p></div>
-<div class="card plan"><span class="tag">${bis('Навсегда', 'Forever')}</span><div class="price">${bis('Бесплатно', 'Free')}</div><p>${bis('Воспроизведение, библиотека, закладки, таймер сна, режимы «Книга» и «Альбом».', 'Playback, library, bookmarks, sleep timer, Book and Album modes.')}</p></div>
-<div class="card plan hl"><span class="tag">Premium</span><div class="price">4,99 € / $</div><p>${bis('Один раз и навсегда: эквалайзер, усиление, выравнивание громкости и визуализаторы.', 'Once and for life: equalizer, gain, loudness normalization and visualizers.')}</p></div></div>
+<div class="card plan"><span class="tag">${bis('Навсегда', 'Forever')}</span><div class="price">${bis('Бесплатно', 'Free')}</div><p>${bis('Воспроизведение, библиотека, закладки, таймер сна, режимы «Книга» и «Альбом», каталог бесплатных книг с прослушиванием онлайн.', 'Playback, library, bookmarks, sleep timer, Book and Album modes, the free catalog with online listening.')}</p></div>
+<div class="card plan hl"><span class="tag">Premium</span><div class="price">4,99 € / $</div><p>${bis('Один раз и навсегда: эквалайзер, усиление, выравнивание громкости, визуализаторы и скачивание книг из каталога.', 'Once and for life: equalizer, gain, loudness normalization, visualizers and downloading catalog books.')}</p></div></div>
 <p class="sec-sub" style="margin:18px 0 0">${bis('Можно угостить автора чашкой чая или порадовать котика — это необязательно и ничего не открывает.', 'You can buy the author a cup of tea or treat the cat — optional, and it unlocks nothing.')}</p></div></section>
 <section><div class="wrap"><div class="band"><div><h2>${bis('Приватность по умолчанию', 'Private by default')}</h2>
-<p class="sec-sub" style="margin:0">${bis('У приложения нет аккаунтов, аналитики и собственных серверов. Библиотека и прослушивание остаются на устройстве. Подробнее: ', 'The app has no accounts, analytics or servers of its own. Your library and listening stay on your device. Details: ')}<a href="privacy.html">${bis('политика конфиденциальности', 'privacy policy')}</a>.</p></div>
+<p class="sec-sub" style="margin:0">${bis('У приложения нет аккаунтов, аналитики и собственных серверов. Библиотека и прослушивание остаются на устройстве; интернет используется только когда вы сами ищете, слушаете или скачиваете книгу из каталога. Подробнее: ', 'The app has no accounts, analytics or servers of its own. Your library and listening stay on your device; the internet is used only when you search, listen to or download a catalog book yourself. Details: ')}<a href="privacy.html">${bis('политика конфиденциальности', 'privacy policy')}</a>.</p></div>
 <div><a class="btn" href="support.html">${bis('Вопросы и поддержка', 'Questions and support')}</a></div></div></div></section>
 <section><div class="wrap"><h2>${bis('Семейство приложений', 'The app family')}</h2>
 <p class="sec-sub">${bis('DataLaw Design задаёт единый вид и поведение всех наших приложений: те же темы, жесты и порядок настроек. AudioShelf уже здесь, остальные в работе.', 'DataLaw Design defines one look and behaviour for all our apps: the same themes, gestures and settings order. AudioShelf is here; the rest are in the works.')}</p>
@@ -253,6 +254,9 @@ legal('terms.html', 'store/TERMS.md', { ru: 'Условия использова
 
 // ---- support ----
 const faq = [
+  ['Где взять бесплатные книги?', 'Where do I find free books?', 'Откройте вкладку «Каталог», найдите книгу и нажмите «Слушать онлайн». Это бесплатно. Записи принадлежат общественному достоянию (LibriVox), лицензия показана у каждой книги.', 'Open the Catalog tab, find a book and tap Listen online. It is free. The recordings are in the public domain (LibriVox) and the licence is shown on every book.'],
+  ['Что будет со скачанными книгами, если пробный период закончился?', 'What happens to downloaded books after the free trial?', 'Ничего: они остаются в вашей папке и в библиотеке (вкладка «Скачанные») и продолжают играть. Приложение их не удаляет и не прячет. Без Премиума недоступно только новое скачивание.', 'Nothing: they stay in your folder and in the library (Downloaded tab) and keep playing. The app never deletes or hides them. Without Premium only new downloads are unavailable.'],
+  ['Не скачивается книга', 'A book will not download', 'Скачивание нужно Премиуму и права записи в папку. Если приложение просит, добавьте папку в библиотеку заново (папки, добавленные в старых версиях, не дают записи). Нужны интернет и свободное место.', 'Downloading needs Premium and write access to the folder. If asked, add the folder to the library again (folders added by old versions do not allow writing). You also need internet and free space.'],
   ['Как добавить книги?', 'How do I add books?', 'Откройте «Библиотека» и выберите папку с аудиокнигами. Каждая подпапка станет книгой, главы пойдут по порядку.', 'Open Library and pick the folder with your audiobooks. Each subfolder becomes a book and its files become chapters, in order.'],
   ['Куда пропала позиция или книга?', 'My position or book is missing', 'Данные хранятся только на устройстве. При удалении приложения или очистке данных они удаляются. Если вы переместили папку, выберите её заново.', 'Data lives only on your device and is erased when you uninstall or clear the app data. If you moved the folder, pick it again.'],
   ['Как восстановить Премиум?', 'How do I restore Premium?', 'Откройте «Настройки → Премиум и поддержка» и нажмите «Восстановить покупки». Нужен тот же аккаунт Google, с которого платили.', 'Open Settings → Premium and support and tap Restore purchases. Use the same Google account you paid with.'],
@@ -264,7 +268,7 @@ const supportBody = `<article><div class="wrap"><h1>${bis('Поддержка', 
 <p>${bis('Напишите нам: ', 'Write to us: ')}<a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a>. ${bis('Укажите модель телефона, версию Android и версию приложения (Настройки → О приложении).', 'Please include your phone model, Android version and the app version (Settings → About).')}</p>
 <h2>${bis('Частые вопросы', 'FAQ')}</h2>${
   faq.map(f => `<details><summary>${bis(f[0], f[1])}</summary><p>${bis(f[2], f[3])}</p></details>`).join('')}
-<h2>${bis('Удаление данных', 'Data deletion')}</h2><p>${bis('У приложения нет аккаунтов и серверов. Чтобы удалить все данные, удалите приложение или очистите его данные в настройках Android. Покупки привязаны к аккаунту Google.', 'The app has no accounts or servers. To delete all data, uninstall the app or clear its data in Android settings. Purchases are tied to your Google account.')}</p></div></article>`;
+<h2>${bis('Удаление данных', 'Data deletion')}</h2><p>${bis('У приложения нет аккаунтов и серверов. Чтобы удалить все данные, удалите приложение или очистите его данные в настройках Android. Скачанные книги лежат в вашей папке: они остаются там, пока вы сами их не удалите. Покупки привязаны к аккаунту Google.', 'The app has no accounts or servers. To delete all data, uninstall the app or clear its data in Android settings. Downloaded books live in your folder and stay there until you delete them yourself. Purchases are tied to your Google account.')}</p></div></article>`;
 fs.writeFileSync(path.join(out, 'support.html'), page('support.html', { ru: 'Поддержка', en: 'Support', desc: 'AudioShelf support and FAQ' }, supportBody));
 
 // ---- licences ----

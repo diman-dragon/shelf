@@ -2,10 +2,10 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <!-- The app only needs its own files plus data:/blob: (covers, offline audio). No remote hosts, no eval.
+  <!-- The app only needs its own files plus data:/blob: (covers, offline audio) and ONE remote host, archive.org (the free-books catalog: search, covers, streaming, downloads). No eval.
        script-src keeps 'unsafe-inline' ONLY because the Capacitor Android runtime injects its bridge into index.html as an inline
        script element; the app's own code has no inline scripts/handlers any more (cover fallback is a capture listener in ui-utils.js). -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://archive.org https://*.archive.org; media-src 'self' data: blob: https://archive.org https://*.archive.org; font-src 'self' data:; connect-src 'self' data: blob: https://archive.org https://*.archive.org; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <meta name="application-name" content="AudioShelf">
@@ -19,7 +19,7 @@
     <nav class="bottom-nav" aria-label="Основная навигация" data-i18n-aria="Основная навигация">
       <button type="button" data-nav="shelf" class="nav-item active"><span class="nav-ico" data-icon="shelf"></span><span data-i18n="Библиотека">Библиотека</span></button>
       <button type="button" data-nav="player" class="nav-item"><span class="nav-ico" data-icon="play"></span><span data-i18n="Плеер">Плеер</span></button>
-      <button type="button" data-nav="discover" class="nav-item"><span class="nav-ico" data-icon="discover"></span><span data-i18n="Для вас">Для вас</span></button>
+      <button type="button" data-nav="catalog" class="nav-item"><span class="nav-ico" data-icon="catalog"></span><span data-i18n="Каталог">Каталог</span></button>
       <button type="button" data-nav="settings" class="nav-item"><span class="nav-ico" data-icon="settings"></span><span data-i18n="Настройки">Настройки</span></button>
     </nav>
   </div>

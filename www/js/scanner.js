@@ -59,7 +59,7 @@ async function deleteFolder(id){
   $('folderDeleteConfirm').onclick = async () => {
     state.folders = state.folders.filter(x => x.id !== id);
     state.selectedFolderIds = state.selectedFolderIds.filter(x => x !== id);
-    state.books = state.books.filter(b => b.sourceFolderId !== id);
+    state.books = state.books.filter(b => b.sourceFolderId !== id || b.downloadedAt);   // a book downloaded from the catalog is never dropped with its folder
     state.playlists.forEach(p => p.bookIds = (p.bookIds || []).filter(bid => state.books.some(b => b.id === bid)));
     if(state.current?.sourceFolderId === id){
       act('unloadCurrent');                                  // stops <audio> + the native service + its notification

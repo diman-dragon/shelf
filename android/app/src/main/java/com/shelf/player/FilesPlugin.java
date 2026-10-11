@@ -1,6 +1,7 @@
 package com.shelf.player;
 
 import android.app.Activity;
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -14,7 +15,12 @@ import android.provider.DocumentsContract;
 import android.util.Base64;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.List;
@@ -104,6 +110,165 @@ public class FilesPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("failed");
         }
+    }
+
+
+    /* ---------------- catalog downloads (Premium; the screen is catalog.js) ----------------
+     * One file per call: the JS loop goes chapter by chapter, shows the progress and can stop. The file is written straight into the
+     * library folder the person chose (SAF), inside "<dir>". Only https://archive.org (and its subdomains) is ever contacted.
+     * Errors the JS understands: "denied" (no write access: add the folder again), "nospace", "cancelled", "failed".
+     */
+    private final Set<String> cancelled = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final String DL_AGENT = "AudioShelf/2.8 (+https://github.com/diman-dragon/shelf/)";
+
+    @PluginMethod
+    public void cancelDownload(PluginCall call) {
+        String id = call.getString("bookId", "");
+        if (id != null && !id.isEmpty()) cancelled.add(id);
+        call.resolve();
+    }
+
+    private static boolean allowedHost(String host) {
+        return host != null && (host.equals("archive.org") || host.endsWith(".archive.org"));
+    }
+
+    @PluginMethod
+    public void downloadFile(final PluginCall call) {
+        final String treeStr = call.getString("treeUri", "");
+        final String dir = call.getString("dir", "");
+        final String name = call.getString("name", "");
+        final String url = call.getString("url", "");
+        final String bookId = call.getString("bookId", "");
+        final long expect = call.getData().optLong("size", 0);
+        final int index = call.getInt("index", 0);
+        final int total = call.getInt("total", 1);
+        Uri parsed = url == null ? null : Uri.parse(url);
+        if (treeStr == null || treeStr.isEmpty() || name == null || name.isEmpty()
+            || parsed == null || !"https".equals(parsed.getScheme()) || !allowedHost(parsed.getHost())) {
+            call.reject("failed");
+            return;
+        }
+        if (index == 0) cancelled.remove(bookId);
+        ScanService.beginDownload(getContext());
+        try {
+            ioPool.execute(() -> {
+                try { doDownload(call, Uri.parse(treeStr), dir, name, url, bookId, expect, index, total); }
+                finally { ScanService.end(getContext()); }
+            });
+        } catch (Exception e) {
+            ScanService.end(getContext());
+            call.reject("failed");
+        }
+    }
+
+    /** A direct child (file or folder) of a document with this display name, or null */
+    private Uri findChild(Uri tree, Uri parentDoc, String childName) {
+        Cursor c = null;
+        try {
+            c = listChildren(tree, DocumentsContract.getDocumentId(parentDoc));
+            int idCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID);
+            int nameCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            while (c.moveToNext()) {
+                if (nameCol >= 0 && childName.equals(c.getString(nameCol)) && idCol >= 0) {
+                    return DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(idCol));
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) c.close();
+        }
+        return null;
+    }
+
+    private long sizeOf(Uri doc) {
+        Cursor c = null;
+        try {
+            c = getContext().getContentResolver().query(doc, new String[]{DocumentsContract.Document.COLUMN_SIZE}, null, null, null);
+            if (c != null && c.moveToFirst() && !c.isNull(0)) return c.getLong(0);
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) c.close();
+        }
+        return -1;
+    }
+
+    private void doDownload(PluginCall call, Uri tree, String dir, String name, String url, String bookId, long expect, int index, int total) {
+        ContentResolver cr = getContext().getContentResolver();
+        Uri target = null;
+        OutputStream out = null;
+        InputStream in = null;
+        HttpURLConnection conn = null;
+        try {
+            Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
+            for (String seg : dir.split("/")) {
+                if (seg.isEmpty()) continue;
+                Uri child = findChild(tree, parent, seg);
+                if (child == null) child = DocumentsContract.createDocument(cr, parent, DocumentsContract.Document.MIME_TYPE_DIR, seg);
+                if (child == null) throw new SecurityException("no folder");
+                parent = child;
+            }
+            Uri existing = findChild(tree, parent, name);
+            if (existing != null) {
+                long have = sizeOf(existing);
+                if (expect > 0 && have == expect) {              // finished earlier (an interrupted download is resumed file by file)
+                    call.resolve(new JSObject().put("uri", existing.toString()).put("size", have).put("skipped", true));
+                    return;
+                }
+                try { DocumentsContract.deleteDocument(cr, existing); } catch (Exception ignored) { }
+            }
+            target = DocumentsContract.createDocument(cr, parent, "audio/mpeg", name);
+            if (target == null) throw new SecurityException("no file");
+            out = cr.openOutputStream(target, "w");
+            if (out == null) throw new IOException("no stream");
+
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+            conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("User-Agent", DL_AGENT);
+            if (conn.getResponseCode() != 200) throw new IOException("http " + conn.getResponseCode());
+            if (!allowedHost(conn.getURL().getHost()) || !"https".equals(conn.getURL().getProtocol())) throw new IOException("host");
+            long len = conn.getContentLengthLong();
+            if (len <= 0) len = expect;
+            in = conn.getInputStream();
+            byte[] buf = new byte[64 * 1024];
+            long written = 0, lastEmit = 0;
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                if (cancelled.contains(bookId) || Thread.currentThread().isInterrupted()) throw new IOException("cancelled");
+                out.write(buf, 0, n);
+                written += n;
+                long now = SystemClock.elapsedRealtime();
+                if (now - lastEmit > 300) {
+                    lastEmit = now;
+                    emit("downloadProgress", new JSObject().put("bookId", bookId).put("index", index).put("bytes", written).put("total", len));
+                    ScanService.progress(getContext(), index, total);
+                }
+            }
+            out.flush();
+            out.close();
+            out = null;
+            if (written <= 0) throw new IOException("empty");
+            call.resolve(new JSObject().put("uri", target.toString()).put("size", written));
+        } catch (SecurityException e) {
+            discard(cr, out, target);
+            call.reject("denied");
+        } catch (Exception e) {
+            discard(cr, out, target);
+            String m = e.getMessage() == null ? "" : e.getMessage();
+            if (m.equals("cancelled")) call.reject("cancelled");
+            else if (m.contains("ENOSPC") || m.toLowerCase(Locale.ROOT).contains("space")) call.reject("nospace");
+            else call.reject("failed");
+        } finally {
+            try { if (in != null) in.close(); } catch (Exception ignored) { }
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** A half-written file must never stay behind: it would look like a broken chapter */
+    private void discard(ContentResolver cr, OutputStream out, Uri target) {
+        try { if (out != null) out.close(); } catch (Exception ignored) { }
+        if (target != null) { try { DocumentsContract.deleteDocument(cr, target); } catch (Exception ignored) { } }
     }
 
     @PluginMethod

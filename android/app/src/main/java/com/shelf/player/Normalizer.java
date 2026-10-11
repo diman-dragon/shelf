@@ -54,7 +54,7 @@ final class Normalizer {
     final Context app = ctx.getApplicationContext();
     final SharedPreferences sp = prefs(app);
     for (final String u : uris) {
-      if (u == null || sp.contains(u) || !queued.add(u)) continue;
+      if (u == null || u.startsWith("http") || sp.contains(u) || !queued.add(u)) continue;   // streamed (online) files are not downloaded just to be measured
       EXEC.execute(new Runnable() {
         @Override public void run() {
           try {

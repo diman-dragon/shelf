@@ -277,3 +277,54 @@
 }
 .visualizer-center .icon { width: 44px; height: 44px; }
 .visualizer-center b { font: 700 10px/1 Inter, system-ui; letter-spacing: 0.24em; }
+
+/* ---------- cover animation: a record with a tonearm (album) / pages sliding out (book); the cover itself never moves ---------- */
+.player-cover.is-album, .player-cover.is-book { overflow: visible; contain: none; }
+.player-cover.is-album {
+  height: min(clamp(110px, 31vh, 270px), 61vw);
+  height: min(clamp(110px, 31dvh, 270px), 61vw);
+  aspect-ratio: 1.4; max-width: none;
+}
+.is-album .cover-frame { right: auto; width: 71.43%; z-index: 2; border-radius: 12px; }
+.is-book .cover-frame { z-index: 2; }
+.fx-vinyl { position: absolute; right: 0; top: 4%; height: 92%; aspect-ratio: 1; z-index: 1; }
+.record {
+  width: 100%; height: 100%; border-radius: 50%; position: relative;
+  background:
+    radial-gradient(circle, transparent 0 30%, rgba(255,255,255,.05) 30.5%, transparent 31.5%, transparent 44%, rgba(255,255,255,.05) 44.5%, transparent 45.5%, transparent 58%, rgba(255,255,255,.05) 58.5%, transparent 59.5%),
+    conic-gradient(from 20deg, #141210, #2b2824 12%, #141210 25%, #141210 50%, #2b2824 62%, #141210 75%);
+  box-shadow: 0 6px 18px rgba(0,0,0,.45), inset 0 0 0 2px rgba(255,255,255,.04);
+  animation: rec-spin 3.4s linear infinite; animation-play-state: paused;
+}
+.record .label { position: absolute; inset: 35%; border-radius: 50%; background: radial-gradient(circle at 50% 50%, #0b0a09 0 7%, var(--gold) 8%); box-shadow: 0 0 0 2px rgba(0,0,0,.35); }
+.is-album.playing .record { animation-play-state: running; }
+@keyframes rec-spin { to { transform: rotate(360deg); } }
+.fx-arm { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; overflow: visible; }
+.fx-arm .arm { transform-box: view-box; transform-origin: 128px 10px; transform: rotate(50deg); transition: transform 1.2s cubic-bezier(.4,0,.2,1); }
+.is-album.playing .fx-arm .arm { transform: rotate(0deg); }
+.arm-base { fill: #4a4237; stroke: var(--gold); stroke-width: 1; }
+.arm-bar { stroke: #b9b2a5; stroke-width: 2.4; stroke-linecap: round; fill: none; }
+.arm-head { fill: var(--gold); }
+.fx-sheets { position: absolute; inset: 0; z-index: 1; opacity: 0; transition: opacity .7s; pointer-events: none; }
+.is-book.playing .fx-sheets { opacity: 1; }
+.fx-sheets i {
+  position: absolute; left: 18%; top: 20%; width: 64%; height: 58%; border-radius: 3px;
+  background: repeating-linear-gradient(180deg, transparent 0 9px, rgba(120,90,50,.22) 9px 10px), #f1e6cf;
+  border: 1px solid rgba(120,90,50,.35); box-shadow: 0 3px 8px rgba(0,0,0,.3);
+  opacity: 0; animation: sheet-out 12s ease-in-out infinite; animation-play-state: paused;
+}
+.is-book.playing .fx-sheets i { animation-play-state: running; }
+.fx-sheets i:nth-child(1) { --dx: 46%; --r: 9deg;  animation-delay: 0s; }
+.fx-sheets i:nth-child(2) { --dx: -46%; --r: -8deg; animation-delay: -9s; }
+.fx-sheets i:nth-child(3) { --dx: 40%; --r: 14deg; animation-delay: -6s; }
+.fx-sheets i:nth-child(4) { --dx: -40%; --r: -13deg; animation-delay: -3s; }
+@keyframes sheet-out {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  10% { opacity: 1; }
+  60% { opacity: 1; transform: translate(var(--dx), 6%) rotate(var(--r)); }
+  100% { opacity: 0; transform: translate(calc(var(--dx) * 1.25), 12%) rotate(calc(var(--r) * 1.3)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .record, .fx-sheets i { animation: none; }
+  .fx-arm .arm { transition: none; }
+}

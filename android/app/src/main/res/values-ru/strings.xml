@@ -11,4 +11,6 @@
     <string name="default_folder">Аудиокниги</string>
     <string name="pick_cancelled">Выбор папки отменён</string>
     <string name="pick_none">Папка не выбрана</string>
+    <string name="download_title">Скачивание аудиокниги</string>
+    <string name="download_progress">%1$d из %2$d файлов</string>
 </resources>

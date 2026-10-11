@@ -27,6 +27,8 @@ public class ScanService extends Service {
   private static final AtomicInteger ACTIVE = new AtomicInteger();
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
   private static long lastNotify = 0;
+  /** true while the notification talks about a catalog download instead of a library scan */
+  private static volatile boolean downloading = false;
 
   /** A scan started. Safe to call several times; every begin() must be paired with end(). */
   static void begin(Context ctx) {
@@ -36,6 +38,12 @@ public class ScanService extends Service {
     } catch (Exception ignored) { }   // scanning still works without the service, just less protected
   }
 
+  /** A catalog download started: same foreground service, other words in the notification. */
+  static void beginDownload(Context ctx) {
+    downloading = true;
+    begin(ctx);
+  }
+
   /** A scan finished. The service stops when the last one ends (with a short delay so start-up can finish first). */
   static void end(final Context ctx) {
     if (ACTIVE.decrementAndGet() > 0) return;
@@ -43,6 +51,7 @@ public class ScanService extends Service {
     MAIN.postDelayed(new Runnable() {
       @Override public void run() {
         if (ACTIVE.get() == 0) {
+          downloading = false;
           try { app.stopService(new Intent(app, ScanService.class)); } catch (Exception ignored) { }
           // if the foreground service could not start, progress() posted a plain notification: remove it too
           try {
@@ -69,8 +78,8 @@ public class ScanService extends Service {
   private static Notification build(Context ctx, int done, int total) {
     NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.stat_notify_sync)
-        .setContentTitle(ctx.getString(R.string.scan_title))
-        .setContentText(total > 0 ? ctx.getString(R.string.scan_progress, done, total) : ctx.getString(R.string.scan_counting))
+        .setContentTitle(ctx.getString(downloading ? R.string.download_title : R.string.scan_title))
+        .setContentText(total > 0 ? ctx.getString(downloading ? R.string.download_progress : R.string.scan_progress, done, total) : ctx.getString(R.string.scan_counting))
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setSilent(true)

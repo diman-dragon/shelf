@@ -5,7 +5,7 @@ import { dbGet } from './js/db.js';
 import { registerScreen, registerAction, render, bindNav, setScreen } from './js/router.js';
 import { showToast, closeModal, applySystemBars } from './js/ui-utils.js';
 import { renderSettings } from './js/ui.js';
-import { renderDiscover, randomPick } from './js/discover.js';
+import { renderCatalog, reloadCatalog, initDownloadEvents } from './js/catalog.js';
 import { renderShelf, updateShelfList, openLibraryFilter, openSort, startShelfLive } from './js/library.js';
 import { renderPlayer, ensureChapterLoaded, closeQueuePanel, openPlayer, openPlayerAt, playBook, unloadCurrent } from './js/player.js';
 import { syncNativeResume } from './js/native-bridge.js';
@@ -44,12 +44,12 @@ registerScreen('player', () => { if(state.current) renderPlayer(); else renderSh
   onEnter: () => { if(state.current) ensureChapterLoaded(); },   // load the saved chapter/position only if <audio> doesn't hold it yet
   onLeave: () => { closeVisualizer(); closeQueuePanel(); }       // leaving the player: no visualizer loop on a detached canvas, no open panel
 });
-registerScreen('discover', renderDiscover);
+registerScreen('catalog', renderCatalog);
 registerScreen('settings', renderSettings);
 registerAction('openAddSheet', openFolderSheet);
 registerAction('openLibraryFilter', openLibraryFilter);
 registerAction('openSort', openSort);
-registerAction('randomPick', randomPick);
+registerAction('catalogReload', reloadCatalog);
 registerAction('playBook', playBook);
 registerAction('openPlayerAt', openPlayerAt);
 registerAction('openCurrent', () => { if(state.current) openPlayer(state.current.id); });
@@ -156,6 +156,7 @@ async function loadState(){
   }
 
   initNativeScanListeners();
+  initDownloadEvents();
 
   try {
     render();

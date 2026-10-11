@@ -15,7 +15,8 @@ const PERKS = [
   ['sound', 'Эквалайзер и пресеты звука'],
   ['boost', 'Усиление громкости до 300 %'],
   ['normalize', 'Выравнивание громкости файлов'],
-  ['visualizer', 'Визуализаторы под музыку']
+  ['visualizer', 'Визуализаторы под музыку'],
+  ['download', 'Скачивание книг из каталога']
 ];
 
 let products = null;                                   // [{id, price, title}] from Google Play, null = unknown yet

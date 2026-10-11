@@ -39,7 +39,7 @@ const Player = {
   seekTo: async()=>{}, setSpeed: async()=>{}, setFx: async(o)=>{ calls.push(['setFx', o]); return {peakBoostDb:0}; }, setSkipSilence: async(o)=>{ calls.push(['skip', o.on]); }, setSleepTimer: async(o)=>{ calls.push(['sleep', o.minutes]); }, setAlbumMode: async(o)=>{ calls.push(['album', o.on]); }, setOrderMode: async(o)=>{ calls.push(['order', o.mode]); }, skip: async(o)=>{ calls.push(['skip', o.forward]); }, setSeekStep: async(o)=>{ calls.push(['seek', o.sec]); }, setVisualizer: async()=>{}, stop: async()=>{ calls.push(['stop']); queue=null; }, openBatterySettings: async()=>{}
 };
 const scanCalls = [];
-const ShelfFiles = { addListener: mkListen('ShelfFiles'), deleteFile: async(o)=>{ if(globalThis.__denyDelete) throw new Error('denied'); calls.push(['delete', o.uri]); }, pickFolder: async()=>({uri:'content://tree/primary%3AAudiobooks', name:'primary:Audiobooks'}),
+const ShelfFiles = { addListener: mkListen('ShelfFiles'), downloadFile: async(o)=>{ calls.push(['download', o.dir, o.name, o.url]); if(globalThis.__dlFail) throw new Error('denied'); return { uri:'content://tree/dl/'+o.name, size:o.size||1000 }; }, cancelDownload: async()=>{}, deleteFile: async(o)=>{ if(globalThis.__denyDelete) throw new Error('denied'); calls.push(['delete', o.uri]); }, pickFolder: async()=>({uri:'content://tree/primary%3AAudiobooks', name:'primary:Audiobooks'}),
   scanFolder: async (o) => { scanCalls.push(o); }, getMeta: async()=>({duration:0, cover:''}) };
 w.Capacitor = { isNativePlatform: () => true, convertFileSrc: u => u, Plugins: { Player, ShelfFiles, App: { addListener(){}, getInfo: async()=>({version:'2.2.0'}), minimizeApp(){} } } };
 
@@ -76,14 +76,14 @@ ok(!/onerror/.test(w.document.getElementById('main').innerHTML), 'no inline oner
 console.log('== every screen renders without errors');
 {
   const { setScreen: go } = await import(pathToFileURL(WWW + '/js/router.js').href);
-  for (const name of ['discover', 'settings', 'shelf']) {
+  for (const name of ['catalog', 'settings', 'shelf']) {
     const before = errors.length;
     go(name);
     ok(errors.length === before && w.document.querySelector('#main .screen'), `screen "${name}" rendered`);
   }
-  go('discover');
-  ok(!!w.document.querySelector('.dv-hero') && !!w.document.querySelector('.dv-stats'), 'for you: hero + stats drawn');
-  ok(!w.document.querySelector('[data-nav="playlists"]'), 'no playlists tab any more');
+  go('catalog');
+  ok(!!w.document.querySelector('#catForm') && w.document.querySelectorAll('[data-clang]').length === 3, 'catalog: search field + 3 language chips drawn');
+  ok(!w.document.querySelector('[data-nav="discover"]') && !w.document.querySelector('[data-nav="playlists"]') && !!w.document.querySelector('[data-nav="catalog"]'), '«Для вас» is gone, «Каталог» is in the bottom bar');
   go('shelf');
 }
 
@@ -263,6 +263,63 @@ console.log('== album: take a track out of the list / delete it from the phone (
   b.mode = 'book';
 }
 
+console.log('== catalog: search, licence, listen online, download (Premium), tabs, nothing is lost after the trial');
+{
+  const C = await import(pathToFileURL(WWW + '/js/catalog.js').href);
+  const Pm = await import(pathToFileURL(WWW + '/js/premium.js').href);
+  const lib = await import(pathToFileURL(WWW + '/js/library.js').href);
+  ok(/advancedsearch\.php/.test(C.searchUrl({ q: 'Булгаков', lang: 'ru', page: 2 })) && /collection%3Alibrivoxaudio/.test(C.searchUrl({ q: '', lang: 'en', page: 1 })), 'search URL: LibriVox collection, paged');
+  ok(!/Russian/.test(decodeURIComponent(C.searchUrl({ q: '', lang: 'all', page: 1 }))) && /language%3A\(Russian\)/.test(C.searchUrl({ q: '', lang: 'ru', page: 1 })), 'search URL: language filter only when chosen');
+  const parsed = C.parseSearch({ response: { numFound: 2, docs: [{ identifier: 'a1', title: 'T<b>x</b>', creator: ['Автор'], language: 'Russian' }, { title: 'no id' }] } });
+  ok(parsed.total === 2 && parsed.items.length === 1 && parsed.items[0].title === 'T x' && parsed.items[0].author === 'Автор', 'search result parsed, items without id dropped');
+  ok(C.parseLength('1234.5') === 1234.5 && C.parseLength('20:34') === 1234 && C.parseLength('1:02:03') === 3723 && C.parseLength('') === 0, 'length: seconds, mm:ss, h:mm:ss');
+  ok(C.licenseOf({ licenseurl: 'http://creativecommons.org/licenses/by-sa/3.0/' }).name === 'CC BY-SA 3.0' && C.licenseOf({ licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' }).name.startsWith('CC0') && /Общественное/.test(C.licenseOf({}).name), 'licence names: CC, CC0, default public domain');
+  const picked = C.pickFiles('id1', [
+    { name: 'b_02_64kb.mp3', format: '64Kbps MP3', length: '60', size: '1000', title: 'Две' }, { name: 'b_01_64kb.mp3', format: '64Kbps MP3', length: '30', size: '500', title: 'Раз' },
+    { name: 'b_01_128kb.mp3', format: '128Kbps MP3', length: '30', size: '900' }, { name: 'all.zip', format: '64Kbps MP3 ZIP' }, { name: 'x.m4b', format: 'LibriVox Apple Audiobook' }]);
+  ok(picked.length === 2 && picked[0].name === 'Раз' && picked[1].duration === 60 && /^https:\/\/archive\.org\/download\/id1\/b_02_64kb\.mp3$/.test(picked[1].uri), 'one set of chapters (64 kbps), in order, https links');
+
+  const item = { id: 'rus1', title: 'Тест', author: 'Кто-то', language: 'Russian', license: 'Общественное достояние', licenseUrl: 'https://librivox.org/pages/public-domain/', files: picked.map(f => ({ ...f })), duration: 90, size: 1500 };
+  const before = state.books.length;
+  const book = await C.ensureBook(item);
+  ok(state.books.length === before + 1 && book.online === true && book.source.id === 'rus1' && book.files[0].uri.startsWith('https://'), 'listen online: a library book with source and https files');
+  ok((await C.ensureBook(item)) === book && state.books.length === before + 1, 'the same catalog book is never added twice');
+  ok(/Онлайн · Общественное достояние/.test(C.sourceLine(book)), 'library row shows where it is from and the licence: ' + C.sourceLine(book));
+  state.libraryFilterType = 'online'; setScreen('shelf'); await new Promise(r => setTimeout(r, 40));
+  ok([...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Онлайн» lists it');
+  state.libraryFilterType = 'saved'; lib.renderShelf();
+  ok(![...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Скачанные» does not list a streamed book');
+
+  // download: Premium, into the chosen folder, files become content:// and the book is "downloaded"
+  Pm._reset();                                                                // a fresh trial: everything open
+  calls.length = 0;
+  await C.saveBook(item);
+  const dl = calls.filter(c => c[0] === 'download');
+  ok(dl.length === 2 && dl[0][1] === 'AudioShelf/Тест' && /^001 - Раз\.mp3$/.test(dl[0][2]) && dl[0][3].startsWith('https://archive.org/'), 'download: chapter by chapter into AudioShelf/<title>: ' + JSON.stringify(dl.map(d => d[2])));
+  ok(book.online === false && book.downloadedAt > 0 && book.files.every(f => f.uri.startsWith('content://')) && book.srcPath === state.folders[0].id + ':AudioShelf/Тест', 'after the download the book points at the local files and a rescan will update it, not copy it');
+  state.libraryFilterType = 'saved'; lib.renderShelf();
+  ok([...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Скачанные» lists it');
+  ok(/Скачано/.test(w.document.querySelector('.lib-lic')?.textContent || ''), 'row says «Скачано · licence»');
+
+  // after the trial: nothing is hidden or deleted, only NEW downloads need Premium
+  Pm._reset({ start: Date.now() - 40 * 86400000, seen: Date.now() });
+  ok(Pm.status() === 'free', 'trial is over');
+  ok(state.books.includes(book) && book.files.length === 2 && book.downloadedAt > 0, 'downloaded books stay in the library and keep playing after the trial');
+  const item2 = { ...item, id: 'rus2', title: 'Второй' };
+  calls.length = 0;
+  await C.saveBook(item2);
+  ok(calls.filter(c => c[0] === 'download').length === 0 && !state.books.some(b => b.source?.id === 'rus2' && !b.online), 'without Premium a new download does not start');
+  const sheetOpen = !!w.document.querySelector('.pm-perks');
+  ok(sheetOpen, 'the Premium sheet is shown instead');
+  w.document.getElementById('modalRoot').innerHTML = '';
+  // removing the library folder does not remove what was downloaded
+  const keep = state.books.filter(b => b.sourceFolderId === book.sourceFolderId && b.downloadedAt).length;
+  ok(keep === 1, 'a downloaded book is marked so that removing its folder keeps it');
+  Pm._reset(); state.libraryFilterType = 'all';
+  state.books = state.books.filter(b => !b.source);                        // the test books are not part of the later tests
+  setScreen('shelf');
+}
+
 console.log('== play / pause from the notification shade: no redundant work, no flicker');
 {
   const mk = (over={}) => ({ bookId:'b1', index:0, count:3, pos:5, dur:100, playWhenReady:true, playing:true, state:3, speed:1, sleepLeft:0, ...over });
@@ -366,8 +423,8 @@ console.log('== swipes: the picture changes on the player cover, everywhere else
   await swipe(w.document.querySelector('.shelf-list, .shelf-grid'), 'left');
   ok(state.screen === 'player', 'library: swipe left -> player');
   await swipe(w.document.querySelector('.player-title'), 'left');
-  ok(state.screen === 'discover', 'player (outside the picture): swipe left -> next screen, not the visualizer');
-  await swipe(w.document.querySelector('.dv-hero, .dv-stats'), 'right');
+  ok(state.screen === 'catalog', 'player (outside the picture): swipe left -> next screen, not the visualizer');
+  await swipe(w.document.querySelector('.catalog-screen .topbar'), 'right');
   ok(state.screen === 'player', 'swipe right goes back');
   await swipe(w.document.querySelector('.player-title'), 'right');
   ok(state.screen === 'shelf' && hidden(), 'player: swipe right -> library');
@@ -375,22 +432,6 @@ console.log('== swipes: the picture changes on the player cover, everywhere else
   ok(state.screen === 'settings', 'the order is a loop: library <- settings');
   await swipe(w.document.querySelector('.settings-group'), 'left');
   ok(state.screen === 'shelf', 'settings -> library (loop)');
-  // «Для вас»: shelves that fit / sit at their end must not swallow the swipe; a shelf that really scrolls keeps it
-  setScreen('discover'); await new Promise(r => setTimeout(r, 40));
-  const rail = w.document.querySelector('.dv-rail');
-  ok(!!rail, 'discover has a shelf row');
-  await swipe(rail.firstElementChild, 'left');
-  ok(state.screen === 'settings', 'a shelf that fits the screen: swipe on its cards moves to the next screen');
-  setScreen('discover'); await new Promise(r => setTimeout(r, 40));
-  const rail2 = w.document.querySelector('.dv-rail');
-  Object.defineProperty(rail2, 'scrollWidth', { value: 900, configurable: true }); Object.defineProperty(rail2, 'clientWidth', { value: 360, configurable: true });
-  await swipe(rail2.firstElementChild, 'left');
-  ok(state.screen === 'settings', 'a long shelf already at its end: the swipe is not lost');
-  setScreen('discover'); await new Promise(r => setTimeout(r, 40));
-  const rail3 = w.document.querySelector('.dv-rail');
-  Object.defineProperty(rail3, 'scrollWidth', { value: 900, configurable: true }); Object.defineProperty(rail3, 'clientWidth', { value: 360, configurable: true });
-  await swipe(rail3.firstElementChild, 'left', () => { rail3.scrollLeft = 120; });
-  ok(state.screen === 'discover', 'a long shelf that scrolled: the swipe belongs to the shelf');
   setScreen('player'); await new Promise(r => setTimeout(r, 60));
   ok(hidden(), 'cover shown');
   await swipe(w.document.getElementById('playerCover'), 'left');
@@ -447,7 +488,7 @@ console.log('== English: no Russian is left on any screen, the language switch w
   ok(i18n.getLang() === 'en' && w.document.documentElement.lang === 'en', 'language switched to English');
   const userData = /Книга (один|два)|Мастер и Маргарита\. Булгаков|Автор(?! не)/g;                     // titles come from the person's files, not from the app
   const left = () => { const tt = w.document.getElementById('toast'); if(tt) tt.textContent = ''; return (w.document.body.textContent + ' ' + [...w.document.querySelectorAll('[aria-label],[placeholder]')].map(e => (e.getAttribute('aria-label')||'') + ' ' + (e.getAttribute('placeholder')||'')).join(' ')).replace(userData, '').match(/[А-Яа-яЁё]+/g); };
-  for (const name of ['shelf', 'discover', 'settings', 'player']) {
+  for (const name of ['shelf', 'catalog', 'settings', 'player']) {
     go(name); await new Promise(r => setTimeout(r, 60));
     const l = left(); ok(!l, `screen "${name}" is English` + (l ? ': ' + l.slice(0, 6).join(', ') : ''));
   }

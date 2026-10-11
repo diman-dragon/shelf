@@ -38,7 +38,18 @@ function applyBookSpeed(b){
 /** state.playing must always mirror the real <audio> state (src change silently sets paused=true) */
 function syncPlaying(){
   state.playing = !!audio.src && !audio.paused && !audio.ended;
+  document.getElementById('playerCover')?.classList.toggle('playing', state.playing);   // vinyl spins / pages slide out only while playing
   return state.playing;
+}
+
+/** Animated layer behind the cover: an album gets a record with a tonearm, a book gets pages that slowly slide out */
+function coverFx(b){
+  if(isMusic(b)){
+    return '<div class="fx-vinyl" aria-hidden="true"><div class="record"><i class="label"></i></div></div>' +
+      '<svg class="fx-arm" viewBox="0 0 140 100" aria-hidden="true"><g class="arm">' +
+      '<circle cx="128" cy="10" r="6.5" class="arm-base"/><path d="M128 10 L108 24" class="arm-bar"/><rect x="102" y="21" width="9" height="5.5" rx="1.5" transform="rotate(35 106 24)" class="arm-head"/></g></svg>';
+  }
+  return '<div class="fx-sheets" aria-hidden="true"><i></i><i></i><i></i><i></i></div>';
 }
 
 /** Seek within whole book (seconds from the very start of the book) */
@@ -112,7 +123,7 @@ export async function openPlayer(id){
   ensureAudible();
 }
 
-/** "Слушать дальше" from the «Для вас» screen: open the book and start playing it */
+/** Open the book and start playing it (the catalog's "Listen") */
 export async function playBook(id){
   await openPlayer(id);
   if(state.current?.id === id && !state.playing) await togglePlay(true);
@@ -155,7 +166,7 @@ export function renderPlayer(){
           <button type="button" class="icon-btn" id="playerMore" aria-label="${t('Ещё')}">${icon('more')}</button>
         </div>
       </div>
-      <div class="player-cover" id="playerCover">${bookCover(b)}</div>
+      <div class="player-cover ${isMusic(b) ? 'is-album' : 'is-book'}${state.playing ? ' playing' : ''}" id="playerCover">${coverFx(b)}${bookCover(b)}</div>
       <div class="pic-dots" aria-hidden="true"></div>
       <div class="player-title">${escapeHtml(b.title)}</div>
       <div class="player-author">${escapeHtml(b.author||t('Автор не указан'))}</div>
@@ -557,6 +568,12 @@ function toggleMode(){
   const album = b.mode === 'album';
   audio.setAlbumMode?.(album);                   // native only: the service does the fading and the pause
   savePrefsSoon();                               // a few bytes in `bookprefs`, not the library
+  const pc = $('playerCover');                    // swap the animation: record <-> pages (the cover itself stays)
+  if(pc){
+    pc.classList.toggle('is-album', album); pc.classList.toggle('is-book', !album);
+    pc.querySelectorAll('.fx-vinyl,.fx-arm,.fx-sheets').forEach(n => n.remove());
+    pc.insertAdjacentHTML('afterbegin', coverFx(b));
+  }
   const ic = $('modeIcon'), lb = $('modeLabel');
   if(ic) ic.textContent = album ? '♪' : '▤';
   if(lb) lb.textContent = t(album ? 'Альбом' : 'Книга');

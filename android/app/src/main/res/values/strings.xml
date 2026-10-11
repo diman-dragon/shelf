@@ -15,4 +15,6 @@
     <string name="default_folder">Audiobooks</string>
     <string name="pick_cancelled">Folder selection cancelled</string>
     <string name="pick_none">No folder selected</string>
+    <string name="download_title">Downloading audiobook</string>
+    <string name="download_progress">%1$d of %2$d files</string>
 </resources>
