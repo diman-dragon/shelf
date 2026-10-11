@@ -123,6 +123,7 @@
 .player-tools.has-order { grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .tool[hidden] { display: none; }
 .tool strong .icon { width: 15px; height: 15px; vertical-align: -2px; }
+.side-panel .chapter-row .mark-del { flex: none; font-size: 18px; line-height: 1; }
 .tool span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tool strong sup { font-size: 8px; margin-left: 1px; }
 .tool {

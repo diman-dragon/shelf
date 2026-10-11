@@ -1,37 +1,50 @@
 name: Site (GitHub Pages)
 
-# Builds ./site from store/*.md and publishes it. One-time setup: repo Settings → Pages → Source: "GitHub Actions".
-# Fill store/site.json (email, date, playUrl) before the first run: the build fails while placeholders remain.
+# The site is built from store/*.md on every change, so a broken page shows up at once; it is NOT published until you decide:
+# Actions → "Site (GitHub Pages)" → Run workflow → tick "publish". One-time: repo Settings → Pages → Source: "GitHub Actions".
+# Address once published: https://diman-dragon.github.io/shelf/   (privacy policy: .../privacy.html)
 on:
   push:
-    branches: [ main ]
     paths: [ 'store/**', 'tools/build-site.mjs', 'LICENSE.md', 'THIRD_PARTY_NOTICES.md', 'licenses/**', '.github/workflows/pages.yml' ]
+  pull_request:
+    paths: [ 'store/**', 'tools/build-site.mjs', 'LICENSE.md', 'THIRD_PARTY_NOTICES.md', 'licenses/**' ]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the site to GitHub Pages'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-24.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: node tools/build-site.mjs --strict
-      - uses: actions/configure-pages@v5
+      - name: Check that every page was written
+        run: |
+          for f in index privacy terms support licenses; do test -s site/$f.html || { echo "missing $f.html"; exit 1; }; done
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4

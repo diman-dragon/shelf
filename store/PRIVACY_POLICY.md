@@ -8,7 +8,7 @@
 Библиотека книг, позиции прослушивания, закладки, настройки (тема, шаг перемотки, звук, язык), обложки и дата начала пробного периода хранятся **только на вашем устройстве**, в памяти приложения. Они никуда не отправляются.
 
 ## Доступ к файлам
-Вы сами выбираете папки с аудиокнигами через системный выбор папок Android. Приложение получает доступ **только на чтение** и использует файлы для воспроизведения и сканирования (названия, длительность, обложки). Файлы не изменяются, не копируются и не отправляются.
+Вы сами выбираете папки с аудиокнигами через системный выбор папок Android. Приложение читает файлы для воспроизведения и сканирования (названия, длительность, обложки). Файлы не изменяются, не копируются и не отправляются. Право записи в папку используется **только для одной функции**: если вы в списке треков альбома сами выберете «Удалить с диска» и подтвердите, приложение удалит этот один файл. Без вашей команды оно ничего не удаляет.
 
 ## Платные функции и поддержка
 - Часть функций (эквалайзер, усиление и выравнивание громкости, визуализаторы) входит в **Премиум**: разовая покупка, без подписки. Первые 30 дней после установки Премиум включён для ознакомления.
@@ -56,7 +56,7 @@
 Your library, listening positions, bookmarks, settings (theme, skip interval, sound, language), covers and the start date of the free trial are stored **only on your device**, in the app's private storage. Nothing is sent anywhere.
 
 ## File access
-You choose the audiobook folders yourself with Android's system folder picker. The app gets **read-only** access and uses the files for playback and scanning (titles, duration, covers). Files are never modified, copied or uploaded.
+You choose the audiobook folders yourself with Android's system folder picker. The app reads the files for playback and scanning (titles, duration, covers). Files are never modified, copied or uploaded. The write permission for a folder is used for **one feature only**: if you choose "Delete from device" on a track in an album's track list and confirm, the app deletes that single file. It never deletes anything on its own.
 
 ## Paid features and tips
 - Some features (equalizer, volume boost and leveling, visualizers) are **Premium**: a one-time purchase, no subscription. Premium is open for the first 30 days after installation.

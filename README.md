@@ -110,7 +110,7 @@ CI-сборки подписываются постоянным отладочн
 
 - `setWebContentsDebuggingEnabled` включается только в debug-сборке.
 - CSP разрешает только `'self'`, `data:`, `blob:` (без `unsafe-eval`, без внешних хостов). `script-src` оставляет `'unsafe-inline'` из-за инлайн-скрипта Capacitor; собственный код инлайн-обработчиков не использует.
-- Доступ к папкам только на чтение, `allowBackup="false"`, `FileProvider` не используется.
+- Доступ к папкам: чтение; право записи используется только для удаления трека по команде пользователя («Удалить с диска» в альбоме), `allowBackup="false"`, `FileProvider` не используется.
 - Разрешение `INTERNET` оставлено сознательно: Capacitor отдаёт WebView приложение с `https://localhost`. Само приложение сетевых запросов не делает.
 
 ## Публикация в Google Play
@@ -139,4 +139,5 @@ cd ../android && ./gradlew testDebugUnitTest      # JUnit: AudioFx, AlbumFade
 `tests/versions.mjs` (входит в `npm test` и в CI) проверяет: `@capacitor/android`, `cli` и `core` одной версии; `package-lock.json` совпадает с `package.json`; `targetSdk` ≥ 35 (требование Google Play); все модули Media3 на одной версии. Dependabot (`.github/dependabot.yml`) собирает обновления Capacitor в один pull request. Release-сборка по тегу падает, если тег не равен версии из `package.json`.
 
 ## Сайт (GitHub Pages)
-Лендинг, политика, условия, поддержка и лицензии (RU/EN) собираются из `store/*.md` командой `node tools/build-site.mjs` в папку `site/`. Заполните `store/site.json` (e-mail, дата, ссылка Google Play), включите Settings → Pages → Source: GitHub Actions. Публикует `.github/workflows/pages.yml`. Адрес политики для Play Console: `https://<user>.github.io/<repo>/privacy.html`.
+Лендинг, политика, условия, поддержка и лицензии (RU/EN) собираются из `store/*.md` командой `node tools/build-site.mjs` в папку `site/`. Данные (e-mail, дата, ссылка Google Play) лежат в `store/site.json`.
+Workflow `.github/workflows/pages.yml` при каждом изменении только **собирает** сайт (проверка, что всё в порядке), но **не публикует**. Публикация: Actions → «Site (GitHub Pages)» → Run workflow → галочка «publish» (один раз включите Settings → Pages → Source: GitHub Actions). Адрес: https://diman-dragon.github.io/shelf/ , политика для Play Console: https://diman-dragon.github.io/shelf/privacy.html

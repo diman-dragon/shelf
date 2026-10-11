@@ -1,9 +1,9 @@
 /* player.js — Player screen, Audio playback, Chapters, Visualizer */
-import { state, icon, escapeHtml, $, isNative, main, seekStep, isMusic, partName } from './state.js';
+import { state, icon, escapeHtml, $, isNative, main, seekStep, isMusic, partName, plugin } from './state.js';
 import { loadCover, saveSettings, savePrefsSoon, flushPrefs, writeLastPlayback, getSavedPosition, resumePosition, saveProgressRecord, saveBooks, saveBooksSoon, clearLastPlayback } from './storage.js';
-import { dbGet } from './db.js';
+import { dbGet, dbDel } from './db.js';
 import { showToast, closeModal, openModal, bookCover, fmt } from './ui-utils.js';
-import { render } from './router.js';
+import { render, act } from './router.js';
 import { updateHeaderNowPlaying } from './header.js';
 import { progress, bookTotal, bookElapsed } from './progress.js';
 import { audio, NATIVE, ensureAudioGraph, applyCurrentFileSound, openCurrentSound, ensureAudible, ORDERS, orderIndex } from './sound.js';
@@ -268,9 +268,61 @@ function bindChapterRows(){
       if(m){ loadChapter(m.i, m.t, true); closeQueuePanel(); }
     };
   });
+  document.querySelectorAll('[data-track-del]').forEach(el => {
+    el.onclick = e => { e.stopPropagation(); openTrackMenu(+el.dataset.trackDel); };
+  });
   document.querySelectorAll('[data-mark-del]').forEach(el => {
     el.onclick = e => { e.stopPropagation(); removeBookmark(+el.dataset.markDel); };
   });
+}
+
+// ---- an album: take a track out of the list, or delete its file from the phone (not for books) ----
+function openTrackMenu(i){
+  const b = state.current, f = b?.files?.[i];
+  if(!b || !f || b.mode !== 'album') return;
+  const canDisk = NATIVE && !!f.uri;
+  openModal(`<h3>${escapeHtml(f.name)}</h3>
+    <div class="modal-row" id="trackHide"><span style="flex:1">${t('Убрать из списка')}<small style="display:block;color:var(--muted)">${t('Файл останется на телефоне')}</small></span></div>
+    ${canDisk ? `<div class="modal-row" id="trackErase" style="color:var(--danger)"><span style="flex:1">${t('Удалить с диска')}<small style="display:block;color:var(--muted)">${t('Файл будет удалён с телефона насовсем')}</small></span></div>` : ''}
+    <div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button></div>`);
+  $('trackHide').onclick = () => { closeModal(); removeTrack(i, false); };
+  if(canDisk) $('trackErase').onclick = () => {
+    openModal(`<h3>${t('Удалить файл насовсем?')}</h3><p style="color:var(--muted);font-size:13px">${escapeHtml(f.name)}<br>${t('Вернуть его будет нельзя.')}</p><div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button><button class="primary" id="trackEraseGo" style="background:var(--danger);color:#fff">${t('Удалить')}</button></div>`);
+    $('trackEraseGo').onclick = () => { closeModal(); removeTrack(i, true); };
+  };
+}
+
+async function removeTrack(i, fromDisk){
+  const b = state.current, f = b?.files?.[i];
+  if(!b || !f || b.mode !== 'album') return;
+  if(fromDisk){
+    try { await plugin('ShelfFiles').deleteFile({ uri: f.uri }); }
+    catch(e){ showToast(t(String(e?.message || e).includes('denied') ? 'Нет права на удаление: добавьте папку заново (Настройки → Ваши папки)' : 'Не удалось удалить файл')); return; }
+  }
+  if(b.files.length === 1){                      // the last track: the album itself is gone
+    act('unloadCurrent');
+    state.books = state.books.filter(x => x.id !== b.id);
+    state.screen = 'shelf';
+    await saveBooks();
+    render();
+    showToast(t(fromDisk ? 'Файл удалён, альбом убран из библиотеки' : 'Альбом убран из библиотеки'));
+    return;
+  }
+  const wasPlaying = state.playing, cur = state.currentIndex;
+  const pos = i === cur ? 0 : (audio.currentTime || state.currentPos || 0);
+  b.files.splice(i, 1);
+  if(!fromDisk && f.uri) (b.removed = b.removed || []).push(f.uri);        // a rescan must not bring it back
+  if(f.key) dbDel(f.key).catch(() => {});
+  b.marks = (b.marks || []).filter(m => m.i !== i).map(m => m.i > i ? { ...m, i: m.i - 1 } : m);
+  const ni = i < cur ? cur - 1 : Math.min(cur, b.files.length - 1);
+  state.currentIndex = ni; state.currentPos = pos;
+  b.pos = { i: ni, t: pos }; b.lastChapterIndex = ni;
+  await saveBooks();
+  await loadChapter(ni, pos, wasPlaying);        // the native queue is rebuilt without the track; the position is kept
+  const list = $('chapterList');
+  if(list){ list.innerHTML = chapterRows(b); bindChapterRows(); }
+  updatePlayerUI();
+  showToast(t(fromDisk ? 'Файл удалён с телефона' : 'Трек убран из списка'));
 }
 
 function chapterRows(b){
@@ -279,7 +331,7 @@ function chapterRows(b){
     out += `<div class="chapter-row bookmark-row" data-mark="${k}"><span>🔖 ${m.i+1}. ${escapeHtml(b.files[m.i]?.name||partName(b))} · ${fmt(m.t)}</span><button type="button" class="mark-del" data-mark-del="${k}" aria-label="${t('Удалить закладку')}">✕</button></div>`;
   });
   b.files.forEach((f,i)=>{
-    out += `<div class="chapter-row ${i===state.currentIndex?'current':''}" data-chapter="${i}"><span>${i+1}. ${escapeHtml(f.name)}</span><span>${i===state.currentIndex?(state.playing?'▶':'Ⅱ'):fmt(f.duration)}</span></div>`;
+    out += `<div class="chapter-row ${i===state.currentIndex?'current':''}" data-chapter="${i}"><span>${i+1}. ${escapeHtml(f.name)}</span><span>${i===state.currentIndex?(state.playing?'▶':'Ⅱ'):fmt(f.duration)}</span>${b.mode === 'album' && b.files.length > 0 ? `<button type="button" class="mark-del" data-track-del="${i}" aria-label="${t('Убрать трек')}">⋯</button>` : ''}</div>`;
   });
   return out;
 }
@@ -510,6 +562,8 @@ function toggleMode(){
   if(lb) lb.textContent = t(album ? 'Альбом' : 'Книга');
   audio.setOrderMode?.(orderIndex(b));            // a book always plays in order; an album keeps its own order
   syncOrderBtn();
+  const trackList = $('chapterList');             // the remove buttons exist only in an album
+  if(trackList){ trackList.innerHTML = chapterRows(b); bindChapterRows(); }
   updatePlayerUI();                              // album: only the track bar; book: chapter bar + whole-book bar
   showToast(t(album ? 'Альбом: плавное затухание и пауза между треками' : 'Книга: без пауз между главами'));
 }

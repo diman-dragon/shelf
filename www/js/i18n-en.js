@@ -178,6 +178,19 @@ export const EN = {
   "Звук": "Sound",
   "Режим воспроизведения": "Playback mode",
   "Порядок треков": "Track order",
+  "Убрать трек": "Remove track",
+  "Убрать из списка": "Remove from list",
+  "Файл останется на телефоне": "The file stays on your phone",
+  "Удалить с диска": "Delete from device",
+  "Файл будет удалён с телефона насовсем": "The file will be deleted from your phone for good",
+  "Удалить файл насовсем?": "Delete this file for good?",
+  "Вернуть его будет нельзя.": "This cannot be undone.",
+  "Нет права на удаление: добавьте папку заново (Настройки → Ваши папки)": "No permission to delete: add the folder again (Settings → Your folders)",
+  "Не удалось удалить файл": "Couldn't delete the file",
+  "Файл удалён, альбом убран из библиотеки": "File deleted, the album was removed from the library",
+  "Альбом убран из библиотеки": "Album removed from the library",
+  "Файл удалён с телефона": "File deleted from your phone",
+  "Трек убран из списка": "Track removed from the list",
   "Подряд": "In order",
   "Повтор 1": "Repeat 1",
   "Повтор": "Repeat",
@@ -286,7 +299,7 @@ export const EN = {
   ,"Выравнивание громкости файлов": "Volume leveling across files"
   ,"Визуализаторы под музыку": "Music visualizers"
   ,"AudioShelf не собирает и не продаёт данные о вас. У приложения нет аккаунтов, аналитики и собственных серверов.": "AudioShelf doesn't collect or sell data about you. The app has no accounts, no analytics and no servers of its own."
-  ,"Файлы выбранных вами папок читаются только для воспроизведения и сканирования: они не изменяются, не копируются и никуда не отправляются.": "Files in the folders you choose are read only to play and scan them. They are never changed, copied or sent anywhere."
+  ,"Файлы выбранных вами папок читаются только для воспроизведения и сканирования: они не изменяются, не копируются и никуда не отправляются. Файл удаляется с телефона только если вы сами выберете «Удалить с диска» у трека альбома.": "Files in the folders you choose are read only to play and scan them. They are never changed, copied or sent anywhere. A file is deleted from your phone only if you choose Delete from device on an album track yourself."
   ,"Премиум и добровольная поддержка оплачиваются через Google Play. Платёж и проверку покупки выполняет Google: мы не видим и не получаем ваши платёжные данные. Для этого приложение обращается к Google Play.": "Premium and optional tips are paid through Google Play. Google processes the payment and checks the purchase; we never see or receive your payment details. For this the app connects to Google Play."
   ,"Участники тестирования получают Премиум навсегда по коду активации. Код проверяется на устройстве.": "Testers get Premium for good with an activation code. The code is checked on the device."
   ,"Сейчас в приложении нет рекламы. Если она появится, мы заранее изменим эту политику и укажем, какие данные использует рекламная сеть.": "The app shows no ads right now. If that changes, we will update this policy first and say what data the ad network uses."

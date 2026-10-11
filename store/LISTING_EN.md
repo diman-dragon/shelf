@@ -37,6 +37,6 @@ PREMIUM
 Everything is open for the first 30 days. After that playback, the library, bookmarks and the sleep timer stay free, while sound shaping and visualizers unlock with a one-time "Premium forever" purchase: no subscription. You can also buy the author a tea or treat the cat — entirely optional.
 
 PRIVACY
-The app doesn't collect or sell data about you and has no accounts. Payments are handled by Google Play. Access to your folders is read-only.
+The app doesn't collect or sell data about you and has no accounts. Payments are handled by Google Play. Files are only read to play them; a file is deleted only when you ask (Delete from device on an album track).
 
 Dark and light themes, a "For you" screen with shelves, library search and sorting.

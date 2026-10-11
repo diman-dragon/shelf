@@ -34,12 +34,12 @@ const calls = [];
 const Player = {
   addListener: mkListen('Player'),
   getState: async () => ({ saved: nativeState.saved, loaded: !!queue, ...(queue ? queue.state : {}) }),
-  setQueue: async (o) => { queue = { o, state: { bookId:o.bookId, index:o.index, count:o.items.length, pos:o.pos, dur:100, playWhenReady:false, playing:false, state:3, speed:o.speed, sleepLeft:0 } }; calls.push(['setQueue', o.index, o.pos]); },
+  setQueue: async (o) => { queue = { o, state: { bookId:o.bookId, index:o.index, count:o.items.length, pos:o.pos, dur:100, playWhenReady:false, playing:false, state:3, speed:o.speed, sleepLeft:0 } }; calls.push(['setQueue', o.index, o.pos, o.items.length]); },
   play: async()=>{ queue.state.playWhenReady=true; queue.state.playing=true; }, pause: async()=>{ queue.state.playWhenReady=false; queue.state.playing=false; },
   seekTo: async()=>{}, setSpeed: async()=>{}, setFx: async(o)=>{ calls.push(['setFx', o]); return {peakBoostDb:0}; }, setSkipSilence: async(o)=>{ calls.push(['skip', o.on]); }, setSleepTimer: async(o)=>{ calls.push(['sleep', o.minutes]); }, setAlbumMode: async(o)=>{ calls.push(['album', o.on]); }, setOrderMode: async(o)=>{ calls.push(['order', o.mode]); }, skip: async(o)=>{ calls.push(['skip', o.forward]); }, setSeekStep: async(o)=>{ calls.push(['seek', o.sec]); }, setVisualizer: async()=>{}, stop: async()=>{ calls.push(['stop']); queue=null; }, openBatterySettings: async()=>{}
 };
 const scanCalls = [];
-const ShelfFiles = { addListener: mkListen('ShelfFiles'), pickFolder: async()=>({uri:'content://tree/primary%3AAudiobooks', name:'primary:Audiobooks'}),
+const ShelfFiles = { addListener: mkListen('ShelfFiles'), deleteFile: async(o)=>{ if(globalThis.__denyDelete) throw new Error('denied'); calls.push(['delete', o.uri]); }, pickFolder: async()=>({uri:'content://tree/primary%3AAudiobooks', name:'primary:Audiobooks'}),
   scanFolder: async (o) => { scanCalls.push(o); }, getMeta: async()=>({duration:0, cover:''}) };
 w.Capacitor = { isNativePlatform: () => true, convertFileSrc: u => u, Plugins: { Player, ShelfFiles, App: { addListener(){}, getInfo: async()=>({version:'2.2.0'}), minimizeApp(){} } } };
 
@@ -227,6 +227,40 @@ console.log('== album track order: in order / one / all / shuffle, album only');
   w.document.getElementById('nextBtn').click(); await new Promise(r=>setTimeout(r,60));
   ok(calls.some(c => c[0]==='skip' && c[1]===true), 'next in a non-"in order" album is the player\'s own skip (shuffle / repeat aware)');
   b.order = 'order'; b.mode = 'book';
+}
+
+console.log('== album: take a track out of the list / delete it from the phone (never in a book)');
+{
+  const b = state.books.find(x => x.id === 'b1');
+  b.files = [0,1,2,3].map(n => ({ name: 'Track ' + n, uri: 'content://t/' + n, duration: 100 }));
+  b.mode = 'book'; b.marks = [{ i: 3, t: 5 }, { i: 1, t: 9 }]; b.removed = undefined;
+  state.current = b; state.currentIndex = 2; state.currentPos = 7;
+  setScreen('player'); await new Promise(r=>setTimeout(r,80));
+  ok(!w.document.querySelector('[data-track-del]'), 'a book has no remove buttons');
+  w.document.getElementById('modeBtn').click(); await new Promise(r=>setTimeout(r,60));
+  ok(w.document.querySelectorAll('[data-track-del]').length === 4, 'an album has one per track');
+  calls.length = 0;
+  w.document.querySelector('[data-track-del="1"]').click();
+  ok(!!w.document.getElementById('trackHide') && !!w.document.getElementById('trackErase'), 'the menu offers: remove from list / delete from the phone');
+  w.document.getElementById('trackHide').click(); await new Promise(r=>setTimeout(r,120));
+  ok(b.files.length === 3 && b.files.every(f => f.uri !== 'content://t/1'), 'the track is gone from the list');
+  ok(JSON.stringify(b.removed) === '["content://t/1"]', 'remembered, so a rescan does not bring it back');
+  ok(state.currentIndex === 1, 'the playing track keeps its place (index 2 -> 1)');
+  ok(JSON.stringify(b.marks) === '[{"i":2,"t":5}]', 'bookmarks follow: the one on the removed track is dropped, the other shifts: ' + JSON.stringify(b.marks));
+  ok(calls.some(c => c[0] === 'setQueue' && c[1] === 1 && c[3] === 3), 'the native queue is rebuilt without it, at the same track: ' + JSON.stringify(calls.filter(c => c[0] === 'setQueue')));
+  ok(!calls.some(c => c[0] === 'delete'), 'nothing is deleted from the phone');
+  calls.length = 0;
+  w.document.querySelector('[data-track-del="0"]').click();
+  w.document.getElementById('trackErase').click();
+  ok(!!w.document.getElementById('trackEraseGo'), 'deleting a file asks once more');
+  w.document.getElementById('trackEraseGo').click(); await new Promise(r=>setTimeout(r,120));
+  ok(calls.some(c => c[0] === 'delete' && c[1] === 'content://t/0') && b.files.length === 2, 'confirmed: the file is deleted and the track leaves the list');
+  globalThis.__denyDelete = true;
+  w.document.querySelector('[data-track-del="0"]').click();
+  w.document.getElementById('trackErase').click(); w.document.getElementById('trackEraseGo').click(); await new Promise(r=>setTimeout(r,100));
+  ok(b.files.length === 2, 'no permission: nothing changes, a message is shown');
+  globalThis.__denyDelete = false;
+  b.mode = 'book';
 }
 
 console.log('== play / pause from the notification shade: no redundant work, no flicker');

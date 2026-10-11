@@ -85,27 +85,32 @@ export async function openSupport(){
     <div class="cat-wrap" id="catWrap">
       <div class="cat-say" id="catSay">${t('Мяу… а на чай не найдётся?')}</div>
       <svg class="cat" viewBox="0 0 230 178" role="img" aria-label="${t('Котик просит на чай')}">
-        <g class="cat-tail"><path d="M58 150c-30 2-44-14-34-34 6-12 18-8 14 2-4 10 2 18 22 20z" fill="#c98a4b"/><path d="M26 122c3-6 9-6 12-2" stroke="#8a5a2b" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+        <g class="cat-tail"><path d="M58 152c-32 2-46-14-36-36 6-12 19-8 15 3-4 10 3 18 21 21z" fill="#8d96a6"/><path d="M27 124c3-7 10-7 13-2M24 136c4-4 9-3 12 1" stroke="#646d80" stroke-width="4" fill="none" stroke-linecap="round"/></g>
         <g class="cat-body">
-          <ellipse cx="100" cy="136" rx="46" ry="38" fill="#d99a58"/>
-          <ellipse cx="100" cy="142" rx="26" ry="26" fill="#f3d9b1"/>
-          <ellipse cx="78" cy="170" rx="15" ry="7" fill="#f3d9b1"/><ellipse cx="122" cy="170" rx="15" ry="7" fill="#f3d9b1"/>
+          <ellipse cx="100" cy="138" rx="44" ry="37" fill="#8d96a6"/>
+          <ellipse cx="100" cy="144" rx="25" ry="25" fill="#efe6d6"/>
+          <path d="M70 124c4 3 8 3 12 0M118 124c4 3 8 3 12 0" stroke="#646d80" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <ellipse cx="78" cy="171" rx="15" ry="7" fill="#efe6d6"/><ellipse cx="122" cy="171" rx="15" ry="7" fill="#efe6d6"/>
         </g>
         <g class="cat-head">
-          <path d="M66 62 70 24 96 46z" fill="#d99a58"/><path d="M134 62 130 24 104 46z" fill="#d99a58"/>
-          <path d="M72 54 74 34 88 46z" fill="#f0a9a0"/><path d="M128 54 126 34 112 46z" fill="#f0a9a0"/>
-          <circle cx="100" cy="76" r="38" fill="#d99a58"/>
-          <path d="M92 40c2 6 2 10 0 16M100 38v18M108 40c-2 6-2 10 0 16" stroke="#b9772f" stroke-width="3.2" stroke-linecap="round" fill="none"/>
-          <ellipse cx="100" cy="90" rx="19" ry="14" fill="#f3d9b1"/>
-          <g class="eyes-open"><ellipse class="cat-eye" cx="85" cy="74" rx="5.5" ry="7" fill="#2a1b10"/><ellipse class="cat-eye" cx="115" cy="74" rx="5.5" ry="7" fill="#2a1b10"/><circle cx="87" cy="71" r="2" fill="#fff"/><circle cx="117" cy="71" r="2" fill="#fff"/></g>
-          <g class="eyes-happy"><path d="M79 76q6-9 12 0M109 76q6-9 12 0" stroke="#2a1b10" stroke-width="3.4" fill="none" stroke-linecap="round"/></g>
-          <ellipse cx="72" cy="88" rx="6" ry="4" fill="#f0a9a0" opacity=".55"/><ellipse cx="128" cy="88" rx="6" ry="4" fill="#f0a9a0" opacity=".55"/>
-          <path d="M96 86h8l-4 5z" fill="#d46b6b"/>
-          <path class="mouth-sad" d="M92 98q8-6 16 0" stroke="#5a3a20" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-          <path class="mouth-happy" d="M90 94q10 12 20 0" stroke="#5a3a20" stroke-width="2.6" fill="#8a3b3b" stroke-linecap="round"/>
-          <g stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".85"><path d="M78 90 54 86M78 94 54 98M122 90 146 86M122 94 146 98"/></g>
+          <path d="M62 66 64 22 96 46z" fill="#8d96a6"/><path d="M138 66 136 22 104 46z" fill="#8d96a6"/>
+          <path d="M69 56 70 34 88 46z" fill="#e9a6a6"/><path d="M131 56 130 34 112 46z" fill="#e9a6a6"/>
+          <ellipse cx="100" cy="78" rx="44" ry="37" fill="#8d96a6"/>
+          <path d="M92 43c2 6 2 10 0 15M100 41v17M108 43c-2 6-2 10 0 15" stroke="#646d80" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+          <ellipse cx="100" cy="93" rx="22" ry="15" fill="#efe6d6"/>
+          <g class="eyes-open">
+            <g class="cat-eye"><circle cx="82" cy="79" r="16" fill="#d9e36a"/><circle cx="82" cy="80" r="11.5" fill="#1d1a22"/><circle cx="87" cy="73" r="5.4" fill="#fff"/><circle cx="77" cy="86" r="2.6" fill="#fff"/><path d="M68 83a15 15 0 0 0 28 0" stroke="#fff" stroke-opacity=".35" stroke-width="2" fill="none"/></g>
+            <g class="cat-eye"><circle cx="118" cy="79" r="16" fill="#d9e36a"/><circle cx="118" cy="80" r="11.5" fill="#1d1a22"/><circle cx="123" cy="73" r="5.4" fill="#fff"/><circle cx="113" cy="86" r="2.6" fill="#fff"/><path d="M104 83a15 15 0 0 0 28 0" stroke="#fff" stroke-opacity=".35" stroke-width="2" fill="none"/></g>
+            <path d="M66 63 92 56M134 63 108 56" stroke="#646d80" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+          </g>
+          <g class="eyes-happy"><path d="M70 82q12-16 24 0M106 82q12-16 24 0" stroke="#1d1a22" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+          <ellipse cx="66" cy="95" rx="7" ry="4.5" fill="#e9a6a6" opacity=".5"/><ellipse cx="134" cy="95" rx="7" ry="4.5" fill="#e9a6a6" opacity=".5"/>
+          <path d="M95.5 91h9l-4.5 5.5z" fill="#d46b7a"/>
+          <path class="mouth-sad" d="M100 96.5v3M100 99.5q-5 5-10 1M100 99.5q5 5 10 1" stroke="#4a3a40" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+          <path class="mouth-happy" d="M89 97q11 13 22 0z" stroke="#4a3a40" stroke-width="2.2" fill="#8a3b4a" stroke-linejoin="round"/>
+          <g stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".9"><path d="M72 94 46 89M72 99 46 103M128 94 154 89M128 99 154 103"/></g>
         </g>
-        <g class="cat-paw"><ellipse cx="146" cy="128" rx="9" ry="14" fill="#d99a58" transform="rotate(-24 146 128)"/><ellipse cx="150" cy="118" rx="6" ry="5" fill="#f3d9b1"/></g>
+        <g class="cat-paw"><ellipse cx="146" cy="130" rx="9" ry="14" fill="#8d96a6" transform="rotate(-24 146 130)"/><ellipse cx="150" cy="119" rx="6.5" ry="5.5" fill="#efe6d6"/></g>
         <g class="cat-cup">
           <path class="steam s1" d="M176 96c-6-8 6-12 0-20" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>
           <path class="steam s2" d="M190 98c-6-8 6-12 0-20" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>

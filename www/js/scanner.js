@@ -305,7 +305,9 @@ export function initNativeScanListeners(){
       // keep already known durations if the scanner did not report them
       const old = new Map((book.files || []).map(f => [f.uri, f]));
       files.forEach(nf => { if(!(nf.duration > 0)){ const o = old.get(nf.uri); if(o?.duration > 0) nf.duration = o.duration; } });
-      book.files = files;
+      const gone = new Set(book.removed || []);                       // tracks taken out of an album by hand stay out
+      const kept = gone.size ? files.filter(nf => !gone.has(nf.uri)) : files;
+      if(kept.length) book.files = kept;
       book.sourceFolderId = folder.id;
       if(e.cover) book.cover = e.cover;
       book.coverChecked = true;

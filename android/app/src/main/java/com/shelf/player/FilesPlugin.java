@@ -88,11 +88,30 @@ public class FilesPlugin extends Plugin {
         });
     }
 
+    /**
+     * Deletes ONE file for good, only when the person confirmed it in the album's track list.
+     * "denied" = the folder was added before the app asked for write access: add the folder again.
+     */
+    @PluginMethod
+    public void deleteFile(PluginCall call) {
+        String uri = call.getString("uri");
+        if (uri == null || uri.isEmpty()) { call.reject("failed"); return; }
+        try {
+            boolean ok = DocumentsContract.deleteDocument(getContext().getContentResolver(), Uri.parse(uri));
+            if (ok) call.resolve(); else call.reject("failed");
+        } catch (SecurityException e) {
+            call.reject("denied");
+        } catch (Exception e) {
+            call.reject("failed");
+        }
+    }
+
     @PluginMethod
     public void pickFolder(PluginCall call) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        // read-only: the app never writes to the person's files
+        // Reading is what the app does; the write permission is used ONLY when the person asks to delete a track of an album
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
             | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
         startActivityForResult(call, intent, PICK_FOLDER_CALLBACK);
@@ -111,7 +130,7 @@ public class FilesPlugin extends Plugin {
             return;
         }
         try {
-            int takeFlags = result.getData().getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            int takeFlags = result.getData().getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             getContext().getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
         } catch (Exception ignored) { }
         JSObject folder = new JSObject();
