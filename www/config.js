@@ -9,5 +9,10 @@ export default {
     "headroom": 0.85,
     "ceiling": 0.97
   },
+  "premium": {
+    "trialDays": 30,
+    "codeSalt": "dl-audioshelf-2026-7f3a91c4",
+    "products": { "premium": "premium_lifetime", "tips": ["tip_tea", "tip_cat_treat", "tip_cat_food"] }
+  },
   "audioExtensions": ["mp3", "m4a", "m4b", "aac", "ogg", "opus", "flac", "wav", "wma"]
 };

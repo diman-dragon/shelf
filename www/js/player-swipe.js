@@ -2,24 +2,25 @@
  * Vertical scroll is never blocked; only a locked horizontal gesture is captured.
  * Usage: bindSwipe(rootElement, (dir, target) => { ... })   dir = 'left' | 'right'
  */
-const MIN_DX = 48;      // px the finger must travel horizontally (a fast flick may be shorter, see FLICK_*)
-const FLICK_DX = 28;    // …a quick flick needs only this much
-const FLICK_MS = 260;
-const LOCK_PX = 9;      // movement needed before the gesture direction is decided
-const RATIO = 1.3;      // |dx| must dominate |dy| by this factor
-const MAX_MS = 1400;    // slower drags are not swipes
-const EDGE = 14;        // keep Android system back-gesture zones free
+const MIN_DX = 64;      // px the finger must travel horizontally (a fast flick may be shorter, see FLICK_*)
+const FLICK_DX = 40;    // …a quick flick needs only this much
+const FLICK_MS = 240;
+const LOCK_PX = 12;     // movement needed before the gesture direction is decided
+const RATIO = 2;        // |dx| must dominate |dy| by this factor
+const MAX_MS = 1000;    // slower drags are not swipes
+const EDGE = 24;        // keep Android system back-gesture zones free
 
 export function bindSwipe(root, onSwipe){
   if(!root || root.dataset.swipeBound) return;
   root.dataset.swipeBound = '1';
 
-  let x0 = 0, y0 = 0, t0 = 0, active = false, mode = '';
+  let x0 = 0, y0 = 0, t0 = 0, active = false, mode = '', lastFire = 0;
   let rail = null, railLeft = 0;   // a sideways-scrolling row under the finger, and where it was scrolled to at the start
 
   root.addEventListener('touchstart', e => {
     active = false; mode = ''; rail = null;
     if(e.touches.length !== 1) return;
+    if(Date.now() - lastFire < 350) return;              // one swipe = one step, however the finger bounces
     const t = e.touches[0];
     if(t.clientX < EDGE || t.clientX > window.innerWidth - EDGE) return;
     // sliders handle their own drag; rows that scroll sideways, open modals and side panels keep their own gestures
@@ -43,6 +44,8 @@ export function bindSwipe(root, onSwipe){
     if(mode === 'h' && !rail && e.cancelable) e.preventDefault();       // over a scrolling row the browser scrolls it itself
   }, {passive:false});
 
+  root.addEventListener('touchmove', e => { if(active && e.touches.length > 1){ active = false; mode = ''; } }, {passive:true});   // a second finger (pinch) is never a swipe
+
   root.addEventListener('touchend', e => {
     const wasH = active && mode === 'h';
     active = false;
@@ -55,6 +58,7 @@ export function bindSwipe(root, onSwipe){
     if(Math.abs(dx) < Math.abs(dy) * RATIO) return;
     if(Math.abs(dx) < (dt <= FLICK_MS ? FLICK_DX : MIN_DX)) return;
     if(dt > MAX_MS) return;
+    lastFire = Date.now();
     onSwipe(dx > 0 ? 'right' : 'left', e.target);
   }, {passive:true});
 

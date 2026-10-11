@@ -96,6 +96,7 @@ android {
 dependencies {
     testImplementation "junit:junit:4.13.2"             // JVM unit tests of the pure classes (AudioFx, AlbumFade): ./gradlew testDebugUnitTest
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "com.android.billingclient:billing:$billingVersion"
     implementation "androidx.activity:activity:$androidxActivityVersion"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"

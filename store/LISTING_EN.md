@@ -30,9 +30,12 @@ MADE FOR THE ROAD
 • a call or a notification sound stops playback instantly and it continues 5 seconds earlier, so no words are lost;
 • configurable seek step (±10 seconds by default);
 • sleep timer with a smooth fade, up to 2× speed;
-• equalizer with automatic overload protection.
+• equalizer, volume boost and leveling, visualizers: in Premium.
+
+PREMIUM
+Everything is open for the first 30 days. After that playback, the library, bookmarks and the sleep timer stay free, while sound shaping and visualizers unlock with a one-time "Premium forever" purchase: no subscription. You can also buy the author a tea or treat the cat — entirely optional.
 
 PRIVACY
-The app collects and transmits no data. Access to your folders is read-only.
+The app doesn't collect or sell data about you and has no accounts. Payments are handled by Google Play. Access to your folders is read-only.
 
 Dark and light themes, a "For you" screen with shelves, library search and sorting.

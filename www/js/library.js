@@ -253,8 +253,15 @@ function deleteBook(id){
 let shelfLive = 0;
 export function startShelfLive(){
   if(shelfLive) return;
+  // never redraw rows under a finger: a row replaced between touch-down and touch-up loses the tap
+  let touching = 0;
+  const down = () => { touching = Infinity; };
+  const up = () => { touching = Date.now() + 500; };
+  document.addEventListener('touchstart', down, { passive: true, capture: true });
+  document.addEventListener('touchend', up, { passive: true, capture: true });
+  document.addEventListener('touchcancel', up, { passive: true, capture: true });
   const tick = () => {
-    if(state.screen !== 'shelf' || document.hidden || state.scan?.active) return;
+    if(state.screen !== 'shelf' || document.hidden || state.scan?.active || Date.now() < touching) return;
     if(!document.querySelector('.shelf-list, .shelf-grid') || !visibleBooks().shown.length) return;
     updateShelfList();
   };

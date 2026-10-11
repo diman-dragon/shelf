@@ -36,7 +36,7 @@ const Player = {
   getState: async () => ({ saved: nativeState.saved, loaded: !!queue, ...(queue ? queue.state : {}) }),
   setQueue: async (o) => { queue = { o, state: { bookId:o.bookId, index:o.index, count:o.items.length, pos:o.pos, dur:100, playWhenReady:false, playing:false, state:3, speed:o.speed, sleepLeft:0 } }; calls.push(['setQueue', o.index, o.pos]); },
   play: async()=>{ queue.state.playWhenReady=true; queue.state.playing=true; }, pause: async()=>{ queue.state.playWhenReady=false; queue.state.playing=false; },
-  seekTo: async()=>{}, setSpeed: async()=>{}, setFx: async()=>{ calls.push(['setFx']); return {peakBoostDb:0}; }, setSkipSilence: async(o)=>{ calls.push(['skip', o.on]); }, setSleepTimer: async(o)=>{ calls.push(['sleep', o.minutes]); }, setAlbumMode: async(o)=>{ calls.push(['album', o.on]); }, setSeekStep: async(o)=>{ calls.push(['seek', o.sec]); }, setVisualizer: async()=>{}, stop: async()=>{ calls.push(['stop']); queue=null; }, openBatterySettings: async()=>{}
+  seekTo: async()=>{}, setSpeed: async()=>{}, setFx: async(o)=>{ calls.push(['setFx', o]); return {peakBoostDb:0}; }, setSkipSilence: async(o)=>{ calls.push(['skip', o.on]); }, setSleepTimer: async(o)=>{ calls.push(['sleep', o.minutes]); }, setAlbumMode: async(o)=>{ calls.push(['album', o.on]); }, setSeekStep: async(o)=>{ calls.push(['seek', o.sec]); }, setVisualizer: async()=>{}, stop: async()=>{ calls.push(['stop']); queue=null; }, openBatterySettings: async()=>{}
 };
 const scanCalls = [];
 const ShelfFiles = { addListener: mkListen('ShelfFiles'), pickFolder: async()=>({uri:'content://tree/primary%3AAudiobooks', name:'primary:Audiobooks'}),
@@ -295,7 +295,7 @@ console.log('== swipes: the picture changes on the player cover, everywhere else
     el.dispatchEvent(mk('touchmove', (x0 + x1) / 2, 'touches'));
     if(during) during();
     el.dispatchEvent(mk('touchend', x1, 'changedTouches'));
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 380));
   };
   const hidden = () => { const v = w.document.getElementById('visualizer'); return !v || v.classList.contains('hidden'); };
   state.current = state.books.find(b => b.id === 'b1'); state.currentIndex = 0; state.currentPos = 0;
@@ -409,6 +409,36 @@ console.log('== English: no Russian is left on any screen, the language switch w
   i18n.setLangSetting('ru');
   go('settings'); await new Promise(r => setTimeout(r, 40));
   ok(/Настройки/.test(w.document.body.textContent) && /Язык/.test(w.document.body.textContent), 'back to Russian');
+}
+
+console.log('== Premium: what is locked after the trial, what comes back with Premium');
+{
+  const Pm = await import(pathToFileURL(WWW + '/js/premium.js').href);
+  const V = await import(pathToFileURL(WWW + '/js/visualizer.js').href);
+  const sound = await import(pathToFileURL(WWW + '/js/sound.js').href);
+  const { setScreen: go } = await import(pathToFileURL(WWW + '/js/router.js').href);
+  go('player'); await new Promise(r => setTimeout(r, 60));
+  while (V.picturePosition() !== 0) V.stepPicture(1);
+  Pm._reset({ start: Date.now() - 40 * 86400000 });
+  V.stepPicture(1);
+  ok(V.picturePosition() === 0, 'free: swiping the cover opens no visualizer');
+  ok(!!w.document.querySelector('#modalRoot .modal, #modalRoot .pm-perks') || /Премиум/.test(w.document.getElementById('modalRoot').textContent), 'free: the Premium sheet is shown instead');
+  w.document.getElementById('modalRoot').innerHTML = '';
+  V.stepPicture(1);
+  ok(V.picturePosition() === 0, 'free: the second swipe only shows a note');
+  const b = state.current; b.sound = { preset: 'custom', volume: 2, gain: 0, eq: [6, 6, 6, 6, 6, 6, 6, 6, 6, 6] };
+  calls.length = 0; Pm.setOwned('code', 'TEST'); await new Promise(r => setTimeout(r, 20));
+  const fxOn = calls.filter(c => c[0] === 'setFx').at(-1)?.[1];
+  ok(fxOn && fxOn.eq[0] === 6 && fxOn.volume === 2, 'Premium: the saved EQ and the 200 % volume are used');
+  calls.length = 0; Pm.clearOwned('code'); await new Promise(r => setTimeout(r, 20));
+  const fxOff = calls.filter(c => c[0] === 'setFx').at(-1)?.[1];
+  ok(fxOff && fxOff.eq.every(v => v === 0) && fxOff.volume === 1, 'free: the sound is untouched (EQ flat, volume 100 %), the saved settings are kept');
+  ok(b.sound.eq[0] === 6 && b.sound.volume === 2, 'free: what the person set is not erased');
+  Pm.setOwned('code', 'TEST');
+  V.stepPicture(1);
+  ok(V.picturePosition() === 1, 'Premium: the visualizer opens');
+  V.stepPicture(1); V.stepPicture(1); V.stepPicture(1);
+  Pm._reset({});                                      // back to a fresh trial for the rest
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL OK');

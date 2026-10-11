@@ -3,6 +3,8 @@ import { state, $ } from './state.js';
 import { audio, ensureAudioGraph, hasSpectrum, spectrumSize, fillSpectrum, setSpectrumActive } from './sound.js';
 import { showToast } from './ui-utils.js';
 import { t } from './i18n.js';
+import { isPremium } from './premium.js';
+import { gate } from './premium-ui.js';
 
 let visualizerFrame = 0;
 let visualizerOpen = false;
@@ -23,6 +25,7 @@ export function stepPicture(step){
   const n = VISUALS.length + 1;
   const pos = (picturePosition() + (step < 0 ? -1 : 1) + n) % n;
   if(pos === 0){ closeVisualizer(); return; }
+  if(!gate('visualizer', isPremium())) return;                // visualizers are Premium: the sheet / a note instead
   setVisual(VISUALS[pos - 1]);
   if(!visualizerOpen) openVisualizer();
   else { syncPictureDots(); resumeVisualizer(); }      // a paused, "asleep" canvas must repaint in the new style

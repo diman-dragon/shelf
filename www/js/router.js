@@ -11,6 +11,7 @@ import { t } from './i18n.js';
 const screens = {};     // name -> { render, onEnter?, onLeave? }
 const actions = {};     // name -> fn
 let navBound = false;
+let actionsBound = false;
 let shown = '';         // screen that is currently drawn
 
 export function registerScreen(name, renderFn, hooks = {}){ screens[name] = { render: renderFn, ...hooks }; }
@@ -51,11 +52,17 @@ export function bindNav(){
       }, {passive:true});
     }
   }
-  // Actions inside the current screen (recreated on each render)
-  document.querySelectorAll('[data-action]').forEach(b => {
-    const fn = actions[b.dataset.action];
-    if(fn) b.onclick = () => fn();
-  });
+  // [data-action] buttons: ONE delegated listener. Screens redraw their markup at any moment (filter, grid/list, scan, live refresh),
+  // so handlers attached to the elements themselves were lost whenever a screen re-rendered without going through render() —
+  // the header buttons then "died" until you switched to another screen and back.
+  if(!actionsBound){
+    actionsBound = true;
+    document.addEventListener('click', e => {
+      const b = e.target.closest?.('[data-action]');
+      const fn = b && actions[b.dataset.action];
+      if(fn) fn();
+    });
+  }
   // SVG must never intercept taps (critical for Android WebView)
   document.querySelectorAll('button .icon, button svg, .nav-ico, .nav-ico svg').forEach(el => {
     el.style.pointerEvents = 'none';

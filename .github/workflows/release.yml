@@ -1,6 +1,6 @@
 name: Release (signed AAB for Google Play)
 
-# Runs on a version tag (v2.4.0) or by hand. Needs four repository secrets:
+# Runs on a version tag (v2.5.3) or by hand. Needs four repository secrets:
 #   ANDROID_KEYSTORE_BASE64   the upload keystore, base64 (see store/RELEASE_CHECKLIST.md)
 #   ANDROID_KEYSTORE_PASSWORD
 #   ANDROID_KEY_ALIAS

@@ -11,8 +11,11 @@ import { renderPlayer, ensureChapterLoaded, closeQueuePanel, openPlayer, openPla
 import { syncNativeResume } from './js/native-bridge.js';
 import { closeVisualizer, stepPicture } from './js/visualizer.js';
 import { initNativeScanListeners, scanAllFolders, openFolderSheet } from './js/scanner.js';
-import { audio } from './js/sound.js';
+import { audio, applyCurrentFileSound } from './js/sound.js';
 import { bindSwipe } from './js/player-swipe.js';
+import { isPremium, onChange } from './js/premium.js';
+import { wirePurchaseMessages } from './js/premium-ui.js';
+import { syncPurchases } from './js/billing.js';
 import { t, applyDocumentLang } from './js/i18n.js';
 
 /**
@@ -188,7 +191,10 @@ async function initApp(){
     try { bindNav(); } catch {}
     try { state.appVersion = (await window.Capacitor?.Plugins?.App?.getInfo?.())?.version || ''; } catch {}
     await loadState();
-    audio.setNormalize?.(state.settings.normalize !== false);
+    audio.setNormalize?.(state.settings.normalize !== false && isPremium());
+    wirePurchaseMessages();
+    onChange(() => { applyCurrentFileSound(); audio.setNormalize?.(state.settings.normalize !== false && isPremium()); });
+    syncPurchases();                            // quietly: a purchase made on another phone / after a reinstall comes back
     audio.setSeekStep?.(seekStep());           // native: the notification / lock screen / widget use the same step
   } catch (e) {
     showToast(t('Ошибка инициализации: {e}', { e: e.message || t('Сбой старта') }));

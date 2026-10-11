@@ -10,7 +10,7 @@
 4. Опубликуйте политику конфиденциальности (`store/PRIVACY_POLICY.md`) по ссылке: GitHub Pages, Gist или свой сайт. Подставьте дату и e-mail.
 
 ## 1. Перед каждым релизом
-1. Поднимите `version` в `package.json` (например, `2.4.0`). Из неё берутся `versionName` и `versionCode` (2.4.0 → 20300), код всегда должен расти.
+1. Поднимите `version` в `package.json` (например, `2.5.3`). Из неё берутся `versionName` и `versionCode` (2.5.3 → 20503), код всегда должен расти.
 2. Проверки: `cd tests && npm ci && npm run lint && npm test`, затем `cd ../android && ./gradlew testDebugUnitTest`.
 3. Ручная проверка на **реальном телефоне** (минимум Android 15 или 16, лучше ещё один старый), список ниже.
 
@@ -25,7 +25,7 @@ cd android
 Файл: `android/app/build/outputs/bundle/release/app-release.aab`.
 
 **Через GitHub Actions** (`release.yml`): добавьте секреты репозитория
-`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, затем отправьте тег `v2.4.0` или запустите вручную. Base64 из PowerShell:
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, затем отправьте тег `v2.5.3` или запустите вручную. Base64 из PowerShell:
 ```
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("upload.jks")) | Set-Clipboard
 ```
@@ -55,3 +55,15 @@ cd android
 - **Службы переднего плана**: формулировки в `PLAY_CONSOLE_ANSWERS.md`. Если `dataSync` для сканирования не принят, замените сканирование на `WorkManager` или тип службы `specialUse` с пояснением.
 - **R8/сжатие** сейчас выключено (`minifyEnabled false`). Включать только после проверки на устройстве и добавления keep-правил для `com.shelf.player.*` и Capacitor.
 - **Страницы памяти 16 КБ** (требование для новых устройств): собственных нативных библиотек в проекте нет, Media3 и Capacitor используют только Java/Kotlin.
+
+
+## Платные функции: перед загрузкой в Play
+1. Создайте товары в консоли (`store/PLAY_CONSOLE_ANSWERS.md`, раздел «Покупки в приложении»): идентификаторы те же, что в `www/config.js`.
+2. Billing Library: в `android/variables.gradle` (`billingVersion`) должна быть 8.x или новее. Google требует версию 8+ для новых приложений и обновлений с 31.08.2026; поддержка 8.x идёт до 31.08.2027, затем нужен переход на 9.x. Перед каждым релизом проверьте на странице Play Billing Library текущие требования.
+3. Лицензионное тестирование и все сценарии оплаты: внутренняя дорожка, раздел «Тестирование оплаты» в `PLAY_CONSOLE_ANSWERS.md`.
+4. Коды для тестировщиков: `node tools/make-codes.mjs 20`. Раздать, записать, кому какой код.
+5. Публикация политики: адрес сайта вписать в консоль; форма «Безопасность данных» и «Реклама» по `PLAY_CONSOLE_ANSWERS.md`.
+6. Налоговый и платёжный профиль продавца (Play Console → Настройка → Платёжный профиль): без него платные товары не включить.
+
+## Автоматическая проверка перед релизом
+`cd tests && npm test` запускает: версии пакетов, переводы, премиум и покупки, аудит (лицензии, манифест, ключи, мусор в файлах, магазин), основные сценарии, базу и визуализатор. Всё должно быть зелёным.

@@ -369,7 +369,7 @@ input { outline: 0; }
 .shelf-empty button {
   margin-top: 16px;
   background: var(--gold2);
-  color: #201407;
+  color: var(--on-gold);
   padding: 12px 20px;
   border-radius: 12px;
   font-weight: 700;
@@ -476,7 +476,7 @@ input { outline: 0; }
 .folder-card.selected .check {
   background: var(--gold2);
   border-color: var(--gold2);
-  color: #23170b;
+  color: var(--on-gold);
 }
 .folder-card.selected .check:after { content: "✓"; font-weight: 800; }
 .folder-info { min-width: 0; flex: 1; }
@@ -507,7 +507,7 @@ input { outline: 0; }
 .primary {
   width: 100%;
   background: var(--gold2);
-  color: #23170b;
+  color: var(--on-gold);
   padding: 13px 16px;
   border-radius: 12px;
   font-weight: 750;
@@ -592,7 +592,7 @@ input { outline: 0; }
   transition: transform 0.15s ease;
 }
 .switch.on { background: var(--gold2); }
-.switch.on i { transform: translateX(17px); background: #2b1b0d; }
+.switch.on i { transform: translateX(17px); background: var(--on-gold); }
 
 /* Scan Dock */
 .scan-dock {
@@ -716,7 +716,7 @@ button, .icon-btn, .tool, .control, .play-main, .nav-item, [data-action], [data-
 .dv-hero-sub { margin-top: 4px; font-size: 12px; color: var(--muted); }
 .dv-play {
   flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--gold2); color: #24170b; box-shadow: 0 8px 22px rgba(217,154,76,.28);
+  background: var(--gold2); color: var(--on-gold); box-shadow: 0 8px 22px rgba(217,154,76,.28);
 }
 .dv-play .icon { width: 24px; height: 24px; }
 
@@ -746,9 +746,56 @@ button, .icon-btn, .tool, .control, .play-main, .nav-item, [data-action], [data-
 .dv-empty > .icon { width: 44px; height: 44px; color: var(--gold2); margin-bottom: 10px; }
 .dv-empty div { font-size: 15px; color: var(--text); }
 .dv-empty small { display: block; margin: 8px auto 18px; max-width: 280px; font-size: 12px; line-height: 1.45; }
-.dv-btn { padding: 11px 20px; border-radius: 14px; background: var(--gold2); color: #24170b; font-weight: 700; }
+.dv-btn { padding: 11px 20px; border-radius: 14px; background: var(--gold2); color: var(--on-gold); font-weight: 700; }
 
 /* Gestures: vertical scroll is native, horizontal belongs to the swipe logic (player-swipe.js).
    Without this the browser may claim a sideways drag and cancel it, so swipes "sometimes don't work". */
 html, body, #app, #main, .screen { touch-action: pan-y; }
 .dv-rail, .library-filters-bar, [data-noswipe] { touch-action: pan-x pan-y; }
+
+/* Premium + support sheets */
+.pm-status { color: var(--gold2); font-size: 13px; margin: 2px 0 10px; }
+.pm-perks { display: grid; gap: 6px; }
+.pm-perk { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(127,127,127,.1); font-size: 13px; }
+.pm-perk.hot { outline: 1px solid var(--gold2); }
+.pm-perk span { color: var(--gold2); }
+.pm-note { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin: 10px 0 0; }
+.pm-row { display: flex; gap: 8px; margin-top: 8px; }
+.pm-row button { flex: 1; }
+.pm-tips { display: grid; gap: 8px; margin-top: 12px; }
+.pm-tip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--card-border); background: var(--card-bg); color: var(--text); font-size: 14px; text-align: left; }
+.pm-tip-ico { font-size: 22px; }
+.pm-tip b { flex: 1; font-weight: 600; }
+.pm-tip em { font-style: normal; color: var(--gold2); font-weight: 650; }
+.lock-pill { font-size: 10px; padding: 2px 6px; border-radius: 8px; background: rgba(127,127,127,.2); color: var(--muted); margin-left: 6px; }
+
+/* The tea-begging cat on the Support sheet (own drawing; all motion is CSS and stops with "reduce motion") */
+.cat-wrap { position: relative; margin: 6px auto 2px; width: min(260px, 80%); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cat { display: block; width: 100%; height: auto; overflow: visible; }
+.cat-say { position: relative; margin: 0 auto 4px; width: max-content; max-width: 100%; padding: 6px 12px; border-radius: 14px; background: var(--card-bg); border: 1px solid var(--card-border); font-size: 12.5px; color: var(--text); text-align: center; }
+.cat-say::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; margin-left: -5px; background: inherit; border-right: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border); transform: rotate(45deg); }
+.cat .cat-eye, .cat .cat-head, .cat .cat-tail, .cat .cat-paw, .cat .cat-body, .cat .steam, .cat .hearts path { transform-box: fill-box; }
+.cat .cat-eye { transform-origin: center; animation: cat-blink 4.6s infinite; }
+.cat .cat-head { transform-origin: 50% 100%; animation: cat-tilt 6s ease-in-out infinite; }
+.cat .cat-tail { transform-origin: 100% 100%; animation: cat-wag 2.6s ease-in-out infinite alternate; }
+.cat .cat-paw { transform-origin: 50% 100%; animation: cat-reach 3.4s ease-in-out infinite; }
+.cat .steam { transform-origin: 50% 100%; animation: cat-steam 2.8s ease-in-out infinite; opacity: 0; }
+.cat .steam.s2 { animation-delay: 1.2s; }
+.cat .eyes-happy, .cat .mouth-happy, .cat .hearts { opacity: 0; }
+.cat .hearts path { opacity: 0; }
+.cat-wrap.happy .eyes-open, .cat-wrap.happy .mouth-sad { opacity: 0; }
+.cat-wrap.happy .eyes-happy, .cat-wrap.happy .mouth-happy { opacity: 1; }
+.cat-wrap.happy .hearts { opacity: 1; }
+.cat-wrap.happy .hearts path { animation: cat-heart 1.8s ease-out infinite; }
+.cat-wrap.happy .hearts .h2 { animation-delay: .5s; }
+.cat-wrap.happy .hearts .h3 { animation-delay: 1s; }
+.cat-wrap.happy .cat-body, .cat-wrap.happy .cat-head { animation: cat-purr .5s ease-in-out infinite; transform-origin: 50% 100%; }
+.cat-wrap.happy .cat-tail { animation-duration: .9s; }
+@keyframes cat-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } }
+@keyframes cat-tilt { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-3deg); } 65% { transform: rotate(3deg); } }
+@keyframes cat-wag { from { transform: rotate(-10deg); } to { transform: rotate(14deg); } }
+@keyframes cat-reach { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-10deg) translateY(-2px); } }
+@keyframes cat-steam { 0% { opacity: 0; transform: translateY(6px) scaleY(.8); } 40% { opacity: .85; } 100% { opacity: 0; transform: translateY(-10px) scaleY(1.1); } }
+@keyframes cat-heart { 0% { opacity: 0; transform: translateY(8px) scale(.6); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px) scale(1.15); } }
+@keyframes cat-purr { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, .988); } }
+@media (prefers-reduced-motion: reduce) { .cat * { animation: none !important; } .cat .steam { opacity: .5; } }

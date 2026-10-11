@@ -10,6 +10,8 @@ import { savePrefsSoon, loadCover } from './storage.js';
 import { closeModal } from './ui-utils.js';
 import CONFIG from '../config.js';
 import { t } from './i18n.js';
+import { isPremium } from './premium.js';
+import { gate } from './premium-ui.js';
 
 const NativePlayer = isNative() ? plugin('Player') : null;
 export const NATIVE = !!NativePlayer;
@@ -368,7 +370,9 @@ function routeWeb(flat){
 export function applyCurrentFileSound(){
   const b = state.current;
   if(!b) return;
-  const s = ensureBookSound(b);
+  const saved = ensureBookSound(b);
+  // Without Premium the sound plays untouched; what the person set is kept and comes back with Premium
+  const s = isPremium() ? saved : { ...saved, eq: saved.eq.map(() => 0), gain: 0, volume: Math.min(1, Number(saved.volume) || 1) };
   const vol = clampVol(s.volume);
 
   if(NATIVE){
@@ -439,6 +443,7 @@ const persistSoon = () => savePrefsSoon(500);      // EQ/volume live in the tiny
 export function openCurrentSound(){
   const b = state.current;
   if(!b) return;
+  if(!gate('sound', isPremium())) return;
   const s = ensureBookSound(b);
 
   const presets = Object.entries(SOUND_PRESETS).map(([id,p])=>`<button class="sound-preset ${s.preset===id?'active':''}" data-preset="${id}"><b>${escapeHtml(t(p.name))}</b><small>${t(p.eq.filter(x=>x>0).length?'объёмный':'нейтральный')}</small></button>`).join('');
@@ -457,14 +462,26 @@ export function openCurrentSound(){
   document.getElementById('modalRoot').innerHTML=`<div class="modal-back" id="soundBack"><div class="modal sound-modal"><div class="sound-modal-head"><div><h3>${t(music ? 'Звук альбома' : 'Звук книги')}</h3><small>${escapeHtml(b.title)}</small></div><button class="icon-btn" data-close aria-label="${t('Закрыть')}">${icon('close')}</button></div><div class="sound-label">${t('Пресет')}</div><div class="preset-grid">${presets}</div><div class="sound-label">${t('Усиление громкости')}</div><div class="preset-grid" style="grid-template-columns: repeat(4, 1fr);">${boostBtns}</div><div class="sound-setting"><div class="sound-head"><span>${t(music ? 'Громкость альбома' : 'Громкость книги')}</span><b id="fileVolValue">${Math.round(s.volume*100)}%</b></div><input class="sound-range" id="fileVol" type="range" min="0" max="300" step="5" value="${Math.round(s.volume*100)}"><small style="display:block;margin-top:4px;opacity:.65">${t('Выше 100 % — усиление; лимитер не даёт звуку перегружаться.')}</small></div>${nativeRows}<div class="eq-panel"><div class="sound-head"><span>${t('10-полосный эквалайзер')}</span><b>±12 dB</b></div><div class="eq-grid">${bands}</div><small id="fxInfo" style="display:block;margin-top:8px;opacity:.65"></small></div><div class="modal-actions"><button class="secondary" id="soundDefault">${t('Сбросить эквалайзер')}</button></div></div></div>`;
 
   $('soundBack').onclick = e => { if(e.target.id==='soundBack'||e.target.closest('[data-close]')) closeModal(); };
+  // Refresh the open sheet IN PLACE. Re-rendering it replayed the slide-in animation and reset the scroll — the screen "blinked".
+  const syncUi = () => {
+    document.querySelectorAll('[data-preset]').forEach(x => x.classList.toggle('active', x.dataset.preset === s.preset));
+    document.querySelectorAll('[data-boost]').forEach(x => x.classList.toggle('active', Math.abs(s.volume - Number(x.dataset.boost)) < 0.02));
+    const vol = $('fileVol'); if(vol) vol.value = Math.round(s.volume * 100);
+    const vv = $('fileVolValue'); if(vv) vv.textContent = Math.round(s.volume * 100) + '%';
+    document.querySelectorAll('[data-eq]').forEach(inp => {
+      const i = Number(inp.dataset.eq), v = Number(s.eq[i]) || 0;
+      inp.value = v;
+      const l = $('eqv' + i); if(l) l.textContent = (v > 0 ? '+' : '') + v + ' dB';
+    });
+  };
   document.querySelectorAll('[data-preset]').forEach(btn => btn.onclick = () => {
     const id = btn.dataset.preset, p = SOUND_PRESETS[id];
     s.preset = id; s.eq = [...p.eq]; s.gain = p.gain || 0;
-    applyCurrentFileSound(); persistSoon(); openCurrentSound();
+    applyCurrentFileSound(); persistSoon(); syncUi();
   });
   document.querySelectorAll('[data-boost]').forEach(btn => btn.onclick = () => {
     s.volume = clampVol(btn.dataset.boost);
-    applyCurrentFileSound(); persistSoon(); openCurrentSound();
+    applyCurrentFileSound(); persistSoon(); syncUi();
   });
   $('fileVol').oninput = e => {
     s.preset = 'custom'; s.volume = Number(e.target.value)/100;
@@ -481,7 +498,7 @@ export function openCurrentSound(){
   });
   $('soundDefault').onclick = () => {
     s.preset = 'flat'; s.eq = EQ_BANDS.map(() => 0); s.volume = 1; s.gain = 0;
-    applyCurrentFileSound(); persistSoon(); openCurrentSound();
+    applyCurrentFileSound(); persistSoon(); syncUi();
   };
   if(NATIVE){
     $('batteryBtn').onclick = () => NativePlayer.openBatterySettings().catch(() => {});

@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
   @Override public void onCreate(Bundle b) {
     registerPlugin(PlayerPlugin.class);
     registerPlugin(FilesPlugin.class);
+    registerPlugin(BillingPlugin.class);
     super.onCreate(b);
     getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
     getBridge().getWebView().getSettings().setDomStorageEnabled(true);

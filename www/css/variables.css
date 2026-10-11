@@ -1,53 +1,57 @@
 /* variables.css — Theme variables and design tokens */
 :root {
-  --bg: #0b0a09;
-  --panel: #161411;
-  --card-bg: rgba(22, 20, 17, 0.95);
-  --card-border: #2d2822;
-  --line: #29241e;
+  /* AMOLED: true black, so the pixels of an OLED screen are switched off; warm gold accent */
+  --bg: #000000;
+  --panel: #0c0b0a;
+  --card-bg: rgba(12, 11, 10, 0.96);
+  --card-border: #26211b;
+  --line: #1f1b16;
   --text: #f5f2ec;
   --muted: #9c958a;
-  --muted-soft: #706a61;
+  --muted-soft: #6f695f;
   --gold: #d69f56;
   --gold2: #e8b66d;
   --gold-soft: rgba(232, 182, 109, 0.12);
-  --danger: #d65a50;
+  --on-gold: #24170b;
+  --danger: #e0645a;
   --nav: 72px;
-  --shadow: 0 14px 40px rgba(0,0,0,0.5);
-  --app-gradient: linear-gradient(180deg, #151310 0%, #0d0c0a 38%, #080706 100%);
-  --shelf-radial: radial-gradient(110% 55% at 50% -8%, #3d2514 0%, #1a120c 38%, #0b0a09 72%);
-  --player-radial: radial-gradient(95% 48% at 50% 0%, #462815 0%, #1c120a 40%, #090807 78%);
-  --nav-bg: rgba(14, 12, 10, 0.95);
-  --nav-border: #26211a;
-  --modal-bg: #181512;
-  --modal-border: #2e2821;
-  --field-bg: #221e19;
-  --icon-btn-bg: rgba(255, 255, 255, 0.05);
-  --icon-btn-border: rgba(255, 255, 255, 0.08);
+  --shadow: 0 14px 40px rgba(0,0,0,0.6);
+  --app-gradient: #000000;
+  --shelf-radial: radial-gradient(110% 40% at 50% -10%, rgba(120, 72, 30, 0.26) 0%, rgba(0, 0, 0, 0) 70%), #000000;
+  --player-radial: radial-gradient(95% 42% at 50% 0%, rgba(130, 78, 32, 0.3) 0%, rgba(0, 0, 0, 0) 72%), #000000;
+  --nav-bg: #000000;
+  --nav-border: #1c1814;
+  --modal-bg: #0e0d0b;
+  --modal-border: #2a241d;
+  --field-bg: #1a1713;
+  --icon-btn-bg: rgba(255, 255, 255, 0.06);
+  --icon-btn-border: rgba(255, 255, 255, 0.09);
 }
 
 :root[data-theme="light"] {
-  --bg: #f8f5ee;
-  --panel: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e0d8cc;
-  --line: #e4ddd2;
-  --text: #221a13;
-  --muted: #787063;
-  --muted-soft: #9c9487;
-  --gold: #b37324;
-  --gold2: #c58434;
-  --gold-soft: rgba(197, 132, 52, 0.14);
-  --danger: #d64a40;
-  --shadow: 0 10px 30px rgba(70, 50, 30, 0.12);
-  --app-gradient: linear-gradient(180deg, #fffcf8 0%, #f7f3eb 40%, #eee7dc 100%);
-  --shelf-radial: radial-gradient(110% 55% at 50% -8%, #f0decb 0%, #f8f5ee 45%, #f0eae0 75%);
-  --player-radial: radial-gradient(95% 48% at 50% 0%, #f4e3d1 0%, #f8f5ee 42%, #ede5d7 82%);
-  --nav-bg: rgba(252, 250, 246, 0.96);
-  --nav-border: #ded7ca;
-  --modal-bg: #ffffff;
-  --modal-border: #ded7ca;
-  --field-bg: #f0eae0;
-  --icon-btn-bg: rgba(0, 0, 0, 0.04);
-  --icon-btn-border: rgba(0, 0, 0, 0.08);
+  /* Paper: light brown, warm cards, dark-brown ink, darker amber accent (readable on paper) */
+  --bg: #e9dcc2;
+  --panel: #f2e8d3;
+  --card-bg: #f4ebd8;
+  --card-border: #d3c19d;
+  --line: #d9c8a6;
+  --text: #2c2015;
+  --muted: #6c5d47;
+  --muted-soft: #8d7d63;
+  --gold: #8f5718;
+  --gold2: #9a5f1e;
+  --gold-soft: rgba(154, 95, 30, 0.14);
+  --on-gold: #fff7e8;
+  --danger: #b73a30;
+  --shadow: 0 10px 30px rgba(80, 55, 25, 0.18);
+  --app-gradient: linear-gradient(180deg, #efe4cc 0%, #e9dcc2 45%, #e0d1b3 100%);
+  --shelf-radial: radial-gradient(110% 50% at 50% -8%, #f6edd9 0%, #e9dcc2 55%, #e0d1b3 100%);
+  --player-radial: radial-gradient(95% 48% at 50% 0%, #f4e7cf 0%, #e9dcc2 48%, #ddcdaf 100%);
+  --nav-bg: rgba(238, 227, 202, 0.97);
+  --nav-border: #cfbd98;
+  --modal-bg: #f2e8d3;
+  --modal-border: #cfbd98;
+  --field-bg: #e4d6b8;
+  --icon-btn-bg: rgba(60, 40, 15, 0.06);
+  --icon-btn-border: rgba(60, 40, 15, 0.14);
 }
