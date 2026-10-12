@@ -16,7 +16,7 @@ HOW IT WORKS
 Pick a folder with your audiobooks — the app finds the books, covers and durations by itself. Every subfolder becomes a book, chapters play in order.
 
 FREE CATALOG
-Free audiobooks and music (LibriVox readings, public domain and Creative Commons recordings, hosted on archive.org): search by title and author and listen online for free. Downloading into your folder for offline listening is part of Premium; downloaded books stay with you for good. The licence and source are shown on every book.
+Public-domain audiobooks (readings by LibriVox volunteers, hosted on archive.org): search by title and author and listen online for free. Downloading into your folder for offline listening is part of Premium; downloaded books stay with you for good. The licence and source are shown on every book.
 
 MEMORY FOR EVERY BOOK
 • the position is remembered exactly, even if the app is closed or the phone restarts;
@@ -42,4 +42,4 @@ Everything is open for the first 30 days. After that playback, the library, book
 PRIVACY
 The app doesn't collect or sell data about you and has no accounts. The internet is used only when you search, listen to or download a catalog book yourself (archive.org). Payments are handled by Google Play. Files are only read to play them; a file is deleted only when you ask (Delete from device on an album track).
 
-Dark and light themes, library search and sorting, an "Online" tab, downloaded items marked with an icon.
+Dark and light themes, library search and sorting, "Downloaded" and "Online" tabs.
