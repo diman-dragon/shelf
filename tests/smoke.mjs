@@ -293,8 +293,8 @@ console.log('== catalog: search, licence, listen online, download (Premium), tab
   ok(/Онлайн · Общественное достояние/.test(C.sourceLine(book)), 'library row shows where it is from and the licence: ' + C.sourceLine(book));
   state.libraryFilterType = 'online'; setScreen('shelf'); await new Promise(r => setTimeout(r, 40));
   ok([...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Онлайн» lists it');
-  state.libraryFilterType = 'saved'; lib.renderShelf();
-  ok(![...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Скачанные» does not list a streamed book');
+  state.libraryFilterType = 'book'; lib.renderShelf();
+  ok(![...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Книги» does not list a streamed book');
 
   // download: Premium, into the chosen folder, files become content:// and the book is "downloaded"
   Pm._reset();                                                                // a fresh trial: everything open
@@ -303,8 +303,13 @@ console.log('== catalog: search, licence, listen online, download (Premium), tab
   const dl = calls.filter(c => c[0] === 'download');
   ok(dl.length === 2 && dl[0][1] === 'AudioShelf/Тест' && /^001 - Раз\.mp3$/.test(dl[0][2]) && dl[0][3].startsWith('https://archive.org/'), 'download: chapter by chapter into AudioShelf/<title>: ' + JSON.stringify(dl.map(d => d[2])));
   ok(book.online === false && book.downloadedAt > 0 && book.files.every(f => f.uri.startsWith('content://')) && book.srcPath === state.folders[0].id + ':AudioShelf/Тест', 'after the download the book points at the local files and a rescan will update it, not copy it');
-  state.libraryFilterType = 'saved'; lib.renderShelf();
-  ok([...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Скачанные» lists it');
+  state.libraryFilterType = 'book'; lib.renderShelf();
+  const dlRow = [...w.document.querySelectorAll('.library-book-item')].find(e => e.dataset.id === book.id);
+  ok(!!dlRow && !!dlRow.querySelector('.dl-badge'), 'tab «Книги» lists the downloaded book with a small download icon');
+  state.libraryFilterType = 'online'; lib.renderShelf();
+  ok(![...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Онлайн» no longer lists it once it is downloaded');
+  ok(w.document.querySelectorAll('[data-filter]').length === 4, 'the library has four tabs: all, books, music, online');
+  state.libraryFilterType = 'book'; lib.renderShelf();
   ok(/Скачано/.test(w.document.querySelector('.lib-lic')?.textContent || ''), 'row says «Скачано · licence»');
 
   // after the trial: nothing is hidden or deleted, only NEW downloads need Premium

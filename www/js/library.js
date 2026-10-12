@@ -44,9 +44,10 @@ function bindLoadMore(){
   if(btn) btn.onclick = () => { libraryDisplayLimit += 50; renderShelf(); };
 }
 
-const catalogTab = () => state.libraryFilterType === 'saved' || state.libraryFilterType === 'online';
+const catalogTab = () => state.libraryFilterType === 'online';
 
 export function renderShelf(){
+  if(state.libraryFilterType === 'saved') state.libraryFilterType = 'all';      // the old «Скачанные» tab is gone: downloaded books sit among books / music
   const { all, shown } = visibleBooks();
   const viewMode = localStorage.getItem('shelfViewMode') || 'list';
   const viewToggleIcon = viewMode === 'grid' ? 'list' : 'grid';
@@ -61,7 +62,6 @@ export function renderShelf(){
     `<button type="button" class="filter-chip ${state.libraryFilterType==='all'?'active':''}" data-filter="all">${t('Все')} (${state.books.length})</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='book'?'active':''}" data-filter="book">${t('Книги')}</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">${t('Музыка')}</button>` +
-    `<button type="button" class="filter-chip ${state.libraryFilterType==='saved'?'active':''}" data-filter="saved">${t('Скачанные')}</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='online'?'active':''}" data-filter="online">${t('Онлайн')}</button>` +
   `</div>`;
   html += `<div class="${viewMode === 'grid' ? 'shelf-grid' : 'shelf-list'}">`;
@@ -161,7 +161,7 @@ function libraryBookRow(b, sig = rowSig(b)){
 
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}" data-sig="${escapeHtml(sig)}">
     <div class="lib-row-main">
-      <div class="lib-thumb">${bookCover(b)}${kindBadge(b)}</div>
+      <div class="lib-thumb">${bookCover(b)}${kindBadge(b)}${b.source && !b.online ? `<span class="dl-badge" aria-label="${t('Скачано')}">${icon('download', 'icon dl-ico')}</span>` : ''}</div>
       <div class="lib-info">
         <div class="lib-title">${escapeHtml(b.title)}</div>
         <div class="lib-author">${escapeHtml(b.author||t('Автор не указан'))}</div>
@@ -176,12 +176,11 @@ function libraryBookRow(b, sig = rowSig(b)){
 function filterBooks(books){
   const q = state.query.trim().toLowerCase();
   let filtered = books;
+  // downloaded catalog books are ordinary books / albums (marked with a small icon); the ones streamed from the internet have their own tab
   if(state.libraryFilterType === 'book'){
-    filtered = filtered.filter(b => !isMusic(b));
+    filtered = filtered.filter(b => !isMusic(b) && !b.online);
   } else if(state.libraryFilterType === 'album'){
-    filtered = filtered.filter(isMusic);
-  } else if(state.libraryFilterType === 'saved'){            // downloaded from the catalog: kept on the device for good
-    filtered = filtered.filter(b => b.source && !b.online);
+    filtered = filtered.filter(b => isMusic(b) && !b.online);
   } else if(state.libraryFilterType === 'online'){           // catalog books that are listened to over the internet
     filtered = filtered.filter(b => b.source && b.online);
   }
