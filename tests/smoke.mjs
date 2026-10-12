@@ -462,7 +462,7 @@ console.log('== swipes: the picture changes on the player cover, everywhere else
   ok(!hidden() && vname() === nm(VZ.VISUALS.length - 1), 'swipe right on the cover -> last visual');
   for(let i = 0; i < VZ.VISUALS.length; i++) await swipe(w.document.getElementById('visualizer'), 'right');
   ok(hidden(), 'swiping right through all visuals returns to the cover');
-  ok(w.document.querySelectorAll('.pic-dots i').length >= 11, 'dots show the position in the loop');
+  ok(w.document.querySelectorAll('.pic-dots i').length >= 2, 'two dots (cover / visuals) show the position in the loop');
   w.document.getElementById('modalRoot').innerHTML = '<div class="modal-back"><div class="modal"><p id="mm">x</p></div></div>';
   await swipe(w.document.getElementById('mm'), 'left');
   ok(state.screen === 'player', 'an open window is never swiped away');

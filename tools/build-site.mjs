@@ -132,10 +132,14 @@ nav a{text-decoration:none;color:var(--mute)}nav a:hover,nav a[aria-current]{col
 .openbook{position:absolute;left:45%;top:17%;height:66%;aspect-ratio:1.3;z-index:1;perspective:900px;transform:translateX(-34%);transition:transform 1.4s cubic-bezier(.3,.7,.2,1)}
 .playing .openbook{transform:none}
 .openbook::before{content:"";position:absolute;inset:-3px;border-radius:6px;background:#5a2630;box-shadow:0 6px 16px rgba(0,0,0,.4)}
-.openbook .pg,.openbook .lf{position:absolute;top:0;width:50%;height:100%;background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(90,70,40,.22) 9px 10px),#f2ead6}
+.openbook{container-type:size}
+.openbook .pg,.openbook .lf{position:absolute;top:0;width:50%;height:100%;overflow:hidden;background:#f2ead6;color:#3a2f20;font:3.5cqw/1.38 var(--serif);text-align:justify;hyphens:auto;padding:9% 8% 12%;box-sizing:border-box}
+.openbook p{margin:0}.openbook h6{margin:0 0 6%;font:italic 600 4.6cqw/1.1 var(--serif);text-align:center}
+.openbook .pg-l p::first-letter{float:left;font:700 11cqw/.85 var(--serif);padding:1% 2% 0 0;color:#6a2a2a}
+.openbook .pg::after,.openbook .lf::after{content:attr(data-n);position:absolute;left:0;right:0;bottom:4%;text-align:center;font-size:3cqw;opacity:.6}
 .openbook .pg-l{left:0;border-radius:3px 0 0 3px;box-shadow:inset -14px 0 14px -10px rgba(0,0,0,.35)}
 .openbook .pg-r{right:0;border-radius:0 3px 3px 0;box-shadow:inset 14px 0 14px -10px rgba(0,0,0,.35)}
-.openbook .lf{right:0;border-radius:0 3px 3px 0;transform-origin:0 50%;box-shadow:inset 14px 0 14px -10px rgba(0,0,0,.3);animation:turn 9s ease-in-out infinite;animation-play-state:paused}
+.openbook .lf{right:0;border-radius:0 3px 3px 0;transform-origin:0 50%;backface-visibility:hidden;box-shadow:inset 14px 0 14px -10px rgba(0,0,0,.3);animation:turn 9s ease-in-out infinite;animation-play-state:paused}
 .playing .openbook .lf{animation-play-state:running}
 .openbook .lf:nth-child(4){animation-delay:-3s}.openbook .lf:nth-child(5){animation-delay:-6s}
 @keyframes turn{0%,52%{transform:rotateY(0)}72%,100%{transform:rotateY(-178deg)}}
@@ -249,10 +253,14 @@ const spine = (s, i) => {
 };
 const half = (list) => list.map(spine).join('');
 const left = SPINES.slice(0, 6), right = SPINES.slice(7);
+const P1 = ['Мой дядя самых честных правил, когда не в шутку занемог, он уважать себя заставил и лучше выдумать не мог. Его пример другим наука; но, боже мой, какая скука с больным сидеть и день и ночь, не отходя ни шагу прочь!', 'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families.'];
+const P2 = ['Какое низкое коварство полуживого забавлять, ему подушки поправлять, печально подносить лекарство, вздыхать и думать про себя: когда же чёрт возьмёт тебя!', 'That he is considered the rightful property of some one or other of their daughters. “My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?”'];
+const openbook = `<div class="openbook" aria-hidden="true"><div class="pg pg-l" data-n="12"><h6>${bis('Глава I', 'Chapter I')}</h6><p>${bis(P1[0], P1[1])}</p></div><div class="pg pg-r" data-n="13"><p>${bis(P2[0], P2[1])}</p></div>${
+  [1, 2, 3].map(() => `<div class="lf" data-n="13"><p>${bis(P2[0], P2[1])}</p></div>`).join('')}</div>`;
 const stage = `<div class="stage" id="stage" role="button" tabindex="0" aria-label="${esc('Пластинка и книга: нажмите, чтобы остановить или запустить')}">
 <div class="album"><div class="sleeve"><span>${bis('Вечерний альбом', 'Evening album')}</span></div><div class="vinyl"><div class="record"><i></i></div></div>
 <svg class="arm" viewBox="0 0 140 100" aria-hidden="true"><g><circle cx="128" cy="10" r="6.5"/><path d="M128 10 L108 24"/><rect x="102" y="21" width="9" height="5.5" rx="1.5" transform="rotate(35 106 24)"/></g></svg></div>
-<div class="tome"><div class="openbook" aria-hidden="true"><i class="pg pg-l"></i><i class="pg pg-r"></i><i class="lf"></i><i class="lf"></i><i class="lf"></i></div><div class="cover"><b>${bis('Идиот', 'The Idiot')}</b><small>${bis('Ф. Достоевский', 'F. Dostoyevsky')}</small></div></div></div>`;
+<div class="tome">${openbook}<div class="cover"><b>${bis('Идиот', 'The Idiot')}</b><small>${bis('Ф. Достоевский', 'F. Dostoyevsky')}</small></div></div></div>`;
 const play = cfg.playUrl
   ? `<a class="btn" href="${esc(cfg.playUrl)}" rel="noopener">${bis('Скачать в Google Play', 'Get it on Google Play')}</a>`
   : `<span class="btn off">${bis('Скоро в Google Play', 'Coming soon to Google Play')}</span>`;

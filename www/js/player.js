@@ -11,7 +11,7 @@ import { openBookMenu } from './library.js';
 import { closeVisualizer, syncPictureDots } from './visualizer.js';
 import { hydrateBookMeta } from './meta.js';
 import { bindNativeEvents, stopNativePlayer } from './native-bridge.js';
-import { t } from './i18n.js';
+import { t, getLang } from './i18n.js';
 
 let progressSaveTimer = null;
 let lastSavedSecond = -1;
@@ -42,6 +42,13 @@ function syncPlaying(){
   return state.playing;
 }
 
+/** Page text of the little open book: the start of a public-domain novel in the language of the app */
+function bookText(){
+  return getLang() === 'en'
+    ? ['Chapter I', 'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families.', 'That he is considered the rightful property of some one or other of their daughters. “My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?” Mr. Bennet replied that he had not.']
+    : ['Глава I', 'Мой дядя самых честных правил, когда не в шутку занемог, он уважать себя заставил и лучше выдумать не мог. Его пример другим наука; но, боже мой, какая скука с больным сидеть и день и ночь, не отходя ни шагу прочь!', 'Какое низкое коварство полуживого забавлять, ему подушки поправлять, печально подносить лекарство, вздыхать и думать про себя: когда же чёрт возьмёт тебя!'];
+}
+
 /** Animated layer behind the cover: an album gets a record with a tonearm, a book gets an open book beside it whose leaves turn over */
 function coverFx(b){
   if(isMusic(b)){
@@ -49,7 +56,9 @@ function coverFx(b){
       '<svg class="fx-arm" viewBox="0 0 140 100" aria-hidden="true"><g class="arm">' +
       '<circle cx="128" cy="10" r="6.5" class="arm-base"/><path d="M128 10 L108 24" class="arm-bar"/><rect x="102" y="21" width="9" height="5.5" rx="1.5" transform="rotate(35 106 24)" class="arm-head"/></g></svg>';
   }
-  return '<div class="fx-book" aria-hidden="true"><i class="pg pg-l"></i><i class="pg pg-r"></i><i class="lf"></i><i class="lf"></i><i class="lf"></i></div>';
+  const [ch, p1, p2] = bookText();
+  return `<div class="fx-book" aria-hidden="true"><div class="pg pg-l" data-n="12"><h6>${ch}</h6><p>${p1}</p></div><div class="pg pg-r" data-n="13"><p>${p2}</p></div>` +
+    `<div class="lf" data-n="13"><p>${p2}</p></div><div class="lf" data-n="13"><p>${p2}</p></div><div class="lf" data-n="13"><p>${p2}</p></div></div>`;
 }
 
 /** Seek within whole book (seconds from the very start of the book) */

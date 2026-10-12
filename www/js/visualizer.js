@@ -44,12 +44,10 @@ function setVisual(v){
 
 /** The little dots (one per picture) on the cover and on the visual: where you are in the loop */
 export function syncPictureDots(){
+  // two stops: the cover (with its animation beside it) and the visualizers; the counter says which of the ten is on
   const pos = picturePosition();
   document.querySelectorAll('.pic-dots').forEach(host => {
-    if(!host.children.length){
-      host.innerHTML = Array.from({length: VISUALS.length + 1}, () => '<i></i>').join('');
-    }
-    Array.from(host.children).forEach((d, i) => d.classList.toggle('on', i === pos));
+    host.innerHTML = `<i class="${pos === 0 ? 'on' : ''}"></i><i class="${pos > 0 ? 'on' : ''}"></i>${pos > 0 ? `<b class="pic-num">${pos}/${VISUALS.length}</b>` : ''}`;
   });
 }
 

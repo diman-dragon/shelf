@@ -224,6 +224,8 @@
 /* Dots under the cover / on the visual: where you are in the picture loop (cover, visual 1, 2, 3) */
 .pic-dots { display: flex; justify-content: center; gap: 6px; min-height: 6px; margin: -2px 0 6px; }
 .pic-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-soft); opacity: .45; transition: width .18s, opacity .18s, background .18s; }
+.pic-num { font: 600 12px/1 inherit; color: var(--muted); margin-left: 4px; align-self: center; letter-spacing: .04em; }
+.pic-dots-viz .pic-num { color: #fff; opacity: .85; }
 .pic-dots i.on { width: 16px; border-radius: 4px; background: var(--gold2); opacity: 1; }
 .pic-dots-viz { position: absolute; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom)); margin: 0; z-index: 2; pointer-events: none; }
 .pic-dots-viz i { background: #fff; }
@@ -308,13 +310,17 @@
 /* a book: the cover stays on the left, an open book lies beside it and its leaves turn over, the same way the record sits beside an album */
 .player-cover.is-book { height: min(clamp(96px, 24vh, 210px), 48vw); height: min(clamp(96px, 24dvh, 210px), 48vw); aspect-ratio: 1.45; max-width: none; }
 .is-book .cover-frame { right: auto; width: 49.3%; border-radius: 10px; }
-.fx-book { position: absolute; right: 0; top: 5%; height: 90%; aspect-ratio: 1.3; z-index: 1; perspective: 900px; }
+.fx-book { position: absolute; right: 0; top: 5%; height: 90%; aspect-ratio: 1.3; z-index: 1; perspective: 900px; container-type: size; }
 .fx-book::before { content: ""; position: absolute; inset: -3px; border-radius: 6px; background: #5a2630; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
-.fx-book .pg, .fx-book .lf { position: absolute; top: 0; width: 50%; height: 100%;
-  background: repeating-linear-gradient(180deg, transparent 0 9px, rgba(120,90,50,.22) 9px 10px), #f1e6cf; }
+.fx-book .pg, .fx-book .lf { position: absolute; top: 0; width: 50%; height: 100%; overflow: hidden; background: #f1e6cf; color: #3a2f20;
+  font: 3.5cqw/1.38 Georgia, "Times New Roman", serif; text-align: justify; hyphens: auto; padding: 9% 8% 12%; box-sizing: border-box; }
+.fx-book .pg p, .fx-book .lf p { margin: 0; }
+.fx-book h6 { margin: 0 0 6% ; font: italic 600 4.6cqw/1.1 Georgia, serif; text-align: center; letter-spacing: .02em; }
+.fx-book .pg-l p::first-letter { float: left; font: 700 11cqw/.85 Georgia, serif; padding: 1% 2% 0 0; color: #6a2a2a; }
+.fx-book .pg::after, .fx-book .lf::after { content: attr(data-n); position: absolute; left: 0; right: 0; bottom: 4%; text-align: center; font-size: 3cqw; opacity: .6; }
 .fx-book .pg-l { left: 0; border-radius: 4px 0 0 4px; box-shadow: inset -14px 0 14px -10px rgba(0,0,0,.35); }
 .fx-book .pg-r { right: 0; border-radius: 0 4px 4px 0; box-shadow: inset 14px 0 14px -10px rgba(0,0,0,.35); }
-.fx-book .lf { right: 0; border-radius: 0 4px 4px 0; transform-origin: 0 50%; box-shadow: inset 14px 0 14px -10px rgba(0,0,0,.3); animation: leaf-turn 9s ease-in-out infinite; animation-play-state: paused; }
+.fx-book .lf { right: 0; border-radius: 0 4px 4px 0; transform-origin: 0 50%; backface-visibility: hidden; box-shadow: inset 14px 0 14px -10px rgba(0,0,0,.3); animation: leaf-turn 9s ease-in-out infinite; animation-play-state: paused; }
 .is-book.playing .fx-book .lf { animation-play-state: running; }
 .fx-book .lf:nth-child(4) { animation-delay: -3s; }
 .fx-book .lf:nth-child(5) { animation-delay: -6s; }
