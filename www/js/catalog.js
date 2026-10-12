@@ -22,7 +22,7 @@ export const DL_DIR = 'AudioShelf';                       // sub-folder created 
 /* ---------------- the Internet Archive API ---------------- */
 
 // the Archive stores ISO 639-2 codes for LibriVox (language:rus, language:eng); the full names are kept as a fallback
-const LANGS = { ru: 'rus OR Russian', en: 'eng OR English' };
+const LANGS = { ru: 'rus OR Russian', uk: 'ukr OR Ukrainian', sr: 'srp OR scc OR Serbian OR hrv OR bos OR Croatian OR Bosnian', en: 'eng OR English' };
 /* Three sources, all on archive.org. Only open licences are ever listed: public domain, CC0, CC BY, CC BY-SA (no NC / ND: downloads are a paid feature). */
 const OPEN = 'licenseurl:(*creativecommons*) AND NOT licenseurl:(*-nc*) AND NOT licenseurl:(*-nd*)';
 export const SOURCES = {
@@ -129,7 +129,7 @@ const coverUrl = id => `${HOST}/services/img/${encodeURIComponent(id)}`;
 function subtitle(){ return escapeHtml(t(cat.src === 'music' ? 'Свободная музыка · Creative Commons' : cat.src === 'books' ? 'Свободные аудиокниги и стихи' : 'Свободные аудиокниги · LibriVox')); }
 
 export function renderCatalog(){
-  const chips = [['ru', t('Русские')], ['en', t('Английские')], ['all', t('Все языки')]]
+  const chips = [['ru', t('Русские')], ['uk', t('Украинские')], ['sr', t('Сербские')], ['en', t('Английские')], ['all', t('Все языки')]]
     .map(([k, name]) => `<button type="button" class="filter-chip ${cat.lang === k ? 'active' : ''}" data-clang="${k}">${name}</button>`).join('');
   const srcChips = [['librivox', t('Книги LibriVox')], ['books', t('Другие книги')], ['music', t('Музыка')]]
     .map(([k, name]) => `<button type="button" class="filter-chip ${cat.src === k ? 'active' : ''}" data-csrc="${k}">${name}</button>`).join('');
@@ -158,7 +158,7 @@ export function renderCatalog(){
   if(!cat.items.length && !cat.loading) runSearch(true); else drawList();
 }
 
-const langName = l => /^(rus?|russian)$/i.test(l) ? t('Русский') : /^(eng?|english)$/i.test(l) ? 'English' : (l || '');
+const langName = l => /^(rus?|russian)$/i.test(l) ? t('Русский') : /^(ukr?|ukrainian)$/i.test(l) ? t('Украинский') : /^(srp|scc|serbian)$/i.test(l) ? t('Сербский') : /^(hrv|croatian)$/i.test(l) ? t('Хорватский') : /^(bos|bosnian)$/i.test(l) ? t('Боснийский') : /^(eng?|english)$/i.test(l) ? 'English' : (l || '');
 
 function row(it){
   const have = state.books.find(b => b.source?.id === it.id);
@@ -291,7 +291,7 @@ async function pickFolderForDownload(){
 
 const safeName = s => String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'book';
 
-export async function saveBook(item){
+export async function saveBook(item, quiet = false){
   if(!gate('download', isPremium())) return;
   const P = plugin('ShelfFiles');
   if(!P?.downloadFile){ showToast(t('Скачивание работает в приложении на телефоне')); return; }
@@ -303,7 +303,7 @@ export async function saveBook(item){
   const job = { index: 0, total: item.files.length, bytes: 0, cancel: false, error: '' };
   downloads.set(b.id, job);
   showToast(t('Скачивание началось'));
-  drawItem(item);
+  if(!quiet) drawItem(item);
   const done = [];
   try {
     for(let i = 0; i < item.files.length; i++){
@@ -330,6 +330,14 @@ export async function saveBook(item){
     if(state.screen === 'shelf') act('updateShelf');
     if(state.screen === 'catalog') drawList();
   }
+}
+
+/** From the library menu: an online book (listened to over the internet) is downloaded into a library folder */
+export function downloadBook(bookId){
+  const b = state.books.find(x => x.id === bookId);
+  if(!b?.source || !b.online) return;
+  return saveBook({ id: b.source.id, title: b.title, author: b.author, language: b.source.language, license: b.source.license, licenseUrl: b.source.licenseUrl,
+    files: b.files.map(f => ({ ...f })), music: b.mode === 'album' }, true);
 }
 
 export function cancelDownload(bookId){

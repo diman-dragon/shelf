@@ -7,7 +7,7 @@ import { progress } from './progress.js';
 import { render, act, setScreen } from './router.js';
 import { openFolderSheet, scanDock } from './scanner.js';
 import { hydrateLibraryCovers } from './meta.js';
-import { openSourceInfo, sourceLine, downloads, cancelDownload } from './catalog.js';
+import { openSourceInfo, sourceLine, downloads, cancelDownload, downloadBook } from './catalog.js';
 import { t, getLang } from './i18n.js';
 
 let libraryDisplayLimit = 50;
@@ -49,9 +49,9 @@ const catalogTab = () => state.libraryFilterType === 'online';
 export function renderShelf(){
   if(state.libraryFilterType === 'saved') state.libraryFilterType = 'all';      // the old «Скачанные» tab is gone: downloaded books sit among books / music
   const { all, shown } = visibleBooks();
-  const viewMode = localStorage.getItem('shelfViewMode') || 'list';
-  const viewToggleIcon = viewMode === 'grid' ? 'list' : 'grid';
-  const viewToggleLabel = t(viewMode === 'grid' ? 'Список' : 'Плитка');
+  const viewMode = viewModeNow();
+  const viewToggleIcon = { list: 'grid', grid: 'shelf', spines: 'list' }[viewMode];
+  const viewToggleLabel = t({ list: 'Плитка', grid: 'Полка', spines: 'Список' }[viewMode]);
 
   let html = `<section class="screen shelf-screen library-screen">`;
   html += header(t('Библиотека'), shelfSubtitle(), `${iconBtn('filter',t('Фильтр'),'openLibraryFilter')}${iconBtn('sort',t('Сортировка'),'openSort')}${iconBtn(viewToggleIcon,viewToggleLabel,'toggleShelfView')}${iconBtn('folderPlus',t('Добавить в библиотеку'),'openAddSheet')}`);
@@ -64,11 +64,11 @@ export function renderShelf(){
     `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">${t('Музыка')}</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='online'?'active':''}" data-filter="online">${t('Онлайн')}</button>` +
   `</div>`;
-  html += `<div class="${viewMode === 'grid' ? 'shelf-grid' : 'shelf-list'}">`;
+  html += `<div class="${{ grid: 'shelf-grid', spines: 'shelf-spines', list: 'shelf-list' }[viewMode]}">`;
   if(!all.length){
     html += `<div class="shelf-empty"><div><div class="empty-art">▥</div><div>${t(catalogTab() ? 'Здесь пока ничего нет' : 'Библиотека пока пуста')}</div><div style="font-size:12px;margin-top:5px">${t(catalogTab() ? 'Книги из каталога появятся здесь.' : 'Добавьте папку с аудиокнигами или музыкой.')}</div><button id="emptyAdd">${t(catalogTab() ? 'Открыть каталог' : 'Добавить в библиотеку')}</button></div></div>`;
   } else {
-    html += shown.map(libraryBookRow).join('');
+    html += viewMode === 'spines' ? spinesHtml(shown) : shown.map(libraryBookRow).join('');
   }
   html += `</div><div id="loadMoreHost">${loadMoreHtml(all.length, shown.length)}</div>${state.scan?.active ? scanDock() : ''}</section>`;
   main.innerHTML = html;
@@ -87,8 +87,7 @@ export function renderShelf(){
   const viewBtn = document.querySelector('[data-action="toggleShelfView"]');
   if(viewBtn){
     viewBtn.onclick = () => {
-      const current = localStorage.getItem('shelfViewMode') || 'list';
-      const next = current === 'grid' ? 'list' : 'grid';
+      const next = { list: 'grid', grid: 'spines', spines: 'list' }[viewModeNow()];
       localStorage.setItem('shelfViewMode', next);
       renderShelf();
     };
@@ -98,13 +97,54 @@ export function renderShelf(){
   hydrateLibraryCovers(shown);
 }
 
-/** One delegated handler for the whole list: rows can be added/removed without re-binding anything */
+const viewModeNow = () => { let v = 'list'; try { v = localStorage.getItem('shelfViewMode') || 'list'; } catch {} return ['list', 'grid', 'spines'].includes(v) ? v : 'list'; };
+
+/* ---------------- the shelf: books stand on planks as spines ---------------- */
+const SPINE_COLORS = ['#7a2230', '#1f4563', '#c99a2e', '#5c6b2f', '#4c2b57', '#3b4750', '#8a4b22', '#2d5a52'];
+const hashOf = str => { let h = 7; for(const c of String(str)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+const spineGeom = b => {
+  const h = hashOf(b.id), hrs = durationOfBook(b) / 3600;
+  return { color: SPINE_COLORS[h % SPINE_COLORS.length], height: 128 + (h >> 3) % 44, width: Math.round(Math.max(30, Math.min(54, 30 + hrs * 1.5))) };
+};
+function spinesHtml(books){
+  const room = Math.max(240, (main?.clientWidth || window.innerWidth || 390) - 32);
+  const rows = []; let row = [], used = 0;
+  for(const b of books){
+    const g = spineGeom(b);
+    if(row.length && used + g.width + 3 > room){ rows.push(row); row = []; used = 0; }
+    row.push([b, g]); used += g.width + 3;
+  }
+  if(row.length) rows.push(row);
+  return rows.map(r => `<div class="spine-row">${r.map(([b, g]) => {
+    const prog = Math.round(progress(b) * 100);
+    return `<button type="button" class="spine-item${b.online ? ' is-online' : ''}${b.finished ? ' is-done' : ''}" data-id="${escapeHtml(b.id)}" style="--c:${g.color};height:${g.height}px;width:${g.width}px" aria-label="${escapeHtml(b.title)}">
+      ${isMusic(b) ? `<i class="sp-disc"></i>` : ''}${b.source && !b.online ? `<i class="sp-dl"></i>` : ''}<span class="sp-title">${escapeHtml(b.title)}</span><span class="sp-prog"><i style="width:${prog}%"></i></span></button>`;
+  }).join('')}</div><div class="plank"></div>`).join('');
+}
+
+/** One delegated handler for the whole list: rows can be added/removed without re-binding anything.
+ *  A tap opens the player; the ⋯ button or a long press opens the book menu (remove, delete from disk, download, source). */
 function bindShelfList(){
-  const list = document.querySelector('.shelf-list, .shelf-grid');
-  if(list) list.onclick = e => {
-    const el = e.target.closest('.library-book-item');
+  const list = document.querySelector('.shelf-list, .shelf-grid, .shelf-spines');
+  if(!list) return;
+  let timer = 0, fired = false, sx = 0, sy = 0;
+  const idOf = e => e.target.closest('[data-id]')?.dataset.id;
+  list.onclick = e => {
+    if(fired){ fired = false; return; }
+    const m = e.target.closest('[data-book-menu]');
+    if(m){ e.stopPropagation(); openBookMenu(m.closest('[data-id]').dataset.id); return; }
+    const el = e.target.closest('.library-book-item, .spine-item');
     if(el) act('openPlayer', el.dataset.id);
   };
+  list.onpointerdown = e => {
+    const id = idOf(e); if(!id || e.target.closest('[data-book-menu]')) return;
+    sx = e.clientX; sy = e.clientY; fired = false;
+    clearTimeout(timer); timer = setTimeout(() => { fired = true; try { navigator.vibrate?.(15); } catch {} openBookMenu(id); }, 550);
+  };
+  const cancel = () => clearTimeout(timer);
+  list.onpointermove = e => { if(Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8) cancel(); };
+  list.onpointerup = cancel; list.onpointercancel = cancel;
+  list.oncontextmenu = e => { const id = idOf(e); if(id){ e.preventDefault(); fired = true; openBookMenu(id); } };
 }
 
 /** What a row looks like — if this string is unchanged, the row's DOM is left alone */
@@ -125,7 +165,7 @@ function rowEl(b, sig){
  */
 export function updateShelfList(){
   if(state.screen !== 'shelf') return;
-  const list = document.querySelector('.shelf-list, .shelf-grid');
+  const list = document.querySelector('.shelf-list, .shelf-grid');           // the shelf (spines) view is simply redrawn
   const { all, shown } = visibleBooks();
   if(!list || !shown.length || list.querySelector('.shelf-empty')){ renderShelf(); return; }
 
@@ -169,6 +209,7 @@ function libraryBookRow(b, sig = rowSig(b)){
         ${b.source ? `<div class="lib-meta lib-lic">${escapeHtml(sourceLine(b))}${downloads.has(b.id) ? ` &middot; ${t('скачивается')}…` : ''}</div>` : ''}
       </div>
     </div>
+    <button type="button" class="lib-more" data-book-menu aria-label="${t('Меню книги')}">⋯</button>
     <div class="lib-progress-line"><i style="width:${prog}%"></i></div>
   </div>`;
 }
@@ -223,8 +264,9 @@ export function openBookMenu(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
   const dl = downloads.has(b.id);
-  openModal(`<h3>${escapeHtml(b.title)}</h3>${b.source ? `<div class="modal-row" id="menuSource"><span>ⓘ ${t('Источник и лицензия')}</span></div>` : ''}${dl ? `<div class="modal-row" id="menuStop"><span>⏹ ${t('Остановить скачивание')}</span></div>` : ''}<div class="modal-row" id="menuRename"><span>✏ ${t('Переименовать')}</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 ${t('Удалить…')}</span></div><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
+  openModal(`<h3>${escapeHtml(b.title)}</h3>${b.source ? `<div class="modal-row" id="menuSource"><span>ⓘ ${t('Источник и лицензия')}</span></div>` : ''}${b.source && b.online && !dl ? `<div class="modal-row" id="menuDownload"><span>⬇ ${t('Скачать')}</span></div>` : ''}${dl ? `<div class="modal-row" id="menuStop"><span>⏹ ${t('Остановить скачивание')}</span></div>` : ''}<div class="modal-row" id="menuRename"><span>✏ ${t('Переименовать')}</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 ${t('Удалить…')}</span></div><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
   $('menuSource')?.addEventListener('click', () => { closeModal(); openSourceInfo(b.id); });
+  $('menuDownload')?.addEventListener('click', () => { closeModal(); downloadBook(b.id); });
   $('menuStop')?.addEventListener('click', () => { closeModal(); cancelDownload(b.id); });
   $('menuRename').onclick = () => { closeModal(); renameBook(b.id); };
   $('menuDelete').onclick = () => { closeModal(); deleteBook(b.id); };

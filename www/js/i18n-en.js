@@ -1,5 +1,13 @@
 /* i18n-en.js — English texts. The key is the Russian text used in the code (see i18n.js). */
 export const EN = {
+  "Меню книги": "Book menu",
+  "Полка": "Shelf",
+  "Боснийский": "Bosnian",
+  "Хорватский": "Croatian",
+  "Сербский": "Serbian",
+  "Украинский": "Ukrainian",
+  "Сербские": "Serbian",
+  "Украинские": "Ukrainian",
   "У этой записи нет свободной лицензии, поэтому приложение её не показывает.": "This recording has no free licence, so the app doesn't offer it.",
   "Лицензия не подходит": "Licence not suitable",
   "Записи со свободными лицензиями, хранятся на archive.org. У каждой книги указана своя лицензия.": "Recordings under free licences, hosted on archive.org. Each book shows its own licence.",
@@ -274,9 +282,16 @@ export const EN = {
   "Ошибка инициализации: {e}": "Couldn't start: {e}",
   "Сбой старта": "Startup failed",
   "Основная навигация": "Main navigation",
-  "Кольцо": "Ring",
-  "Эквалайзер": "Equalizer",
-  "Волны": "Waves"
+  "Северное сияние": "Aurora",
+  "Неоновые ленты": "Neon ribbons",
+  "Пульс": "Pulse",
+  "Туманность": "Nebula",
+  "Кибер-сетка": "Cyber grid",
+  "Чёрная дыра": "Black hole",
+  "Плазма": "Plasma",
+  "Неоновый дождь": "Neon rain",
+  "Звезда": "Star",
+  "Светодиодная матрица": "LED matrix"
   ,"Не слушали": "Not started"
   ,"Выравнивание громкости": "Volume leveling"
   ,"Все файлы звучат одинаково громко. Считается в фоне, место не занимает": "Every file plays at a similar loudness. Analyzed in the background, takes no extra space"

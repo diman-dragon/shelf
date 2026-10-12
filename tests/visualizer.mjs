@@ -42,7 +42,7 @@ ok(viz.at(-1)===true && rafQ.length===1,'play wakes it up again');
 {
   w.document.body.insertAdjacentHTML('beforeend','<span id="visualizerName"></span>');
   const nm = () => w.document.getElementById('visualizerName').textContent;
-  const names = ['Кольцо'];                             // the visual that was opened first (ring is the default)
+  const names = [V.VISUAL_NAMES[V.VISUALS[0]]];                             // the visual that was opened first (ring is the default)
   for(let k = 1; k < V.VISUALS.length; k++){ V.stepPicture(1); runFrames(8); names.push(nm()); }
   ok(V.picturePosition() === V.VISUALS.length, 'stepped to the last visual');
   ok(names.every(Boolean) && new Set(names).size === names.length, 'each step shows a different visual: ' + names.join(', '));

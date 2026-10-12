@@ -751,3 +751,25 @@ html, body, #app, #main, .screen { touch-action: pan-y; }
 @keyframes cat-heart { 0% { opacity: 0; transform: translateY(8px) scale(.6); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px) scale(1.15); } }
 @keyframes cat-purr { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, .988); } }
 @media (prefers-reduced-motion: reduce) { .cat * { animation: none !important; } .cat .steam { opacity: .5; } }
+
+/* ---------- the library as a shelf: spines standing on planks ---------- */
+.shelf-spines { padding: 4px 0 18px; }
+.spine-row { display: flex; align-items: flex-end; gap: 3px; padding: 0 2px; min-height: 130px; }
+.plank { height: 12px; margin: 0 -6px 18px; border-radius: 2px; background: linear-gradient(180deg, #6b4a2c, #3a2616); box-shadow: 0 6px 10px rgba(0,0,0,.35); }
+.spine-item { position: relative; flex: none; padding: 0; border: 0; border-radius: 3px 3px 1px 1px; background: var(--c); color: #f3ead6; cursor: pointer;
+  display: grid; justify-items: center; align-items: center; overflow: hidden; font: inherit; box-shadow: inset 2px 0 0 rgba(255,255,255,.12), inset -3px 0 0 rgba(0,0,0,.25), 0 2px 4px rgba(0,0,0,.3); }
+.spine-item::before, .spine-item::after { content: ""; position: absolute; left: 4px; right: 4px; height: 1px; background: rgba(243,234,214,.45); }
+.spine-item::before { top: 9px; } .spine-item::after { bottom: 12px; }
+.spine-item .sp-title { writing-mode: vertical-rl; transform: rotate(180deg); max-height: calc(100% - 46px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; font-size: 13px; letter-spacing: .01em; padding: 2px 0; }
+.spine-item.is-online { outline: 1px dashed rgba(243,234,214,.55); outline-offset: -3px; }
+.spine-item.is-done { filter: saturate(.55) brightness(.85); }
+.spine-item .sp-disc { position: absolute; top: 14px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #bfe6ff; box-sizing: border-box; }
+.spine-item .sp-dl { position: absolute; bottom: 16px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold2, #e8b66d); }
+.spine-item .sp-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.35); }
+.spine-item .sp-prog i { display: block; height: 100%; background: var(--gold2, #e8b66d); }
+.spine-item:active { transform: translateY(-3px); }
+.library-book-item { position: relative; }
+.lib-more { position: absolute; right: 4px; top: 6px; z-index: 3; width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; }
+.shelf-list .lib-row-main { padding-right: 40px; }
+.shelf-grid .lib-more { right: 4px; top: 4px; background: rgba(0,0,0,.5); color: #fff; width: 28px; height: 28px; font-size: 18px; }

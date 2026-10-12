@@ -265,7 +265,7 @@ const defs = [
   ['Книга и альбом', 'Book and album', 'Книга играет главы подряд и показывает два прогресса: главы и всей книги. Альбом плавно гасит конец трека, делает паузу и включает следующий. Порядок на выбор: подряд, повтор одного, повтор всех, вперемешку. Лишний трек можно убрать из списка или удалить с диска.', 'A book plays chapters back to back and shows two progress bars. An album fades out the end of a track, pauses and starts the next. Order is yours: in sequence, repeat one, repeat all, shuffle. A track you do not want can leave the list or be deleted from the disk.'],
   ['Каталог', 'Catalog', 'Свободные аудиокниги (LibriVox и другие) и музыка под лицензиями Creative Commons. Ищите по названию и автору, слушайте онлайн бесплатно. Скачанные в Premium книги лежат в вашей папке и остаются у вас навсегда. У каждой книги указаны лицензия и источник.', 'Free audiobooks (LibriVox and others) and music under Creative Commons licences. Search by title and author and listen online for free. Books downloaded with Premium live in your folder and stay with you for good. Every book shows its licence and source.'],
   ['В дороге', 'On the road', 'Плеер в шторке и на экране блокировки, виджет, таймер сна с затуханием, шаг перемотки на ваш выбор. Звонок или уведомление останавливают звук, и воспроизведение возвращается на пять секунд назад.', 'A player in the notification shade and on the lock screen, a widget, a sleep timer that fades out, a skip step of your choice. A call or a notification pauses the sound, and playback comes back five seconds earlier.'],
-  ['Звук', 'Sound', 'Эквалайзер на десять полос, усиление до 300 %, выравнивание громкости между файлами и визуализаторы. Это Premium.', 'A ten-band equalizer, boost up to 300 %, loudness leveling between files and visualizers. This is Premium.'],
+  ['Звук', 'Sound', 'Эквалайзер на десять полос, усиление до 300 %, выравнивание громкости между файлами и десять визуализаторов. Это Premium.', 'A ten-band equalizer, boost up to 300 %, loudness leveling between files and ten visualizers. This is Premium.'],
   ['Данные', 'Data', 'Библиотека, позиции и закладки хранятся только на телефоне. Нет аккаунтов, аналитики и рекламы. Интернет нужен лишь каталогу.', 'Your library, positions and bookmarks live only on the phone. No accounts, analytics or ads. The internet is used only by the catalog.']
 ];
 const rows = [
@@ -284,7 +284,7 @@ const shot = (n, ru, en) => `<figure><img data-shot="${n}" src="shots/${n}-light
 const landing = `<section id="features"><div class="wrap"><h2>${bis('Что умеет', 'What it does')}</h2>
 <dl class="defs">${defs.map(d => `<div><dt>${bis(d[0], d[1])}</dt><dd>${bis(d[2], d[3])}</dd></div>`).join('')}</dl></div></section>
 <section><div class="wrap"><h2>${bis('Экраны', 'Screens')}</h2><div class="shots">
-${shot('shelf', 'Библиотека: книги и музыка, вкладка «Онлайн», скачанное помечено значком.', 'Library: books and music, with an Online tab; downloaded ones carry a small icon.')}
+${shot('shelf', 'Библиотека: книги и музыка, режим «Полка», вкладка «Онлайн».', 'Library: books and music, a Shelf view and an Online tab.')}
 ${shot('player', 'Плеер: два прогресса у книги, один у альбома.', 'Player: two progress bars for a book, one for an album.')}
 ${shot('catalog', 'Каталог: поиск, лицензия и источник у каждой книги.', 'Catalog: search, with the licence and source of every book.')}</div></div></section>
 <section><div class="wrap"><h2>${bis('Бесплатно и Premium', 'Free and Premium')}</h2>
