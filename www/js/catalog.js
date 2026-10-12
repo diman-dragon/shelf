@@ -21,8 +21,16 @@ export const DL_DIR = 'AudioShelf';                       // sub-folder created 
 
 /* ---------------- the Internet Archive API ---------------- */
 
-const LANGS = { ru: 'Russian', en: 'English' };
-let cat = { q: '', lang: getLang() === 'ru' ? 'ru' : 'en', page: 1, items: [], total: 0, loading: false, error: '', token: 0 };
+// the Archive stores ISO 639-2 codes for LibriVox (language:rus, language:eng); the full names are kept as a fallback
+const LANGS = { ru: 'rus OR Russian', en: 'eng OR English' };
+/* Three sources, all on archive.org. Only open licences are ever listed: public domain, CC0, CC BY, CC BY-SA (no NC / ND: downloads are a paid feature). */
+const OPEN = 'licenseurl:(*creativecommons*) AND NOT licenseurl:(*-nc*) AND NOT licenseurl:(*-nd*)';
+export const SOURCES = {
+  librivox: { q: 'collection:librivoxaudio', langs: true, music: false },                                            // volunteer recordings, public domain
+  books: { q: 'collection:audio_bookspoetry AND NOT collection:librivoxaudio AND ' + OPEN, langs: true, music: false },   // other audiobooks and poetry with an open licence
+  music: { q: 'collection:netlabels AND ' + OPEN, langs: false, music: true }                                         // netlabels: music released under Creative Commons
+};
+let cat = { src: 'librivox', q: '', lang: getLang() === 'ru' ? 'ru' : 'en', page: 1, items: [], total: 0, loading: false, error: '', token: 0 };
 
 async function getJson(url, ms = 15000){
   const ctl = new AbortController();
@@ -38,9 +46,10 @@ const one = v => Array.isArray(v) ? String(v[0] || '') : String(v || '');
 const clean = s => String(s || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 const quote = s => '"' + String(s).replace(/["\\]/g, ' ') + '"';
 
-export function searchUrl({ q, lang, page }){
-  const parts = ['collection:librivoxaudio', 'mediatype:audio'];
-  if(LANGS[lang]) parts.push(`language:(${LANGS[lang]})`);
+export function searchUrl({ q, lang, page, src }){
+  const S = SOURCES[src] || SOURCES.librivox;
+  const parts = [S.q, 'mediatype:audio'];
+  if(S.langs && LANGS[lang]) parts.push(`language:(${LANGS[lang]})`);
   const words = String(q || '').trim();
   if(words) parts.push(`(title:(${quote(words)}) OR creator:(${quote(words)}))`);
   const fl = ['identifier', 'title', 'creator', 'language', 'downloads'].map(f => 'fl%5B%5D=' + f).join('&');
@@ -67,27 +76,28 @@ export function parseLength(v){
 }
 
 /** Which licence the item carries, in words a person understands. LibriVox recordings are public domain. */
-export function licenseOf(meta){
+export function licenseOf(meta, strict = false){
   const url = one(meta?.licenseurl).trim();
   const m = url.match(/creativecommons\.org\/(licenses|publicdomain)\/([\w-]+)\/?([\d.]*)/i);
   if(m){
     if(m[1].toLowerCase() === 'publicdomain') return { name: m[2].toLowerCase() === 'zero' ? 'CC0 (общественное достояние)' : 'Общественное достояние', url };
     return { name: ('CC ' + m[2].toUpperCase() + ' ' + m[3]).trim(), url };
   }
+  if(strict) return null;                                  // outside LibriVox an item without a clear open licence is not offered
   return { name: 'Общественное достояние (LibriVox)', url: url || 'https://librivox.org/pages/public-domain/' };
 }
 
 /** The chapter files of an item: ONE set (the smallest speech-quality MP3), in reading order */
-export function pickFiles(id, files){
+export function pickFiles(id, files, music = false){
   const mp3 = (files || []).filter(f => f && f.name && /mp3/i.test(f.format || '') && !/zip|m3u|metadata/i.test(f.format || '') && /\.mp3$/i.test(f.name));
-  const order = ['64Kbps MP3', '128Kbps MP3', 'VBR MP3', 'MP3'];
+  const order = music ? ['VBR MP3', '128Kbps MP3', '64Kbps MP3', 'MP3'] : ['64Kbps MP3', '128Kbps MP3', 'VBR MP3', 'MP3'];
   let set = [];
   for(const fmtName of order){ set = mp3.filter(f => (f.format || '').toLowerCase() === fmtName.toLowerCase()); if(set.length) break; }
   if(!set.length) set = mp3;
   const withTrack = set.every(f => Number(f.track) > 0);
   set = [...set].sort(withTrack ? (a, b) => Number(a.track) - Number(b.track) : (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
   return set.map((f, i) => ({
-    name: clean(f.title) || t('Глава') + ' ' + (i + 1),
+    name: clean(f.title) || t(music ? 'Трек' : 'Глава') + ' ' + (i + 1),
     fileName: f.name,
     uri: `${HOST}/download/${encodeURIComponent(id)}/${f.name.split('/').map(encodeURIComponent).join('/')}`,
     duration: parseLength(f.length),
@@ -95,14 +105,18 @@ export function pickFiles(id, files){
   }));
 }
 
-export async function loadItem(id){
+const OPEN_NAME = /^(CC BY(-SA)? |CC0|Общественное)/;
+
+export async function loadItem(id, src = 'librivox'){
   const j = await getJson(`${HOST}/metadata/${encodeURIComponent(id)}`);
   const m = j.metadata || {};
-  const files = pickFiles(id, j.files);
+  const S = SOURCES[src] || SOURCES.librivox;
+  const files = pickFiles(id, j.files, S.music);
   if(!files.length) throw new Error('no audio');
-  const lic = licenseOf(m);
+  const lic = licenseOf(m, src !== 'librivox');
+  if(!lic || !OPEN_NAME.test(lic.name)) throw new Error('license');
   return {
-    id, title: clean(one(m.title)) || id, author: clean(one(m.creator)), language: one(m.language),
+    id, src, music: S.music, title: clean(one(m.title)) || id, author: clean(one(m.creator)), language: one(m.language),
     description: clean(one(m.description)).slice(0, 700), license: lic.name, licenseUrl: lic.url,
     files, duration: files.reduce((a, f) => a + f.duration, 0), size: files.reduce((a, f) => a + f.size, 0)
   };
@@ -112,16 +126,24 @@ const coverUrl = id => `${HOST}/services/img/${encodeURIComponent(id)}`;
 
 /* ---------------- the screen ---------------- */
 
-function subtitle(){ return escapeHtml(t('Свободные аудиокниги · LibriVox')); }
+function subtitle(){ return escapeHtml(t(cat.src === 'music' ? 'Свободная музыка · Creative Commons' : cat.src === 'books' ? 'Свободные аудиокниги и стихи' : 'Свободные аудиокниги · LibriVox')); }
 
 export function renderCatalog(){
   const chips = [['ru', t('Русские')], ['en', t('Английские')], ['all', t('Все языки')]]
     .map(([k, name]) => `<button type="button" class="filter-chip ${cat.lang === k ? 'active' : ''}" data-clang="${k}">${name}</button>`).join('');
+  const srcChips = [['librivox', t('Книги LibriVox')], ['books', t('Другие книги')], ['music', t('Музыка')]]
+    .map(([k, name]) => `<button type="button" class="filter-chip ${cat.src === k ? 'active' : ''}" data-csrc="${k}">${name}</button>`).join('');
   main.innerHTML = `<section class="screen catalog-screen">${header(t('Каталог'), subtitle(), iconBtn('refresh', t('Обновить'), 'catalogReload'))}
     <form class="cat-search" id="catForm"><input class="field" id="catQ" type="search" enterkeyhint="search" autocomplete="off" placeholder="${t('Название или автор')}" value="${escapeHtml(cat.q)}"><button class="primary" type="submit">${t('Найти')}</button></form>
-    <div class="library-filters-bar">${chips}</div>
+    <div class="library-filters-bar">${srcChips}</div>
+    ${SOURCES[cat.src].langs ? `<div class="library-filters-bar">${chips}</div>` : ''}
     <div id="catList"></div></section>`;
   $('catForm').onsubmit = e => { e.preventDefault(); cat.q = $('catQ').value.trim(); runSearch(true); };
+  document.querySelectorAll('[data-csrc]').forEach(b => b.onclick = () => {
+    if(cat.src === b.dataset.csrc) return;
+    cat.src = b.dataset.csrc; cat.items = [];
+    renderCatalog();
+  });
   document.querySelectorAll('[data-clang]').forEach(b => b.onclick = () => {
     cat.lang = b.dataset.clang;
     document.querySelectorAll('[data-clang]').forEach(x => x.classList.toggle('active', x === b));
@@ -136,7 +158,7 @@ export function renderCatalog(){
   if(!cat.items.length && !cat.loading) runSearch(true); else drawList();
 }
 
-const langName = l => l === 'Russian' ? t('Русский') : l === 'English' ? 'English' : (l || '');
+const langName = l => /^(rus?|russian)$/i.test(l) ? t('Русский') : /^(eng?|english)$/i.test(l) ? 'English' : (l || '');
 
 function row(it){
   const have = state.books.find(b => b.source?.id === it.id);
@@ -156,7 +178,7 @@ function drawList(){
   else if(cat.error) h += `<div class="cat-note">${escapeHtml(cat.error)}<br><button class="secondary" id="catRetry">${t('Повторить')}</button></div>`;
   else if(!cat.items.length) h += `<div class="cat-note">${t('Ничего не найдено')}</div>`;
   else if(cat.items.length < cat.total) h += `<div class="cat-note"><button class="secondary" id="catMore">${t('Показать ещё')}</button></div>`;
-  h += `<p class="cat-credit">${t('Записи добровольцев LibriVox, находятся в общественном достоянии. Хранятся на archive.org.')}</p>`;
+  h += `<p class="cat-credit">${t(cat.src === 'music' ? 'Музыка выпущена авторами под свободными лицензиями Creative Commons. Хранится на archive.org.' : cat.src === 'books' ? 'Записи со свободными лицензиями, хранятся на archive.org. У каждой книги указана своя лицензия.' : 'Записи добровольцев LibriVox, находятся в общественном достоянии. Хранятся на archive.org.')}</p>`;
   host.innerHTML = h;
 }
 
@@ -190,8 +212,9 @@ const durText = sec => sec > 0 ? fmt(sec) : '—';
 export async function openCatalogItem(id){
   openModal(`<h3>${t('Загрузка…')}</h3><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
   let item;
-  try { item = await loadItem(id); }
-  catch { openModal(`<h3>${t('Не удалось загрузить книгу')}</h3><p class="cat-note">${t('Нет связи с каталогом. Проверьте интернет.')}</p><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`); return; }
+  try { item = await loadItem(id, cat.src); }
+  catch(e) {
+    if(String(e?.message) === 'license'){ openModal(`<h3>${t('Лицензия не подходит')}</h3><p class="cat-note">${t('У этой записи нет свободной лицензии, поэтому приложение её не показывает.')}</p><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`); return; } openModal(`<h3>${t('Не удалось загрузить книгу')}</h3><p class="cat-note">${t('Нет связи с каталогом. Проверьте интернет.')}</p><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`); return; }
   drawItem(item);
 }
 
@@ -202,7 +225,7 @@ function drawItem(item){
   const mb = item.size ? ` &middot; ${Math.max(1, Math.round(item.size / 1048576))} ${t('МБ')}` : '';
   openModal(`<div class="cat-card"><div class="cat-cover">${bookCover({ title: item.title, cover: coverUrl(item.id) })}</div>
     <div class="cat-head"><h3>${escapeHtml(item.title)}</h3><div class="lib-author">${escapeHtml(item.author || t('Автор не указан'))}</div>
-    <div class="lib-meta">${item.files.length} ${t('глав')} &middot; ${durText(item.duration)}${mb}</div></div></div>
+    <div class="lib-meta">${item.files.length} ${t(item.music ? 'треков' : 'глав')} &middot; ${durText(item.duration)}${mb}</div></div></div>
     ${item.description ? `<p class="cat-desc">${escapeHtml(item.description)}</p>` : ''}
     <div class="cat-lic"><b>${t('Лицензия')}:</b> ${escapeHtml(t(item.license))}<br><a href="${escapeHtml(item.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.licenseUrl)}</a><br>
     <b>${t('Источник')}:</b> <a href="${HOST}/details/${encodeURIComponent(item.id)}" target="_blank" rel="noopener noreferrer">archive.org/details/${escapeHtml(item.id)}</a></div>
@@ -222,7 +245,7 @@ export async function ensureBook(item){
   if(b) return b;
   b = {
     id: uid(), title: item.title, author: item.author, cover: '', coverChecked: true, files: item.files.map(f => ({ ...f })),
-    srcPath: 'archive:' + item.id, added: Date.now(), pos: { i: 0, t: 0 }, marks: [], online: true,
+    srcPath: 'archive:' + item.id, added: Date.now(), ...(item.music ? { mode: 'album' } : {}), pos: { i: 0, t: 0 }, marks: [], online: true,
     source: { kind: 'archive', id: item.id, url: `${HOST}/details/${encodeURIComponent(item.id)}`, license: item.license, licenseUrl: item.licenseUrl, language: item.language }
   };
   state.books.unshift(b);

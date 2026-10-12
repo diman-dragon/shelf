@@ -128,14 +128,19 @@ nav a{text-decoration:none;color:var(--mute)}nav a:hover,nav a[aria-current]{col
 .tome .cover{position:absolute;inset:0;z-index:2;background:#7a2230;border-radius:3px 6px 6px 3px;box-shadow:0 6px 16px rgba(0,0,0,.4),inset 5px 0 0 rgba(0,0,0,.2);color:#f0e9d8;display:grid;align-content:center;justify-items:center;gap:10px;padding:18px;text-align:center;font:600 clamp(20px,3vw,28px)/1.08 var(--serif)}
 .tome .cover::before{content:"";position:absolute;inset:12px 12px 12px 18px;border:1px solid rgba(240,233,216,.5)}
 .tome .cover small{font:italic 400 14px/1.2 var(--serif);position:relative;opacity:.9}.tome .cover b{position:relative;font-weight:600}
-.sheets{position:absolute;inset:0;z-index:1;opacity:0;transition:opacity .8s}
-.playing .sheets{opacity:1}
-.sheets i{position:absolute;left:18%;top:20%;width:64%;height:58%;border-radius:2px;background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(90,70,40,.22) 9px 10px),#f2ead6;border:1px solid rgba(90,70,40,.35);box-shadow:0 3px 8px rgba(0,0,0,.3);opacity:0;animation:leaf 12s ease-in-out infinite;animation-play-state:paused}
-.playing .sheets i{animation-play-state:running}
-.sheets i:nth-child(1){--dx:46%;--r:9deg}.sheets i:nth-child(2){--dx:-46%;--r:-8deg;animation-delay:-9s}.sheets i:nth-child(3){--dx:40%;--r:14deg;animation-delay:-6s}.sheets i:nth-child(4){--dx:-40%;--r:-13deg;animation-delay:-3s}
-@keyframes leaf{0%{opacity:0;transform:none}10%{opacity:1}60%{opacity:1;transform:translate(var(--dx),6%) rotate(var(--r))}100%{opacity:0;transform:translate(calc(var(--dx)*1.25),12%) rotate(calc(var(--r)*1.3))}}
+.tome{margin-right:min(135px,22vw)}
+.openbook{position:absolute;left:45%;top:17%;height:66%;aspect-ratio:1.3;z-index:1;perspective:900px;transform:translateX(-34%);transition:transform 1.4s cubic-bezier(.3,.7,.2,1)}
+.playing .openbook{transform:none}
+.openbook::before{content:"";position:absolute;inset:-3px;border-radius:6px;background:#5a2630;box-shadow:0 6px 16px rgba(0,0,0,.4)}
+.openbook .pg,.openbook .lf{position:absolute;top:0;width:50%;height:100%;background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(90,70,40,.22) 9px 10px),#f2ead6}
+.openbook .pg-l{left:0;border-radius:3px 0 0 3px;box-shadow:inset -14px 0 14px -10px rgba(0,0,0,.35)}
+.openbook .pg-r{right:0;border-radius:0 3px 3px 0;box-shadow:inset 14px 0 14px -10px rgba(0,0,0,.35)}
+.openbook .lf{right:0;border-radius:0 3px 3px 0;transform-origin:0 50%;box-shadow:inset 14px 0 14px -10px rgba(0,0,0,.3);animation:turn 9s ease-in-out infinite;animation-play-state:paused}
+.playing .openbook .lf{animation-play-state:running}
+.openbook .lf:nth-child(4){animation-delay:-3s}.openbook .lf:nth-child(5){animation-delay:-6s}
+@keyframes turn{0%,52%{transform:rotateY(0)}72%,100%{transform:rotateY(-178deg)}}
 @media(max-width:700px){.shelf .books{height:250px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.shelf .books::-webkit-scrollbar{display:none}.spine.hide-s{display:none}.stage{gap:22px;margin:0 8px}}
-@media(prefers-reduced-motion:reduce){.record,.sheets i{animation:none!important}.vinyl,.arm g,.spine{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.record,.openbook .lf{animation:none!important}.vinyl,.openbook,.arm g,.spine{transition:none!important}}
 
 /* ---- the text ---- */
 section{padding:72px 0 0}
@@ -245,7 +250,7 @@ const left = SPINES.slice(0, 6), right = SPINES.slice(7);
 const stage = `<div class="stage" id="stage" role="button" tabindex="0" aria-label="${esc('Пластинка и книга: нажмите, чтобы остановить или запустить')}">
 <div class="album"><div class="sleeve"><span>${bis('Вечерний альбом', 'Evening album')}</span></div><div class="vinyl"><div class="record"><i></i></div></div>
 <svg class="arm" viewBox="0 0 140 100" aria-hidden="true"><g><circle cx="128" cy="10" r="6.5"/><path d="M128 10 L108 24"/><rect x="102" y="21" width="9" height="5.5" rx="1.5" transform="rotate(35 106 24)"/></g></svg></div>
-<div class="tome"><div class="sheets" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="cover"><b>${bis('Идиот', 'The Idiot')}</b><small>${bis('Ф. Достоевский', 'F. Dostoyevsky')}</small></div></div></div>`;
+<div class="tome"><div class="openbook" aria-hidden="true"><i class="pg pg-l"></i><i class="pg pg-r"></i><i class="lf"></i><i class="lf"></i><i class="lf"></i></div><div class="cover"><b>${bis('Идиот', 'The Idiot')}</b><small>${bis('Ф. Достоевский', 'F. Dostoyevsky')}</small></div></div></div>`;
 const play = cfg.playUrl
   ? `<a class="btn" href="${esc(cfg.playUrl)}" rel="noopener">${bis('Скачать в Google Play', 'Get it on Google Play')}</a>`
   : `<span class="btn off">${bis('Скоро в Google Play', 'Coming soon to Google Play')}</span>`;
@@ -258,7 +263,7 @@ const hero = `<div class="intro"><div class="wrap"><h1>${bis('Аудиокниг
 const defs = [
   ['Помнит место', 'Remembers the place', 'Позиция сохраняется с точностью до секунды, даже если телефон перезагрузился. У каждой книги свои скорость, эквалайзер и громкость. Закладки ставятся в любом месте.', 'The position is saved to the second, even after a restart. Every book keeps its own speed, equalizer and volume. Bookmarks go anywhere.'],
   ['Книга и альбом', 'Book and album', 'Книга играет главы подряд и показывает два прогресса: главы и всей книги. Альбом плавно гасит конец трека, делает паузу и включает следующий. Порядок на выбор: подряд, повтор одного, повтор всех, вперемешку. Лишний трек можно убрать из списка или удалить с диска.', 'A book plays chapters back to back and shows two progress bars. An album fades out the end of a track, pauses and starts the next. Order is yours: in sequence, repeat one, repeat all, shuffle. A track you do not want can leave the list or be deleted from the disk.'],
-  ['Каталог', 'Catalog', 'Книги в общественном достоянии из коллекции LibriVox. Ищите по названию и автору, слушайте онлайн бесплатно. Скачанные в Premium книги лежат в вашей папке и остаются у вас навсегда. У каждой книги указаны лицензия и источник.', 'Public-domain books from the LibriVox collection. Search by title and author and listen online for free. Books downloaded with Premium live in your folder and stay with you for good. Every book shows its licence and source.'],
+  ['Каталог', 'Catalog', 'Свободные аудиокниги (LibriVox и другие) и музыка под лицензиями Creative Commons. Ищите по названию и автору, слушайте онлайн бесплатно. Скачанные в Premium книги лежат в вашей папке и остаются у вас навсегда. У каждой книги указаны лицензия и источник.', 'Free audiobooks (LibriVox and others) and music under Creative Commons licences. Search by title and author and listen online for free. Books downloaded with Premium live in your folder and stay with you for good. Every book shows its licence and source.'],
   ['В дороге', 'On the road', 'Плеер в шторке и на экране блокировки, виджет, таймер сна с затуханием, шаг перемотки на ваш выбор. Звонок или уведомление останавливают звук, и воспроизведение возвращается на пять секунд назад.', 'A player in the notification shade and on the lock screen, a widget, a sleep timer that fades out, a skip step of your choice. A call or a notification pauses the sound, and playback comes back five seconds earlier.'],
   ['Звук', 'Sound', 'Эквалайзер на десять полос, усиление до 300 %, выравнивание громкости между файлами и визуализаторы. Это Premium.', 'A ten-band equalizer, boost up to 300 %, loudness leveling between files and visualizers. This is Premium.'],
   ['Данные', 'Data', 'Библиотека, позиции и закладки хранятся только на телефоне. Нет аккаунтов, аналитики и рекламы. Интернет нужен лишь каталогу.', 'Your library, positions and bookmarks live only on the phone. No accounts, analytics or ads. The internet is used only by the catalog.']
@@ -279,7 +284,7 @@ const shot = (n, ru, en) => `<figure><img data-shot="${n}" src="shots/${n}-light
 const landing = `<section id="features"><div class="wrap"><h2>${bis('Что умеет', 'What it does')}</h2>
 <dl class="defs">${defs.map(d => `<div><dt>${bis(d[0], d[1])}</dt><dd>${bis(d[2], d[3])}</dd></div>`).join('')}</dl></div></section>
 <section><div class="wrap"><h2>${bis('Экраны', 'Screens')}</h2><div class="shots">
-${shot('shelf', 'Библиотека: книги и музыка, вкладки «Скачанные» и «Онлайн».', 'Library: books and music, with Downloaded and Online tabs.')}
+${shot('shelf', 'Библиотека: книги и музыка, вкладка «Онлайн», скачанное помечено значком.', 'Library: books and music, with an Online tab; downloaded ones carry a small icon.')}
 ${shot('player', 'Плеер: два прогресса у книги, один у альбома.', 'Player: two progress bars for a book, one for an album.')}
 ${shot('catalog', 'Каталог: поиск, лицензия и источник у каждой книги.', 'Catalog: search, with the licence and source of every book.')}</div></div></section>
 <section><div class="wrap"><h2>${bis('Бесплатно и Premium', 'Free and Premium')}</h2>
@@ -305,7 +310,7 @@ legal('terms.html', 'store/TERMS.md', { ru: 'Условия использова
 // ---- support ----
 const faq = [
   ['Где взять бесплатные книги?', 'Where do I find free books?', 'Откройте вкладку «Каталог», найдите книгу и нажмите «Слушать онлайн». Это бесплатно. Записи принадлежат общественному достоянию (LibriVox), лицензия показана у каждой книги.', 'Open the Catalog tab, find a book and tap Listen online. It is free. The recordings are in the public domain (LibriVox) and the licence is shown on every book.'],
-  ['Что будет со скачанными книгами, если пробный период закончился?', 'What happens to downloaded books after the free trial?', 'Ничего: они остаются в вашей папке и в библиотеке (вкладка «Скачанные») и продолжают играть. Приложение их не удаляет и не прячет. Без Премиума недоступно только новое скачивание.', 'Nothing: they stay in your folder and in the library (Downloaded tab) and keep playing. The app never deletes or hides them. Without Premium only new downloads are unavailable.'],
+  ['Что будет со скачанными книгами, если пробный период закончился?', 'What happens to downloaded books after the free trial?', 'Ничего: они остаются в вашей папке и в библиотеке (среди книг или музыки, со значком) и продолжают играть. Приложение их не удаляет и не прячет. Без Премиума недоступно только новое скачивание.', 'Nothing: they stay in your folder and in the library (among books or music, marked with an icon) and keep playing. The app never deletes or hides them. Without Premium only new downloads are unavailable.'],
   ['Не скачивается книга', 'A book will not download', 'Скачивание нужно Премиуму и права записи в папку. Если приложение просит, добавьте папку в библиотеку заново (папки, добавленные в старых версиях, не дают записи). Нужны интернет и свободное место.', 'Downloading needs Premium and write access to the folder. If asked, add the folder to the library again (folders added by old versions do not allow writing). You also need internet and free space.'],
   ['Как добавить книги?', 'How do I add books?', 'Откройте «Библиотека» и выберите папку с аудиокнигами. Каждая подпапка станет книгой, главы пойдут по порядку.', 'Open Library and pick the folder with your audiobooks. Each subfolder becomes a book and its files become chapters, in order.'],
   ['Куда пропала позиция или книга?', 'My position or book is missing', 'Данные хранятся только на устройстве. При удалении приложения или очистке данных они удаляются. Если вы переместили папку, выберите её заново.', 'Data lives only on your device and is erased when you uninstall or clear the app data. If you moved the folder, pick it again.'],

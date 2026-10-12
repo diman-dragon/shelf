@@ -42,14 +42,14 @@ function syncPlaying(){
   return state.playing;
 }
 
-/** Animated layer behind the cover: an album gets a record with a tonearm, a book gets pages that slowly slide out */
+/** Animated layer behind the cover: an album gets a record with a tonearm, a book gets an open book beside it whose leaves turn over */
 function coverFx(b){
   if(isMusic(b)){
     return '<div class="fx-vinyl" aria-hidden="true"><div class="record"><i class="label"></i></div></div>' +
       '<svg class="fx-arm" viewBox="0 0 140 100" aria-hidden="true"><g class="arm">' +
       '<circle cx="128" cy="10" r="6.5" class="arm-base"/><path d="M128 10 L108 24" class="arm-bar"/><rect x="102" y="21" width="9" height="5.5" rx="1.5" transform="rotate(35 106 24)" class="arm-head"/></g></svg>';
   }
-  return '<div class="fx-sheets" aria-hidden="true"><i></i><i></i><i></i><i></i></div>';
+  return '<div class="fx-book" aria-hidden="true"><i class="pg pg-l"></i><i class="pg pg-r"></i><i class="lf"></i><i class="lf"></i><i class="lf"></i></div>';
 }
 
 /** Seek within whole book (seconds from the very start of the book) */
@@ -571,7 +571,7 @@ function toggleMode(){
   const pc = $('playerCover');                    // swap the animation: record <-> pages (the cover itself stays)
   if(pc){
     pc.classList.toggle('is-album', album); pc.classList.toggle('is-book', !album);
-    pc.querySelectorAll('.fx-vinyl,.fx-arm,.fx-sheets').forEach(n => n.remove());
+    pc.querySelectorAll('.fx-vinyl,.fx-arm,.fx-book').forEach(n => n.remove());
     pc.insertAdjacentHTML('afterbegin', coverFx(b));
   }
   const ic = $('modeIcon'), lb = $('modeLabel');

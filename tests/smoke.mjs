@@ -165,7 +165,7 @@ calls.length = 0;
 const lib = await import(pathToFileURL(WWW + '/js/library.js').href);
 lib.openBookMenu('b2');
 w.document.getElementById('menuDelete').click();
-w.document.getElementById('bookDeleteConfirm').click();
+w.document.getElementById('bookHide').click();
 await new Promise(r => setTimeout(r, 120));
 ok(calls.some(c=>c[0]==='stop'), 'deleteBook stops the native player');
 ok(state.screen === 'shelf' && state.current === null, 'screen -> shelf after delete from player');
@@ -269,7 +269,7 @@ console.log('== catalog: search, licence, listen online, download (Premium), tab
   const Pm = await import(pathToFileURL(WWW + '/js/premium.js').href);
   const lib = await import(pathToFileURL(WWW + '/js/library.js').href);
   ok(/advancedsearch\.php/.test(C.searchUrl({ q: 'Булгаков', lang: 'ru', page: 2 })) && /collection%3Alibrivoxaudio/.test(C.searchUrl({ q: '', lang: 'en', page: 1 })), 'search URL: LibriVox collection, paged');
-  ok(!/Russian/.test(decodeURIComponent(C.searchUrl({ q: '', lang: 'all', page: 1 }))) && /language%3A\(Russian\)/.test(C.searchUrl({ q: '', lang: 'ru', page: 1 })), 'search URL: language filter only when chosen');
+  ok(!/Russian/.test(decodeURIComponent(C.searchUrl({ q: '', lang: 'all', page: 1 }))) && /language%3A\(rus%20OR%20Russian\)/.test(C.searchUrl({ q: '', lang: 'ru', page: 1 })), 'search URL: language filter only when chosen');
   const parsed = C.parseSearch({ response: { numFound: 2, docs: [{ identifier: 'a1', title: 'T<b>x</b>', creator: ['Автор'], language: 'Russian' }, { title: 'no id' }] } });
   ok(parsed.total === 2 && parsed.items.length === 1 && parsed.items[0].title === 'T x' && parsed.items[0].author === 'Автор', 'search result parsed, items without id dropped');
   ok(C.parseLength('1234.5') === 1234.5 && C.parseLength('20:34') === 1234 && C.parseLength('1:02:03') === 3723 && C.parseLength('') === 0, 'length: seconds, mm:ss, h:mm:ss');
@@ -279,6 +279,12 @@ console.log('== catalog: search, licence, listen online, download (Premium), tab
     { name: 'b_01_128kb.mp3', format: '128Kbps MP3', length: '30', size: '900' }, { name: 'all.zip', format: '64Kbps MP3 ZIP' }, { name: 'x.m4b', format: 'LibriVox Apple Audiobook' }]);
   ok(picked.length === 2 && picked[0].name === 'Раз' && picked[1].duration === 60 && /^https:\/\/archive\.org\/download\/id1\/b_02_64kb\.mp3$/.test(picked[1].uri), 'one set of chapters (64 kbps), in order, https links');
 
+  const mu = decodeURIComponent(C.searchUrl({ q: '', lang: 'ru', page: 1, src: 'music' }));
+  ok(/collection:netlabels/.test(mu) && /NOT licenseurl:\(\*-nc\*\)/.test(mu) && !/language:/.test(mu), 'music source: netlabels, no NC/ND, no language filter');
+  ok(/audio_bookspoetry/.test(decodeURIComponent(C.searchUrl({ q: '', lang: 'ru', page: 1, src: 'books' }))) && /language:\(rus OR Russian\)/.test(decodeURIComponent(C.searchUrl({ q: '', lang: 'ru', page: 1, src: 'books' }))), 'other books source: its own collection, language filter');
+  ok(C.licenseOf({}, true) === null && C.licenseOf({ licenseurl: 'https://creativecommons.org/licenses/by/4.0/' }, true).name === 'CC BY 4.0', 'outside LibriVox a missing licence is refused');
+  const mp = C.pickFiles('alb', [{ name: 'a.mp3', format: '128Kbps MP3', length: '200', track: '1' }, { name: 'a_vbr.mp3', format: 'VBR MP3', length: '200', track: '1' }], true);
+  ok(mp.length === 1 && mp[0].fileName === 'a_vbr.mp3' && mp[0].name === 'Трек 1', 'music prefers VBR MP3 and names tracks');
   const item = { id: 'rus1', title: 'Тест', author: 'Кто-то', language: 'Russian', license: 'Общественное достояние', licenseUrl: 'https://librivox.org/pages/public-domain/', files: picked.map(f => ({ ...f })), duration: 90, size: 1500 };
   const before = state.books.length;
   const book = await C.ensureBook(item);
@@ -287,8 +293,8 @@ console.log('== catalog: search, licence, listen online, download (Premium), tab
   ok(/Онлайн · Общественное достояние/.test(C.sourceLine(book)), 'library row shows where it is from and the licence: ' + C.sourceLine(book));
   state.libraryFilterType = 'online'; setScreen('shelf'); await new Promise(r => setTimeout(r, 40));
   ok([...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Онлайн» lists it');
-  state.libraryFilterType = 'saved'; lib.renderShelf();
-  ok(![...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Скачанные» does not list a streamed book');
+  state.libraryFilterType = 'book'; lib.renderShelf();
+  ok(![...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Книги» does not list a streamed book');
 
   // download: Premium, into the chosen folder, files become content:// and the book is "downloaded"
   Pm._reset();                                                                // a fresh trial: everything open
@@ -297,8 +303,13 @@ console.log('== catalog: search, licence, listen online, download (Premium), tab
   const dl = calls.filter(c => c[0] === 'download');
   ok(dl.length === 2 && dl[0][1] === 'AudioShelf/Тест' && /^001 - Раз\.mp3$/.test(dl[0][2]) && dl[0][3].startsWith('https://archive.org/'), 'download: chapter by chapter into AudioShelf/<title>: ' + JSON.stringify(dl.map(d => d[2])));
   ok(book.online === false && book.downloadedAt > 0 && book.files.every(f => f.uri.startsWith('content://')) && book.srcPath === state.folders[0].id + ':AudioShelf/Тест', 'after the download the book points at the local files and a rescan will update it, not copy it');
-  state.libraryFilterType = 'saved'; lib.renderShelf();
-  ok([...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Скачанные» lists it');
+  state.libraryFilterType = 'book'; lib.renderShelf();
+  const dlRow = [...w.document.querySelectorAll('.library-book-item')].find(e => e.dataset.id === book.id);
+  ok(!!dlRow && !!dlRow.querySelector('.dl-badge'), 'tab «Книги» lists the downloaded book with a small download icon');
+  state.libraryFilterType = 'online'; lib.renderShelf();
+  ok(![...w.document.querySelectorAll('.library-book-item')].some(e => e.dataset.id === book.id), 'tab «Онлайн» no longer lists it once it is downloaded');
+  ok(w.document.querySelectorAll('[data-filter]').length === 4, 'the library has four tabs: all, books, music, online');
+  state.libraryFilterType = 'book'; lib.renderShelf();
   ok(/Скачано/.test(w.document.querySelector('.lib-lic')?.textContent || ''), 'row says «Скачано · licence»');
 
   // after the trial: nothing is hidden or deleted, only NEW downloads need Premium

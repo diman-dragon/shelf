@@ -1,5 +1,5 @@
 /* library.js — Library screen, Filtering, Sorting, Book management */
-import { state, icon, escapeHtml, durationOfBook, plural, isMusic, partsCount, $, main } from './state.js';
+import { state, icon, escapeHtml, durationOfBook, plural, isMusic, partsCount, $, main, plugin } from './state.js';
 import { saveBooks } from './storage.js';
 import { showToast, closeModal, openModal, iconBtn, bookCover, kindBadge, fmt } from './ui-utils.js';
 import { header } from './header.js';
@@ -44,9 +44,10 @@ function bindLoadMore(){
   if(btn) btn.onclick = () => { libraryDisplayLimit += 50; renderShelf(); };
 }
 
-const catalogTab = () => state.libraryFilterType === 'saved' || state.libraryFilterType === 'online';
+const catalogTab = () => state.libraryFilterType === 'online';
 
 export function renderShelf(){
+  if(state.libraryFilterType === 'saved') state.libraryFilterType = 'all';      // the old «Скачанные» tab is gone: downloaded books sit among books / music
   const { all, shown } = visibleBooks();
   const viewMode = localStorage.getItem('shelfViewMode') || 'list';
   const viewToggleIcon = viewMode === 'grid' ? 'list' : 'grid';
@@ -61,7 +62,6 @@ export function renderShelf(){
     `<button type="button" class="filter-chip ${state.libraryFilterType==='all'?'active':''}" data-filter="all">${t('Все')} (${state.books.length})</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='book'?'active':''}" data-filter="book">${t('Книги')}</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='album'?'active':''}" data-filter="album">${t('Музыка')}</button>` +
-    `<button type="button" class="filter-chip ${state.libraryFilterType==='saved'?'active':''}" data-filter="saved">${t('Скачанные')}</button>` +
     `<button type="button" class="filter-chip ${state.libraryFilterType==='online'?'active':''}" data-filter="online">${t('Онлайн')}</button>` +
   `</div>`;
   html += `<div class="${viewMode === 'grid' ? 'shelf-grid' : 'shelf-list'}">`;
@@ -161,7 +161,7 @@ function libraryBookRow(b, sig = rowSig(b)){
 
   return `<div class="library-book-item" data-id="${escapeHtml(b.id)}" data-sig="${escapeHtml(sig)}">
     <div class="lib-row-main">
-      <div class="lib-thumb">${bookCover(b)}${kindBadge(b)}</div>
+      <div class="lib-thumb">${bookCover(b)}${kindBadge(b)}${b.source && !b.online ? `<span class="dl-badge" aria-label="${t('Скачано')}">${icon('download', 'icon dl-ico')}</span>` : ''}</div>
       <div class="lib-info">
         <div class="lib-title">${escapeHtml(b.title)}</div>
         <div class="lib-author">${escapeHtml(b.author||t('Автор не указан'))}</div>
@@ -176,12 +176,11 @@ function libraryBookRow(b, sig = rowSig(b)){
 function filterBooks(books){
   const q = state.query.trim().toLowerCase();
   let filtered = books;
+  // downloaded catalog books are ordinary books / albums (marked with a small icon); the ones streamed from the internet have their own tab
   if(state.libraryFilterType === 'book'){
-    filtered = filtered.filter(b => !isMusic(b));
+    filtered = filtered.filter(b => !isMusic(b) && !b.online);
   } else if(state.libraryFilterType === 'album'){
-    filtered = filtered.filter(isMusic);
-  } else if(state.libraryFilterType === 'saved'){            // downloaded from the catalog: kept on the device for good
-    filtered = filtered.filter(b => b.source && !b.online);
+    filtered = filtered.filter(b => isMusic(b) && !b.online);
   } else if(state.libraryFilterType === 'online'){           // catalog books that are listened to over the internet
     filtered = filtered.filter(b => b.source && b.online);
   }
@@ -224,7 +223,7 @@ export function openBookMenu(id){
   const b = state.books.find(x => x.id === id);
   if(!b) return;
   const dl = downloads.has(b.id);
-  openModal(`<h3>${escapeHtml(b.title)}</h3>${b.source ? `<div class="modal-row" id="menuSource"><span>ⓘ ${t('Источник и лицензия')}</span></div>` : ''}${dl ? `<div class="modal-row" id="menuStop"><span>⏹ ${t('Остановить скачивание')}</span></div>` : ''}<div class="modal-row" id="menuRename"><span>✏ ${t('Переименовать')}</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 ${t('Удалить из библиотеки')}</span></div><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
+  openModal(`<h3>${escapeHtml(b.title)}</h3>${b.source ? `<div class="modal-row" id="menuSource"><span>ⓘ ${t('Источник и лицензия')}</span></div>` : ''}${dl ? `<div class="modal-row" id="menuStop"><span>⏹ ${t('Остановить скачивание')}</span></div>` : ''}<div class="modal-row" id="menuRename"><span>✏ ${t('Переименовать')}</span></div><div class="modal-row danger" id="menuDelete"><span>🗑 ${t('Удалить…')}</span></div><div class="modal-actions"><button class="secondary" data-close>${t('Закрыть')}</button></div>`);
   $('menuSource')?.addEventListener('click', () => { closeModal(); openSourceInfo(b.id); });
   $('menuStop')?.addEventListener('click', () => { closeModal(); cancelDownload(b.id); });
   $('menuRename').onclick = () => { closeModal(); renameBook(b.id); };
@@ -247,18 +246,43 @@ function renameBook(id){
 }
 
 function deleteBook(id){
-  openModal(`<h3>${t('Удалить из библиотеки?')}</h3><p style="color:var(--muted);font-size:13px">${t('Запись будет удалена из библиотеки. Файлы на устройствах не удаляются.')}</p><div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button><button class="primary" id="bookDeleteConfirm" style="background:var(--danger);color:#fff">${t('Удалить')}</button></div>`);
-  $('bookDeleteConfirm').onclick = async () => {
-    // the deleted book must not keep playing: stops <audio>, the native service queue and its notification
-    if(state.current?.id === id) act('unloadCurrent');
-    state.books = state.books.filter(x => x.id !== id);
-    // deleting from the player menu: there is no player any more — go to the library (and highlight the right tab)
-    if(state.screen === 'player') state.screen = 'shelf';
-    await saveBooks();
-    closeModal();
-    render();
-    showToast(t('Удалено из библиотеки'));
+  const bk = state.books.find(x => x.id === id);
+  if(!bk) return;
+  const uris = (bk.files || []).map(f => f.uri).filter(u => typeof u === 'string' && u.startsWith('content:'));
+  const canDisk = uris.length > 0 && !!plugin('ShelfFiles')?.deleteFile;
+  openModal(`<h3>${t('Удалить книгу?')}</h3><p style="color:var(--muted);font-size:13px">${escapeHtml(bk.title)}</p>
+    <div class="modal-row" id="bookHide"><span style="flex:1">${t('Убрать из библиотеки')}<small style="display:block;color:var(--muted)">${t(bk.online ? 'Это запись о книге, на телефоне ничего не хранится' : 'Файлы останутся на телефоне')}</small></span></div>
+    ${canDisk ? `<div class="modal-row" id="bookErase" style="color:var(--danger)"><span style="flex:1">${t('Удалить с диска')}<small style="display:block;color:var(--muted)">${t('Файлы книги будут удалены с телефона насовсем')}</small></span></div>` : ''}
+    <div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button></div>`);
+  $('bookHide').onclick = () => { closeModal(); dropBook(id, false); };
+  if(canDisk) $('bookErase').onclick = () => {
+    openModal(`<h3>${t('Удалить файлы насовсем?')}</h3><p style="color:var(--muted);font-size:13px">${escapeHtml(bk.title)}<br>${t('Вернуть их будет нельзя.')}</p><div class="modal-actions"><button class="secondary" data-close>${t('Отмена')}</button><button class="primary" id="bookEraseGo" style="background:var(--danger);color:#fff">${t('Удалить')}</button></div>`);
+    $('bookEraseGo').onclick = () => { closeModal(); dropBook(id, true); };
   };
+}
+
+async function dropBook(id, fromDisk){
+  const bk = state.books.find(x => x.id === id);
+  if(!bk) return;
+  if(downloads.has(id)) cancelDownload(id);
+  if(state.current?.id === id) act('unloadCurrent');           // stops <audio>, the native queue and its notification (also frees the files)
+  if(fromDisk){
+    const files = (bk.files || []).filter(f => typeof f.uri === 'string' && f.uri.startsWith('content:'));
+    let failed = 0, denied = false;
+    for(const f of files){
+      try { await plugin('ShelfFiles').deleteFile({ uri: f.uri, dropEmptyDir: !!bk.downloadedAt }); }
+      catch(e){ failed++; if(String(e?.message || e).includes('denied')) denied = true; }
+    }
+    if(failed){
+      showToast(t(denied ? 'Нет права на удаление: добавьте папку заново (Настройки → Ваши папки)' : 'Не удалось удалить часть файлов'));
+      if(failed === files.length) return;                      // nothing was deleted: keep the book
+    }
+  }
+  state.books = state.books.filter(x => x.id !== id);
+  if(state.screen === 'player') state.screen = 'shelf';
+  await saveBooks();
+  render();
+  showToast(t(fromDisk ? 'Книга удалена с телефона' : 'Удалено из библиотеки'));
 }
 
 /** The library stays alive on its own: while it is on screen, progress bars, finished marks and covers follow the listening

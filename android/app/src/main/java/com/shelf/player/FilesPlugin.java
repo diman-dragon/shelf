@@ -103,7 +103,10 @@ public class FilesPlugin extends Plugin {
         String uri = call.getString("uri");
         if (uri == null || uri.isEmpty()) { call.reject("failed"); return; }
         try {
-            boolean ok = DocumentsContract.deleteDocument(getContext().getContentResolver(), Uri.parse(uri));
+            ContentResolver cr = getContext().getContentResolver();
+            Uri file = Uri.parse(uri);
+            boolean ok = DocumentsContract.deleteDocument(cr, file);
+            if (ok && Boolean.TRUE.equals(call.getBoolean("dropEmptyDir", false))) dropEmptyParent(cr, file);
             if (ok) call.resolve(); else call.reject("failed");
         } catch (SecurityException e) {
             call.reject("denied");
@@ -112,6 +115,21 @@ public class FilesPlugin extends Plugin {
         }
     }
 
+
+    /** After the last file of a downloaded book is gone, its own (now empty) folder "AudioShelf/<title>" goes too. */
+    private void dropEmptyParent(ContentResolver cr, Uri file) {
+        try {
+            String id = DocumentsContract.getDocumentId(file);
+            int i = id.lastIndexOf('/');
+            if (i < 0) return;
+            String parentId = id.substring(0, i);
+            Uri kids = DocumentsContract.buildChildDocumentsUriUsingTree(file, parentId);
+            try (Cursor c = cr.query(kids, new String[]{ DocumentsContract.Document.COLUMN_DOCUMENT_ID }, null, null, null)) {
+                if (c == null || c.moveToFirst()) return;      // not empty (or unreadable): leave it
+            }
+            DocumentsContract.deleteDocument(cr, DocumentsContract.buildDocumentUriUsingTree(file, parentId));
+        } catch (Exception ignored) { }
+    }
 
     /* ---------------- catalog downloads (Premium; the screen is catalog.js) ----------------
      * One file per call: the JS loop goes chapter by chapter, shows the progress and can stop. The file is written straight into the
