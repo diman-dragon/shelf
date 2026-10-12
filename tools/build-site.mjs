@@ -110,7 +110,7 @@ nav a{text-decoration:none;color:var(--mute)}nav a:hover,nav a[aria-current]{col
 
 /* the album and the book that are playing: the same animation as the cover in the app */
 .stage{flex:none;display:flex;align-items:flex-end;gap:34px;margin:0 16px;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
-.album{position:relative;width:min(392px,66vw);height:min(280px,47vw);flex:none}
+.album{position:relative;width:min(336px,60vw);height:min(240px,43vw);flex:none}
 .sleeve{position:absolute;left:0;top:0;width:71.43%;height:100%;z-index:2;background:#1f4563;border-radius:3px;box-shadow:0 6px 16px rgba(0,0,0,.4);display:grid;place-items:center;color:#f0e9d8;font:italic 600 clamp(17px,2.6vw,25px)/1.12 var(--serif);text-align:center;padding:14px}
 .sleeve::before{content:"";position:absolute;inset:12px;border:1px solid rgba(240,233,216,.5)}
 .sleeve span{position:relative}
@@ -124,11 +124,11 @@ nav a{text-decoration:none;color:var(--mute)}nav a:hover,nav a[aria-current]{col
 .arm g{transform-box:view-box;transform-origin:128px 10px;transform:rotate(50deg);transition:transform 1.3s cubic-bezier(.4,0,.2,1) .5s}
 .playing .arm g{transform:none}
 .arm circle{fill:#4a4237;stroke:var(--gold)}.arm path{stroke:#b9b2a5;stroke-width:2.4;stroke-linecap:round;fill:none}.arm rect{fill:var(--gold)}
-.tome{position:relative;width:min(188px,32vw);height:min(272px,46vw);flex:none}
-.tome .cover{position:absolute;inset:0;z-index:2;background:#7a2230;border-radius:3px 6px 6px 3px;box-shadow:0 6px 16px rgba(0,0,0,.4),inset 5px 0 0 rgba(0,0,0,.2);color:#f0e9d8;display:grid;align-content:center;justify-items:center;gap:10px;padding:18px;text-align:center;font:600 clamp(20px,3vw,28px)/1.08 var(--serif)}
+.tome{position:relative;width:min(122px,22vw);height:min(176px,32vw);flex:none}
+.tome .cover{position:absolute;inset:0;z-index:2;background:#7a2230;border-radius:3px 6px 6px 3px;box-shadow:0 6px 16px rgba(0,0,0,.4),inset 5px 0 0 rgba(0,0,0,.2);color:#f0e9d8;display:grid;align-content:center;justify-items:center;gap:10px;padding:12px;text-align:center;font:600 clamp(16px,2vw,20px)/1.08 var(--serif)}
 .tome .cover::before{content:"";position:absolute;inset:12px 12px 12px 18px;border:1px solid rgba(240,233,216,.5)}
-.tome .cover small{font:italic 400 14px/1.2 var(--serif);position:relative;opacity:.9}.tome .cover b{position:relative;font-weight:600}
-.tome{margin-right:min(135px,22vw)}
+.tome .cover small{font:italic 400 12px/1.2 var(--serif);position:relative;opacity:.9}.tome .cover b{position:relative;font-weight:600}
+.tome{margin-right:min(88px,15vw)}
 .openbook{position:absolute;left:45%;top:17%;height:66%;aspect-ratio:1.3;z-index:1;perspective:900px;transform:translateX(-34%);transition:transform 1.4s cubic-bezier(.3,.7,.2,1)}
 .playing .openbook{transform:none}
 .openbook::before{content:"";position:absolute;inset:-3px;border-radius:6px;background:#5a2630;box-shadow:0 6px 16px rgba(0,0,0,.4)}
@@ -144,31 +144,33 @@ nav a{text-decoration:none;color:var(--mute)}nav a:hover,nav a[aria-current]{col
 
 /* ---- the text ---- */
 section{padding:72px 0 0}
-h2{font:600 clamp(26px,3.4vw,38px)/1.15 var(--serif);letter-spacing:-.015em;margin:0 0 26px;max-width:22ch}
-.defs{margin:0;border-top:1px solid var(--rule)}
-.defs div{display:grid;grid-template-columns:minmax(150px,230px) 1fr;gap:6px 36px;padding:20px 0;border-bottom:1px solid var(--rule)}
-.defs dt{font:italic 600 21px/1.3 var(--serif)}.defs dd{margin:0;max-width:40em}
-@media(max-width:700px){.defs div{grid-template-columns:1fr}}
+h2{font:600 clamp(27px,3.6vw,40px)/1.12 var(--serif);letter-spacing:-.015em;margin:0 0 10px;max-width:22ch}
+.sec-sub{color:var(--mute);margin:0 0 30px;max-width:38em}
+.cards{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+.card{position:relative;background:var(--paper);border:1px solid var(--rule);border-top:5px solid var(--c,var(--ink));border-radius:4px;padding:22px 22px 24px}
+.card .ico{width:40px;height:40px;border-radius:3px;background:var(--c,var(--ink));color:#f0e9d8;display:grid;place-items:center;margin-bottom:14px;box-shadow:inset -3px 0 0 rgba(0,0,0,.18)}
+.card .ico svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.card h3{margin:0 0 6px;font:600 21px/1.2 var(--serif)}.card p{margin:0;color:var(--mute);font-size:16px}
+.tag{display:inline-block;font:600 15px/1 var(--spine);letter-spacing:.02em;color:#f0e9d8;background:var(--c,var(--ink));padding:5px 10px 4px;border-radius:2px;margin-bottom:12px}
+.modes{display:grid;gap:18px;grid-template-columns:1fr 1fr}@media(max-width:700px){.modes{grid-template-columns:1fr}}
 .shots{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;align-items:start}
 .shots figure{margin:0}.shots figure:nth-child(2){margin-top:56px}.shots figure:nth-child(3){margin-top:18px}
 .shots img{display:block;width:100%;height:auto;border-radius:14px;outline:1px solid var(--rule);outline-offset:-1px}
 .shots figcaption{margin-top:12px;font-size:15px;color:var(--mute);max-width:24em}
 @media(max-width:700px){.shots{grid-template-columns:1fr;max-width:320px}.shots figure:nth-child(n){margin-top:0}}
-table.plans{border-collapse:collapse;width:100%;font-size:16px}
-.plans caption{text-align:left;color:var(--mute);padding-bottom:12px}
-.plans th,.plans td{padding:12px 14px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
-.plans thead th{border-bottom:2px solid var(--ink);font-weight:600;vertical-align:bottom}
-.plans td:not(:first-child),.plans th:not(:first-child){width:19%}
-.plans th[scope=row]{font-weight:400}
-.plans .prem{background:var(--paper)}
-.plans .price{display:block;font:600 26px/1.1 var(--serif);margin-top:2px}
-@media(max-width:700px){.plans{font-size:13px}.plans th,.plans td{padding:10px 4px}.plans td:not(:first-child),.plans th:not(:first-child){width:auto}.plans th:first-child{width:36%}.plans .price{font-size:14px;white-space:normal}}
-.fine{color:var(--mute);font-size:16px;max-width:40em;margin:18px 0 0}
+.plans{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));align-items:stretch}
+.plan .price{font:600 38px/1.1 var(--spine);letter-spacing:.01em;margin:2px 0 10px}
+.plan.hl{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}.plan.hl p{color:inherit;opacity:.82}
+.plan ul{margin:0;padding-left:20px;color:var(--mute);font-size:16px}.plan.hl ul{color:inherit;opacity:.85}
+.fine{color:var(--mute);font-size:16px;max-width:40em;margin:20px 0 0}
+.band{background:var(--paper);border:1px solid var(--rule);border-left:6px solid var(--ink);border-radius:4px;padding:30px 32px;display:grid;gap:18px 40px;grid-template-columns:1.4fr 1fr;align-items:center}
+@media(max-width:760px){.band{grid-template-columns:1fr;padding:24px}}
+.band h2{margin-bottom:10px}.band p{margin:0;color:var(--mute);max-width:36em}
+.band .btn{white-space:nowrap}
 .family .books{height:230px;padding:0;margin-top:30px;display:flex;align-items:flex-end;gap:3px}
 .family .shelf{margin:0}.family .plank{margin:0 -24px}
 .spine.am{--c:#1f4563}
 .spine.soon{opacity:.62}
-.about{max-width:none}.about>*{max-width:40em}
 footer{margin-top:88px;border-top:1px solid var(--rule);padding:26px 0 40px;color:var(--mute);font-size:15px}
 footer .wrap{display:flex;gap:10px 28px;flex-wrap:wrap}footer .wrap>span:first-child{margin-right:auto}
 article{padding:44px 0 70px}article .wrap{max-width:780px}
@@ -268,33 +270,45 @@ const defs = [
   ['Звук', 'Sound', 'Эквалайзер на десять полос, усиление до 300 %, выравнивание громкости между файлами и десять визуализаторов. Это Premium.', 'A ten-band equalizer, boost up to 300 %, loudness leveling between files and ten visualizers. This is Premium.'],
   ['Данные', 'Data', 'Библиотека, позиции и закладки хранятся только на телефоне. Нет аккаунтов, аналитики и рекламы. Интернет нужен лишь каталогу.', 'Your library, positions and bookmarks live only on the phone. No accounts, analytics or ads. The internet is used only by the catalog.']
 ];
-const rows = [
-  ['Библиотека, воспроизведение, закладки, таймер сна', 'Library, playback, bookmarks, sleep timer', 1, 1, 1],
-  ['Режимы «Книга» и «Альбом»', 'Book and Album modes', 1, 1, 1],
-  ['Каталог и прослушивание онлайн', 'Catalog and listening online', 1, 1, 1],
-  ['Эквалайзер, усиление, выравнивание громкости, визуализаторы', 'Equalizer, boost, loudness leveling, visualizers', 1, 0, 1],
-  ['Скачивание книг из каталога', 'Downloading catalog books', 1, 0, 1]
-];
-const yn = v => v ? bis('да', 'yes') : '<span aria-label="no">—</span>';
 const famSpines = [['Мультитул', 'Multitool', 210, '#3b4750'], ['Файловый менеджер', 'File manager', 235, '#5c6b2f'], ['PDF-читалка', 'PDF reader', 200, '#4c2b57'], ['PDF-сканер', 'PDF scanner', 225, '#7a2230']];
 const fam = `<div class="shelf"><div class="books"><button type="button" class="spine am" style="height:262px;width:46px" aria-label="AudioShelf"><span>AudioShelf</span></button>${
   famSpines.map((s, i) => `<span class="spine soon${i === 3 ? ' lean' : ''}" style="--c:${s[3]};height:${s[2]}px;width:${40 + i * 3}px"><span>${bis(s[0], s[1])}</span></span>`).join('')}</div><div class="plank"></div></div>`;
 const shot = (n, ru, en) => `<figure><img data-shot="${n}" src="shots/${n}-light.webp" alt="" loading="lazy" width="390" height="780"><figcaption>${bis(ru, en)}</figcaption></figure>`;
 
+const CARDCOL = ['#7a2230', '#1f4563', '#5c6b2f', '#c99a2e', '#4c2b57', '#3b4750'];
+const ico = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const ICON = [
+  ico('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  ico('<path d="M4 5a2 2 0 0 1 2-2h13v17H6a2 2 0 0 0-2 2z"/><path d="M4 5v17"/>'),
+  ico('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3M8.5 11h5M11 8.5v5"/>'),
+  ico('<path d="M3 17l3-10h12l3 10"/><path d="M12 7v2m0 3v2m0 3v1"/>'),
+  ico('<path d="M5 20V10m7 10V4m7 16v-7"/><circle cx="5" cy="8" r="2"/><circle cx="12" cy="14" r="2"/><circle cx="19" cy="11" r="2"/>'),
+  ico('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')
+];
 const landing = `<section id="features"><div class="wrap"><h2>${bis('Что умеет', 'What it does')}</h2>
-<dl class="defs">${defs.map(d => `<div><dt>${bis(d[0], d[1])}</dt><dd>${bis(d[2], d[3])}</dd></div>`).join('')}</dl></div></section>
+<p class="sec-sub">${bis('Всё для долгого слушания и ничего лишнего.', 'Everything for long listening and nothing more.')}</p>
+<div class="cards">${defs.map((d, i) => `<div class="card" style="--c:${CARDCOL[i % 6]}"><div class="ico">${ICON[i % 6]}</div><h3>${bis(d[0], d[1])}</h3><p>${bis(d[2], d[3])}</p></div>`).join('')}</div></div></section>
 <section><div class="wrap"><h2>${bis('Экраны', 'Screens')}</h2><div class="shots">
 ${shot('shelf', 'Библиотека: книги и музыка, режим «Полка», вкладка «Онлайн».', 'Library: books and music, a Shelf view and an Online tab.')}
 ${shot('player', 'Плеер: два прогресса у книги, один у альбома.', 'Player: two progress bars for a book, one for an album.')}
-${shot('catalog', 'Каталог: поиск, лицензия и источник у каждой книги.', 'Catalog: search, with the licence and source of every book.')}</div></div></section>
+${shot('catalog', 'Каталог: поиск, лицензия и источник у каждой записи.', 'Catalog: search, with the licence and source of every item.')}</div></div></section>
+<section><div class="wrap"><h2>${bis('Два режима', 'Two modes')}</h2><div class="modes">
+<div class="card" style="--c:#7a2230"><span class="tag">${bis('Книга', 'Book')}</span><h3>${bis('Слушайте, как читаете', 'Listen like you read')}</h3><p>${bis('Главы идут встык. Прогресс главы и всей книги, закладки, возобновление с точного места и перемотка с настраиваемым шагом.', 'Chapters run back to back. Chapter and whole-book progress, bookmarks, exact resume and a configurable skip step.')}</p></div>
+<div class="card" style="--c:#1f4563"><span class="tag">${bis('Альбом', 'Album')}</span><h3>${bis('Музыка без обрывов', 'Music without hard cuts')}</h3><p>${bis('Плавное затухание и вход следующего трека. Порядок: подряд, повтор одного, повтор альбома или случайно. Ненужный трек можно убрать из списка или удалить с диска.', 'Gentle fades between tracks. Order: in sequence, repeat one, repeat album or shuffle. Drop a track from the list or delete it from disk.')}</p></div></div></div></section>
 <section><div class="wrap"><h2>${bis('Бесплатно и Premium', 'Free and Premium')}</h2>
-<div class="tbl"><table class="plans"><caption>${bis('Первые 30 дней открыто всё. Дальше остаётся бесплатная часть, а Premium покупается один раз, без подписки.', 'Everything is open for the first 30 days. After that the free part stays, and Premium is bought once, with no subscription.')}</caption>
-<thead><tr><th scope="col"></th><th scope="col">${bis('30 дней', '30 days')}</th><th scope="col">${bis('Бесплатно', 'Free')}</th><th scope="col" class="prem">Premium<span class="price">4,99 € / $</span></th></tr></thead>
-<tbody>${rows.map(r => `<tr><th scope="row">${bis(r[0], r[1])}</th><td>${yn(r[2])}</td><td>${yn(r[3])}</td><td class="prem">${yn(r[4])}</td></tr>`).join('')}</tbody></table></div>
+<p class="sec-sub">${bis('Без подписок: платите один раз или не платите вовсе.', 'No subscriptions: pay once or not at all.')}</p><div class="plans">
+<div class="card plan" style="--c:#c99a2e"><span class="tag">${bis('Сначала', 'First')}</span><h3>${bis('30 дней, всё открыто', '30 days, everything unlocked')}</h3><p>${bis('Попробуйте все функции сразу после установки.', 'Try every feature right after installing.')}</p></div>
+<div class="card plan" style="--c:#5c6b2f"><span class="tag">${bis('Навсегда', 'Forever')}</span><div class="price">${bis('Бесплатно', 'Free')}</div><ul><li>${bis('библиотека и каталог', 'library and catalog')}</li><li>${bis('закладки и таймер сна', 'bookmarks and sleep timer')}</li><li>${bis('режимы «Книга» и «Альбом»', 'Book and Album modes')}</li></ul></div>
+<div class="card plan hl" style="--c:#e8b66d"><span class="tag" style="color:#24170b">Premium</span><div class="price">4,99 € / $</div><ul><li>${bis('эквалайзер, усиление, выравнивание громкости', 'equalizer, boost, loudness leveling')}</li><li>${bis('десять визуализаторов', 'ten visualizers')}</li><li>${bis('скачивание книг из каталога', 'downloading catalog books')}</li></ul></div></div>
 <p class="fine">${bis('Скачанные книги остаются в вашей папке и в библиотеке и после пробного периода: приложение их не удаляет и не прячет. Автора можно угостить чашкой чая или порадовать котика, это необязательно и ничего не открывает.', 'Downloaded books stay in your folder and in the library after the trial: the app never deletes or hides them. You can buy the author a cup of tea or treat the cat; it is optional and unlocks nothing.')}</p></div></section>
+<section><div class="wrap"><div class="band"><div><h2>${bis('Приватность по умолчанию', 'Private by default')}</h2>
+<p>${bis('У приложения нет аккаунтов, аналитики и собственных серверов. Библиотека и прослушивание остаются на устройстве. Подробнее: ', 'The app has no accounts, analytics or servers of its own. Your library and listening stay on your device. Details: ')}<a href="privacy.html">${bis('политика конфиденциальности', 'privacy policy')}</a>.</p></div>
+<div><a class="btn" href="support.html">${bis('Вопросы и поддержка', 'Questions and support')}</a></div></div></div></section>
 <section class="family"><div class="wrap"><h2>${bis('Остальные приложения', 'The other apps')}</h2>
-<p class="about">${bis('DataLaw Design задаёт для всех наших приложений один вид и одно поведение: те же темы, жесты и порядок настроек. AudioShelf уже на полке, остальные в работе.', 'DataLaw Design gives all our apps one look and one behaviour: the same themes, gestures and settings order. AudioShelf is on the shelf already; the rest are in the works.')}</p>${fam}</div></section>
-<section><div class="wrap about"><h2>DataLaw</h2><p>${bis('DataLaw — приложение для юридических фирм с локальным ИИ: данные остаются у вас. Оно в разработке. DataLaw Design берёт заказы на интерфейсы и фирменный стиль. Пишите: ', 'DataLaw is an app for law firms with a local AI, so your data stays with you. It is in development. DataLaw Design takes commissions for interfaces and brand identity. Write to ')}<a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a>.</p></div></section>`;
+<p class="sec-sub">${bis('DataLaw Design задаёт для всех наших приложений один вид и одно поведение: те же темы, жесты и порядок настроек. AudioShelf уже на полке, остальные в работе.', 'DataLaw Design gives all our apps one look and one behaviour: the same themes, gestures and settings order. AudioShelf is on the shelf already; the rest are in the works.')}</p>${fam}</div></section>
+<section><div class="wrap"><div class="band"><div><h2>DataLaw</h2>
+<p>${bis('DataLaw — приложение для юридических фирм с локальным ИИ: данные остаются у вас. Оно в разработке. DataLaw Design берёт заказы на интерфейсы и фирменный стиль.', 'DataLaw is an app for law firms with a local AI, so your data stays with you. It is in development. DataLaw Design takes commissions for interfaces and brand identity.')}</p></div>
+<div><a class="btn" href="mailto:${esc(cfg.email)}">${bis('Написать нам', 'Contact us')}</a></div></div></div></section>`;
 fs.writeFileSync(path.join(out, 'index.html'), page('index.html',
   { ru: 'AudioShelf — аудиокниги и альбомы на одной полке', en: 'AudioShelf — audiobooks and albums on one shelf', desc: 'AudioShelf: audiobook and album player for Android. No ads, no accounts, a free catalog of public-domain books.' }, landing, { hero }));
 

@@ -306,7 +306,7 @@
 .arm-bar { stroke: #b9b2a5; stroke-width: 2.4; stroke-linecap: round; fill: none; }
 .arm-head { fill: var(--gold); }
 /* a book: the cover stays on the left, an open book lies beside it and its leaves turn over, the same way the record sits beside an album */
-.player-cover.is-book { height: min(clamp(110px, 31vh, 270px), 61vw); height: min(clamp(110px, 31dvh, 270px), 61vw); aspect-ratio: 1.4; max-width: none; }
+.player-cover.is-book { height: min(clamp(96px, 24vh, 210px), 48vw); height: min(clamp(96px, 24dvh, 210px), 48vw); aspect-ratio: 1.45; max-width: none; }
 .is-book .cover-frame { right: auto; width: 49.3%; border-radius: 10px; }
 .fx-book { position: absolute; right: 0; top: 5%; height: 90%; aspect-ratio: 1.3; z-index: 1; perspective: 900px; }
 .fx-book::before { content: ""; position: absolute; inset: -3px; border-radius: 6px; background: #5a2630; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
